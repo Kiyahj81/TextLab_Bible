@@ -39,7 +39,7 @@ The MVP should include:
 
 1. **SBLGNT-style Greek New Testament text**
 2. **MorphGNT-style morphology data**
-3. **NET Bible English translation**
+3. **World English Bible (WEB) English translation**
 4. **Bible reading interface**
 5. **Greek word-click morphology popup**
 6. **Keyword search**
@@ -126,10 +126,10 @@ The text should be tokenized at word level with morphology and lemma data.
 Use:
 
 ```txt
-NET Bible English Translation / NET
+World English Bible / WEB
 ```
 
-For the MVP, the English text can be verse-level only.
+For the MVP, the English text can be verse-level only. NET is deferred until licensing and distribution requirements are explicitly resolved.
 
 Word-level alignment between Greek and English is **not required** for the MVP.
 
@@ -156,7 +156,7 @@ Sample data should include:
 - morphology code
 - part of speech
 - word index
-- NET Bible English Translation verse text
+- WEB English verse text
 
 This allows the full vertical slice to work before building import scripts.
 
@@ -190,7 +190,7 @@ Example corpora:
 ```txt
 SBLGNT
 MorphGNT
-NET
+WEB
 ```
 
 ---
@@ -357,7 +357,7 @@ Route:
 Features:
 
 - Select book/chapter
-- Show Greek SBLGNT and NET side by side
+- Show Greek SBLGNT and WEB side by side
 - Each Greek word should be clickable
 - Clicking a Greek word opens a morphology popup
 
@@ -482,8 +482,8 @@ The assistant should support prompts like:
 ```txt
 Show me every use of δικαιοσύνη in Romans and summarize the patterns.
 Find every imperative in Romans 12.
-Create a study note on John 1:1-5 using only SBLGNT and NET.
-Compare how NET translates λόγος in John.
+Create a study note on John 1:1-5 using only SBLGNT and WEB.
+Compare how WEB translates λόγος in John.
 Create a table of every occurrence of πιστεύω in John.
 ```
 
@@ -501,7 +501,7 @@ Input:
 
 ```ts
 {
-  corpus: "SBLGNT" | "NET";
+  corpus: "SBLGNT" | "WEB";
   book: string;
   chapter: number;
   verseStart: number;
@@ -679,7 +679,7 @@ Never invent lexicon entries, manuscript evidence, or scholarly citations.
 ## 10.1 Reader
 
 ```txt
-As a user, I can open John 1 and view SBLGNT and NET side by side.
+As a user, I can open John 1 and view SBLGNT and WEB side by side.
 
 As a user, I can click λόγος and see its lemma, morphology, and reference.
 
@@ -695,7 +695,7 @@ As a user, I can search for a Greek lemma and get all matching verses.
 
 As a user, I can search for a morphology code and get all matching tokens.
 
-As a user, I can search English NET text for a keyword.
+As a user, I can search English WEB text for a keyword.
 
 As a user, I can filter searches by book.
 ```
@@ -750,7 +750,7 @@ Milestone 1 should include:
 - Next.js app bootstrapped
 - Prisma/PostgreSQL configured
 - Corpus/Book/Verse/Token/Note/Highlight schema created
-- Seed script with sample SBLGNT/MorphGNT/NET data
+- Seed script with sample SBLGNT/MorphGNT/WEB data
 - Reader page
 - Word-click popup
 - Lemma search
@@ -767,7 +767,7 @@ Milestone 1 should include:
 After sample data works:
 
 - Add import scripts for full SBLGNT/MorphGNT
-- Add import scripts for NET
+- Add import scripts for WEB
 - Add better reference navigation
 - Add search result pagination
 - Add saved searches
@@ -781,7 +781,7 @@ Add more corpora later:
 
 - OSHB Hebrew Bible
 - Hebrew morphology search
-- NET with Full Notes
+- NET with Full Notes if licensing and distribution requirements are resolved
 - Spanish open Bible text
 - German open Bible text
 
@@ -833,12 +833,12 @@ textlab-bible/
   scripts/
     import-sblgnt.ts
     import-morphgnt.ts
-    import-net.ts
+    import-open-bible.ts
   data/
     sample/
       sblgnt-john1.json
       morphgnt-john1.json
-      net-john1.json
+      web-john1.json
   README.md
 ```
 
@@ -1015,13 +1015,13 @@ Assistant should:
 User:
 
 ```txt
-Create a study note on John 1:1-5 using only SBLGNT and NET.
+Create a study note on John 1:1-5 using only SBLGNT and WEB.
 ```
 
 Assistant should:
 
 1. Call `getPassage` for John 1:1-5 in SBLGNT.
-2. Call `getPassage` for John 1:1-5 in NET.
+2. Call `getPassage` for John 1:1-5 in WEB.
 3. Produce a study note.
 4. Separate observations from interpretation/application.
 5. Cite the passage.
@@ -1033,13 +1033,13 @@ Assistant should:
 User:
 
 ```txt
-Compare how NET translates λόγος in John 1.
+Compare how WEB translates λόγος in John 1.
 ```
 
 Assistant should:
 
 1. Search the Greek lemma λόγος in John 1.
-2. Retrieve the corresponding NET verses.
+2. Retrieve the corresponding WEB verses.
 3. Compare the Greek occurrences and English rendering.
 4. Avoid making claims beyond the available data.
 
@@ -1052,7 +1052,7 @@ Copy this into Codex:
 ```txt
 Build an MVP called TextLab Bible.
 
-This is a Bible text-focused study app, not a library app. The first MVP should focus on the Greek New Testament with SBLGNT-style Greek text, MorphGNT-style morphology, and NET English text. Use sample data first rather than full corpus imports.
+This is a Bible text-focused study app, not a library app. The first MVP should focus on the Greek New Testament with SBLGNT-style Greek text, MorphGNT-style morphology, and WEB English text. Use sample data first rather than full corpus imports.
 
 Use Next.js, TypeScript, React, Tailwind, Prisma, and PostgreSQL. Keep it as a single full-stack Next.js app unless there is a strong reason to split the backend.
 
@@ -1061,7 +1061,7 @@ Core requirements:
 1. Create a Prisma schema with Corpus, Book, Verse, Token, Note, Highlight, AiSession, and AiMessage models.
 2. Create seed data for John 1:1-5, Romans 3:21-26, Romans 4:1-8, and Romans 12:1-8.
 3. Include Greek token data with surface form, lemma, morphology code, part of speech, book, chapter, verse, and word index.
-4. Include NET English verse text for the same sample passages.
+4. Include WEB English verse text for the same sample passages.
 5. Build a /read page with side-by-side Greek and English text.
 6. Make Greek words clickable.
 7. On Greek word click, show a morphology popover with surface, lemma, morphology, part of speech, and reference.
@@ -1129,10 +1129,10 @@ Add pagination to lemma, morphology, and keyword search results. Keep the API re
 Write an import script for full MorphGNT SBLGNT data. It should parse the source format, create Book/Verse/Token rows, and preserve word order, surface form, lemma, and morphology code. Do not overwrite existing notes/highlights.
 ```
 
-## Task 5: Add NET Import Script
+## Task 5: Add WEB Import Script
 
 ```txt
-Write an import script for NET USFM or USFX data. It should import verse-level text into the Verse table under the NET corpus. Preserve book/chapter/verse references.
+Write an import script for WEB USFM data. It should import verse-level text into the Verse table under the WEB corpus. Preserve book/chapter/verse references and strip USFM study tags from display text.
 ```
 
 ## Task 6: Improve AI Citations

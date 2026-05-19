@@ -2,7 +2,11 @@ node_modules
 .next
 .env
 .env.local
+.vscode/
 dist
 coverage
 test-results
 *.log
+*.tsbuildinfo
+*.zip
+data/

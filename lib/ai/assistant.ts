@@ -15,7 +15,7 @@ export type AssistantAnswer = {
 };
 
 const lemmaAliases: Array<{ needles: string[]; lemma: string; label: string }> = [
-  { needles: ["λόγος", "λογος", "word"], lemma: "λόγος", label: "λόγος" },
+  { needles: ["λόγος", "λογος", "logos", "word"], lemma: "λόγος", label: "λόγος" },
   { needles: ["δικαιοσύνη", "δικαιοσυνη", "righteousness"], lemma: "δικαιοσύνη", label: "δικαιοσύνη" },
   { needles: ["πιστεύω", "πιστευω", "believe"], lemma: "πιστεύω", label: "πιστεύω" }
 ];
@@ -95,10 +95,10 @@ export async function answerBibleQuestion(prompt: string): Promise<AssistantAnsw
   if (normalized.includes("john 1") || normalized.includes("passage")) {
     const [greek, english] = await Promise.all([
       getPassage({ corpus: "SBLGNT", book: book ?? "John", chapter: 1, verseStart: 1, verseEnd: 5 }),
-      getPassage({ corpus: "NET", book: book ?? "John", chapter: 1, verseStart: 1, verseEnd: 5 })
+      getPassage({ corpus: "WEB", book: book ?? "John", chapter: 1, verseStart: 1, verseEnd: 5 })
     ]);
     toolTrace.push(`getPassage({ corpus: "SBLGNT", book: "${book ?? "John"}", chapter: 1, verseStart: 1, verseEnd: 5 })`);
-    toolTrace.push(`getPassage({ corpus: "NET", book: "${book ?? "John"}", chapter: 1, verseStart: 1, verseEnd: 5 })`);
+    toolTrace.push(`getPassage({ corpus: "WEB", book: "${book ?? "John"}", chapter: 1, verseStart: 1, verseEnd: 5 })`);
 
     const citations = [
       ...greek.references.map((result) => ({
@@ -108,17 +108,17 @@ export async function answerBibleQuestion(prompt: string): Promise<AssistantAnsw
       })),
       ...english.references.map((result) => ({
         reference: result.reference,
-        corpus: "NET",
+        corpus: "WEB",
         searchQuery: "passage"
       }))
     ];
 
     const answer = [
-      "Textual observations: I retrieved John 1:1-5 from SBLGNT and NET before answering.",
+      "Textual observations: I retrieved John 1:1-5 from SBLGNT and WEB before answering.",
       "",
       greek.references.map((verse) => `- ${verse.reference}, SBLGNT: ${verse.text}`).join("\n"),
       "",
-      english.references.map((verse) => `- ${verse.reference}, NET: ${verse.text}`).join("\n"),
+      english.references.map((verse) => `- ${verse.reference}, WEB: ${verse.text}`).join("\n"),
       "",
       "Interpretive suggestion: The sample passage emphasizes the Word, creation, life, and light within the cited verses.",
       "",

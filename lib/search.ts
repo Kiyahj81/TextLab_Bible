@@ -1,12 +1,25 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { formatReference, normalizeBook } from "@/lib/references";
+import { bookName, formatReference, normalizeBook } from "@/lib/references";
 
 type PassageInput = {
-  corpus: "SBLGNT" | "NET";
+  corpus: "SBLGNT" | "WEB";
   book: string;
   chapter: number;
   verseStart: number;
   verseEnd?: number;
+};
+
+type PaginationInput = {
+  page?: number;
+  pageSize?: number;
+};
+
+export type SearchPagination = {
+  page: number;
+  pageSize: number;
+  total: number;
+  pageCount: number;
 };
 
 export type Citation = {
@@ -39,6 +52,21 @@ export async function getAvailablePassages() {
   return Array.from(unique.values());
 }
 
+export async function getAvailableReaderBooks() {
+  const rows = await prisma.verse.findMany({
+    where: { corpus: { abbreviation: "SBLGNT" } },
+    select: { book: true },
+    distinct: ["bookId"],
+    orderBy: { book: { order: "asc" } }
+  });
+
+  return rows.map((row) => ({
+    osisId: row.book.osisId,
+    name: row.book.name,
+    label: bookName(row.book.osisId)
+  }));
+}
+
 export async function getReaderPassage(bookInput = "John", chapter = 1) {
   const book = normalizeBook(bookInput) ?? "John";
 
@@ -54,12 +82,12 @@ export async function getReaderPassage(bookInput = "John", chapter = 1) {
     }),
     prisma.verse.findMany({
       where: {
-        corpus: { abbreviation: "NET" },
+        corpus: { abbreviation: "WEB" },
         book: { osisId: book },
         chapter
       },
-      include: { book: true },
-      orderBy: { verse: "asc" }
+      include: { book: true, corpus: true },
+      orderBy: [{ corpus: { abbreviation: "asc" } }, { verse: "asc" }]
     }),
     prisma.token.findMany({
       where: {
@@ -78,7 +106,10 @@ export async function getReaderPassage(bookInput = "John", chapter = 1) {
     return acc;
   }, {});
 
-  const englishByVerse = new Map(englishVerses.map((verse) => [verse.verse, verse]));
+  const englishByVerse = new Map<number, (typeof englishVerses)[number]>();
+  for (const verse of englishVerses) {
+    englishByVerse.set(verse.verse, verse);
+  }
 
   return greekVerses.map((verse) => ({
     id: verse.id,
@@ -89,6 +120,7 @@ export async function getReaderPassage(bookInput = "John", chapter = 1) {
     reference: formatReference(verse.book.osisId, verse.chapter, verse.verse),
     greekText: verse.text,
     englishText: englishByVerse.get(verse.verse)?.text ?? "",
+    englishCorpus: englishByVerse.get(verse.verse)?.corpus.abbreviation ?? "WEB",
     tokens: (tokensByVerse[verse.verse] ?? []).map((token) => ({
       id: token.id,
       book: token.book.osisId,
@@ -139,27 +171,36 @@ export async function searchKeyword(input: {
   query: string;
   book?: string;
   chapter?: number;
-}) {
+} & PaginationInput) {
   const book = normalizeBook(input.book);
   const query = input.query.trim();
+  const pagination = normalizePagination(input);
 
   if (!query) {
-    return { query, results: [] };
+    return { query, results: [], pagination: { ...pagination, total: 0, pageCount: 0 } };
   }
 
-  const verses = await prisma.verse.findMany({
-    where: {
+  const where: Prisma.VerseWhereInput = {
       text: { contains: query, mode: "insensitive" },
-      corpus: input.corpus ? { abbreviation: input.corpus } : undefined,
+      corpus: input.corpus ? { abbreviation: input.corpus } : { abbreviation: { not: "NET" } },
       book: book ? { osisId: book } : undefined,
       chapter: input.chapter
-    },
+    };
+
+  const [total, verses] = await Promise.all([
+    prisma.verse.count({ where }),
+    prisma.verse.findMany({
+    where,
     include: { corpus: true, book: true },
-    orderBy: [{ book: { order: "asc" } }, { chapter: "asc" }, { verse: "asc" }]
-  });
+    orderBy: [{ book: { order: "asc" } }, { chapter: "asc" }, { verse: "asc" }],
+    skip: (pagination.page - 1) * pagination.pageSize,
+    take: pagination.pageSize
+    })
+  ]);
 
   return {
     query,
+    pagination: paginationResult(pagination, total),
     results: verses.map((verse) => ({
       corpus: verse.corpus.abbreviation,
       reference: formatReference(verse.book.osisId, verse.chapter, verse.verse),
@@ -172,29 +213,40 @@ export async function searchLemma(input: {
   lemma: string;
   corpus?: "SBLGNT";
   book?: string;
-}) {
+  chapter?: number;
+} & PaginationInput) {
   const lemma = input.lemma.trim();
   const book = normalizeBook(input.book);
+  const pagination = normalizePagination(input);
 
   if (!lemma) {
-    return { lemma, count: 0, results: [] };
+    return { lemma, count: 0, results: [], pagination: { ...pagination, total: 0, pageCount: 0 } };
   }
 
-  const tokens = await prisma.token.findMany({
-    where: {
+  const where: Prisma.TokenWhereInput = {
       lemma,
       corpus: { abbreviation: input.corpus ?? "SBLGNT" },
-      book: book ? { osisId: book } : undefined
-    },
+      book: book ? { osisId: book } : undefined,
+      chapter: input.chapter
+    };
+
+  const [total, tokens] = await Promise.all([
+    prisma.token.count({ where }),
+    prisma.token.findMany({
+    where,
     include: { book: true, corpus: true },
-    orderBy: [{ book: { order: "asc" } }, { chapter: "asc" }, { verse: "asc" }, { wordIndex: "asc" }]
-  });
+    orderBy: [{ book: { order: "asc" } }, { chapter: "asc" }, { verse: "asc" }, { wordIndex: "asc" }],
+    skip: (pagination.page - 1) * pagination.pageSize,
+    take: pagination.pageSize
+    })
+  ]);
 
   const results = await Promise.all(tokens.map(tokenToSearchResult));
 
   return {
     lemma,
-    count: results.length,
+    count: total,
+    pagination: paginationResult(pagination, total),
     results
   };
 }
@@ -204,33 +256,63 @@ export async function searchMorphology(input: {
   matchMode: "exact" | "prefix";
   corpus?: "SBLGNT";
   book?: string;
-}) {
+  chapter?: number;
+} & PaginationInput) {
   const morphCode = input.morphCode.trim();
   const book = normalizeBook(input.book);
+  const pagination = normalizePagination(input);
 
   if (!morphCode) {
-    return { morphCode, count: 0, results: [] };
+    return { morphCode, count: 0, results: [], pagination: { ...pagination, total: 0, pageCount: 0 } };
   }
 
-  const tokens = await prisma.token.findMany({
-    where: {
+  const where: Prisma.TokenWhereInput = {
       morphCode:
         input.matchMode === "prefix"
-          ? { startsWith: morphCode, mode: "insensitive" }
-          : { equals: morphCode, mode: "insensitive" },
+          ? { startsWith: morphCode, mode: "insensitive" as const }
+          : { equals: morphCode, mode: "insensitive" as const },
       corpus: { abbreviation: input.corpus ?? "SBLGNT" },
-      book: book ? { osisId: book } : undefined
-    },
+      book: book ? { osisId: book } : undefined,
+      chapter: input.chapter
+    };
+
+  const [total, tokens] = await Promise.all([
+    prisma.token.count({ where }),
+    prisma.token.findMany({
+    where,
     include: { book: true, corpus: true },
-    orderBy: [{ book: { order: "asc" } }, { chapter: "asc" }, { verse: "asc" }, { wordIndex: "asc" }]
-  });
+    orderBy: [{ book: { order: "asc" } }, { chapter: "asc" }, { verse: "asc" }, { wordIndex: "asc" }],
+    skip: (pagination.page - 1) * pagination.pageSize,
+    take: pagination.pageSize
+    })
+  ]);
 
   const results = await Promise.all(tokens.map(tokenToSearchResult));
 
   return {
     morphCode,
-    count: results.length,
+    count: total,
+    pagination: paginationResult(pagination, total),
     results
+  };
+}
+
+function normalizePagination(input: PaginationInput) {
+  const page = Number.isFinite(input.page) && input.page && input.page > 0 ? Math.floor(input.page) : 1;
+  const requestedPageSize =
+    Number.isFinite(input.pageSize) && input.pageSize && input.pageSize > 0 ? Math.floor(input.pageSize) : 25;
+
+  return {
+    page,
+    pageSize: Math.min(requestedPageSize, 100)
+  };
+}
+
+function paginationResult(pagination: { page: number; pageSize: number }, total: number): SearchPagination {
+  return {
+    ...pagination,
+    total,
+    pageCount: Math.ceil(total / pagination.pageSize)
   };
 }
 

@@ -11,7 +11,8 @@
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev --name init",
     "db:seed": "prisma db seed",
-    "prisma:generate": "prisma generate"
+    "prisma:generate": "prisma generate",
+    "import:open-bible": "tsx scripts/import-open-bible.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.7.0",

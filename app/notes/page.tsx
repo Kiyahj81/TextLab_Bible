@@ -1,8 +1,7 @@
 import { NotesPanel, NoteRow } from "@/components/NotesPanel";
 import { prisma } from "@/lib/db";
 import { formatReference } from "@/lib/references";
-
-const localUserId = "local-user";
+import { localUserId } from "@/lib/user";
 
 export const dynamic = "force-dynamic";
 

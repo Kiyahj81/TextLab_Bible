@@ -7,7 +7,7 @@ type VerseSeed = {
   chapter: number;
   verse: number;
   sblgnt: string;
-  net: string;
+  web: string;
 };
 
 type TokenSeed = {
@@ -29,189 +29,189 @@ const verses: VerseSeed[] = [
     chapter: 1,
     verse: 1,
     sblgnt: "Ἐν ἀρχῇ ἦν ὁ λόγος, καὶ ὁ λόγος ἦν πρὸς τὸν θεόν, καὶ θεὸς ἦν ὁ λόγος.",
-    net: "In the beginning was the Word, and the Word was with God, and the Word was God."
+    web: "In the beginning was the Word, and the Word was with God, and the Word was God."
   },
   {
     book: "John",
     chapter: 1,
     verse: 2,
     sblgnt: "οὗτος ἦν ἐν ἀρχῇ πρὸς τὸν θεόν.",
-    net: "The Word was with God in the beginning."
+    web: "The same was in the beginning with God."
   },
   {
     book: "John",
     chapter: 1,
     verse: 3,
     sblgnt: "πάντα διʼ αὐτοῦ ἐγένετο, καὶ χωρὶς αὐτοῦ ἐγένετο οὐδὲ ἕν. ὃ γέγονεν",
-    net: "All things were created by him, and apart from him not one thing was created that has been created."
+    web: "All things were made through him. Without him, nothing was made that has been made."
   },
   {
     book: "John",
     chapter: 1,
     verse: 4,
     sblgnt: "ἐν αὐτῷ ζωὴ ἦν, καὶ ἡ ζωὴ ἦν τὸ φῶς τῶν ἀνθρώπων·",
-    net: "In him was life, and the life was the light of mankind."
+    web: "In him was life, and the life was the light of men."
   },
   {
     book: "John",
     chapter: 1,
     verse: 5,
     sblgnt: "καὶ τὸ φῶς ἐν τῇ σκοτίᾳ φαίνει, καὶ ἡ σκοτία αὐτὸ οὐ κατέλαβεν.",
-    net: "And the light shines on in the darkness, but the darkness has not mastered it."
+    web: "The light shines in the darkness, and the darkness hasn't overcome it."
   },
   {
     book: "Rom",
     chapter: 3,
     verse: 21,
     sblgnt: "Νυνὶ δὲ χωρὶς νόμου δικαιοσύνη θεοῦ πεφανέρωται μαρτυρουμένη ὑπὸ τοῦ νόμου καὶ τῶν προφητῶν,",
-    net: "But now apart from the law the righteousness of God has been disclosed, attested by the law and the prophets."
+    web: "But now apart from the law, a righteousness of God has been revealed, being testified by the law and the prophets;"
   },
   {
     book: "Rom",
     chapter: 3,
     verse: 22,
     sblgnt: "δικαιοσύνη δὲ θεοῦ διὰ πίστεως Ἰησοῦ Χριστοῦ εἰς πάντας τοὺς πιστεύοντας.",
-    net: "The righteousness of God is through the faithfulness of Jesus Christ for all who believe."
+    web: "even the righteousness of God through faith in Jesus Christ to all and on all those who believe."
   },
   {
     book: "Rom",
     chapter: 3,
     verse: 23,
     sblgnt: "πάντες γὰρ ἥμαρτον καὶ ὑστεροῦνται τῆς δόξης τοῦ θεοῦ",
-    net: "For all have sinned and fall short of the glory of God."
+    web: "For there is no distinction, for all have sinned, and fall short of the glory of God;"
   },
   {
     book: "Rom",
     chapter: 3,
     verse: 24,
     sblgnt: "δικαιούμενοι δωρεὰν τῇ αὐτοῦ χάριτι διὰ τῆς ἀπολυτρώσεως τῆς ἐν Χριστῷ Ἰησοῦ·",
-    net: "But they are justified freely by his grace through the redemption that is in Christ Jesus."
+    web: "being justified freely by his grace through the redemption that is in Christ Jesus,"
   },
   {
     book: "Rom",
     chapter: 3,
     verse: 25,
     sblgnt: "ὃν προέθετο ὁ θεὸς ἱλαστήριον διὰ πίστεως ἐν τῷ αὐτοῦ αἵματι.",
-    net: "God publicly displayed him as the mercy seat through faith in his blood."
+    web: "whom God sent to be an atoning sacrifice through faith in his blood, for a demonstration of his righteousness through the passing over of prior sins, in God's forbearance;"
   },
   {
     book: "Rom",
     chapter: 3,
     verse: 26,
     sblgnt: "πρὸς τὴν ἔνδειξιν τῆς δικαιοσύνης αὐτοῦ ἐν τῷ νῦν καιρῷ.",
-    net: "This was to demonstrate his righteousness at the present time."
+    web: "to demonstrate his righteousness at this present time, that he might himself be just and the justifier of him who has faith in Jesus."
   },
   {
     book: "Rom",
     chapter: 4,
     verse: 1,
     sblgnt: "Τί οὖν ἐροῦμεν εὑρηκέναι Ἀβραὰμ τὸν προπάτορα ἡμῶν κατὰ σάρκα;",
-    net: "What then shall we say that Abraham, our ancestor according to the flesh, has discovered?"
+    web: "What then will we say that Abraham, our forefather, has found according to the flesh?"
   },
   {
     book: "Rom",
     chapter: 4,
     verse: 2,
     sblgnt: "εἰ γὰρ Ἀβραὰμ ἐξ ἔργων ἐδικαιώθη, ἔχει καύχημα, ἀλλʼ οὐ πρὸς θεόν.",
-    net: "For if Abraham was declared righteous by works, he has something to boast about, but not before God."
+    web: "For if Abraham was justified by works, he has something to boast about, but not toward God."
   },
   {
     book: "Rom",
     chapter: 4,
     verse: 3,
     sblgnt: "τί γὰρ ἡ γραφὴ λέγει; Ἐπίστευσεν δὲ Ἀβραὰμ τῷ θεῷ, καὶ ἐλογίσθη αὐτῷ εἰς δικαιοσύνην.",
-    net: "For what does the scripture say? Abraham believed God, and it was credited to him as righteousness."
+    web: "For what does the Scripture say? \"Abraham believed God, and it was accounted to him for righteousness.\""
   },
   {
     book: "Rom",
     chapter: 4,
     verse: 4,
     sblgnt: "τῷ δὲ ἐργαζομένῳ ὁ μισθὸς οὐ λογίζεται κατὰ χάριν ἀλλὰ κατὰ ὀφείλημα·",
-    net: "Now to the one who works, his pay is not credited because of grace but because of obligation."
+    web: "Now to him who works, the reward is not counted as grace, but as something owed."
   },
   {
     book: "Rom",
     chapter: 4,
     verse: 5,
     sblgnt: "τῷ δὲ μὴ ἐργαζομένῳ πιστεύοντι δὲ ἐπὶ τὸν δικαιοῦντα τὸν ἀσεβῆ λογίζεται ἡ πίστις αὐτοῦ εἰς δικαιοσύνην,",
-    net: "But to the one who does not work, but believes in the one who declares the ungodly righteous, his faith is credited as righteousness."
+    web: "But to him who doesn't work, but believes in him who justifies the ungodly, his faith is accounted for righteousness."
   },
   {
     book: "Rom",
     chapter: 4,
     verse: 6,
     sblgnt: "καθάπερ καὶ Δαυὶδ λέγει τὸν μακαρισμὸν τοῦ ἀνθρώπου ᾧ ὁ θεὸς λογίζεται δικαιοσύνην χωρὶς ἔργων·",
-    net: "So even David himself speaks regarding the blessedness of the man to whom God credits righteousness apart from works."
+    web: "Even as David also pronounces blessing on the man to whom God counts righteousness apart from works:"
   },
   {
     book: "Rom",
     chapter: 4,
     verse: 7,
     sblgnt: "Μακάριοι ὧν ἀφέθησαν αἱ ἀνομίαι καὶ ὧν ἐπεκαλύφθησαν αἱ ἁμαρτίαι·",
-    net: "Blessed are those whose lawless deeds are forgiven, and whose sins are covered."
+    web: "\"Blessed are they whose iniquities are forgiven, whose sins are covered."
   },
   {
     book: "Rom",
     chapter: 4,
     verse: 8,
     sblgnt: "μακάριος ἀνὴρ οὗ οὐ μὴ λογίσηται κύριος ἁμαρτίαν.",
-    net: "Blessed is the one against whom the Lord will never count sin."
+    web: "Blessed is the man whom the Lord will by no means charge with sin.\""
   },
   {
     book: "Rom",
     chapter: 12,
     verse: 1,
     sblgnt: "Παρακαλῶ οὖν ὑμᾶς, ἀδελφοί, διὰ τῶν οἰκτιρμῶν τοῦ θεοῦ παραστῆσαι τὰ σώματα ὑμῶν θυσίαν ζῶσαν.",
-    net: "Therefore I exhort you, brothers and sisters, by the mercies of God, to present your bodies as a living sacrifice."
+    web: "Therefore I urge you, brothers, by the mercies of God, to present your bodies a living sacrifice, holy, acceptable to God, which is your spiritual service."
   },
   {
     book: "Rom",
     chapter: 12,
     verse: 2,
     sblgnt: "καὶ μὴ συσχηματίζεσθε τῷ αἰῶνι τούτῳ, ἀλλὰ μεταμορφοῦσθε τῇ ἀνακαινώσει τοῦ νοός.",
-    net: "Do not be conformed to this present world, but be transformed by the renewing of your mind."
+    web: "Don't be conformed to this world, but be transformed by the renewing of your mind, so that you may prove what is the good, well-pleasing, and perfect will of God."
   },
   {
     book: "Rom",
     chapter: 12,
     verse: 3,
     sblgnt: "Λέγω γὰρ διὰ τῆς χάριτος τῆς δοθείσης μοι παντὶ τῷ ὄντι ἐν ὑμῖν μὴ ὑπερφρονεῖν.",
-    net: "For by the grace given to me I say to every one of you not to think more highly of yourself than you ought to think."
+    web: "For I say through the grace that was given me, to everyone who is among you, not to think of yourself more highly than you ought to think; but to think reasonably, as God has apportioned to each person a measure of faith."
   },
   {
     book: "Rom",
     chapter: 12,
     verse: 4,
     sblgnt: "καθάπερ γὰρ ἐν ἑνὶ σώματι πολλὰ μέλη ἔχομεν, τὰ δὲ μέλη πάντα οὐ τὴν αὐτὴν ἔχει πρᾶξιν,",
-    net: "For just as in one body we have many members, and not all the members serve the same function."
+    web: "For even as we have many members in one body, and all the members don't have the same function,"
   },
   {
     book: "Rom",
     chapter: 12,
     verse: 5,
     sblgnt: "οὕτως οἱ πολλοὶ ἓν σῶμά ἐσμεν ἐν Χριστῷ, τὸ δὲ καθʼ εἷς ἀλλήλων μέλη.",
-    net: "So we who are many are one body in Christ, and individually we are members who belong to one another."
+    web: "so we, who are many, are one body in Christ, and individually members of one another,"
   },
   {
     book: "Rom",
     chapter: 12,
     verse: 6,
     sblgnt: "ἔχοντες δὲ χαρίσματα κατὰ τὴν χάριν τὴν δοθεῖσαν ἡμῖν διάφορα.",
-    net: "And we have different gifts according to the grace given to us."
+    web: "having gifts differing according to the grace that was given to us: if prophecy, let's prophesy according to the proportion of our faith;"
   },
   {
     book: "Rom",
     chapter: 12,
     verse: 7,
     sblgnt: "εἴτε διακονίαν ἐν τῇ διακονίᾳ, εἴτε ὁ διδάσκων ἐν τῇ διδασκαλίᾳ,",
-    net: "If it is service, he must serve; if it is teaching, he must teach."
+    web: "or service, let's give ourselves to service; or he who teaches, to his teaching;"
   },
   {
     book: "Rom",
     chapter: 12,
     verse: 8,
     sblgnt: "εἴτε ὁ παρακαλῶν ἐν τῇ παρακλήσει, ὁ μεταδιδοὺς ἐν ἁπλότητι.",
-    net: "If it is exhortation, he must exhort; if it is contributing, he must do so with sincerity."
+    web: "or he who exhorts, to his exhorting; he who gives, let him do it with generosity; he who rules, with diligence; he who shows mercy, with cheerfulness."
   }
 ];
 
@@ -322,15 +322,15 @@ async function main() {
     }
   });
 
-  const net = await prisma.corpus.upsert({
-    where: { abbreviation: "NET" },
+  const web = await prisma.corpus.upsert({
+    where: { abbreviation: "WEB" },
     update: {},
     create: {
-      name: "NET Bible",
-      abbreviation: "NET",
+      name: "World English Bible",
+      abbreviation: "WEB",
       language: "English",
-      license: "Sample verse text for local MVP",
-      sourceUrl: "https://netbible.org/"
+      license: "Public domain",
+      sourceUrl: "https://ebible.org/details.php?id=engwebp"
     }
   });
 
@@ -371,19 +371,19 @@ async function main() {
     await prisma.verse.upsert({
       where: {
         corpusId_bookId_chapter_verse: {
-          corpusId: net.id,
+          corpusId: web.id,
           bookId: book.id,
           chapter: verse.chapter,
           verse: verse.verse
         }
       },
-      update: { text: verse.net },
+      update: { text: verse.web },
       create: {
-        corpusId: net.id,
+        corpusId: web.id,
         bookId: book.id,
         chapter: verse.chapter,
         verse: verse.verse,
-        text: verse.net
+        text: verse.web
       }
     });
   }

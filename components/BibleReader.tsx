@@ -1,7 +1,8 @@
 "use client";
 
 import { Highlighter, NotebookPen } from "lucide-react";
-import { FormEvent, useState } from "react";
+import type { SubmitEvent } from "react";
+import { Fragment, useState } from "react";
 import { MorphologyPopover, ReaderToken } from "@/components/MorphologyPopover";
 
 type ReaderVerse = {
@@ -13,6 +14,7 @@ type ReaderVerse = {
   reference: string;
   greekText: string;
   englishText: string;
+  englishCorpus: string;
   tokens: ReaderToken[];
   highlighted: boolean;
 };
@@ -22,7 +24,7 @@ export function BibleReader({ verses }: { verses: ReaderVerse[] }) {
   const [noteBodies, setNoteBodies] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<Record<string, string>>({});
 
-  async function addVerseNote(event: FormEvent<HTMLFormElement>, verse: ReaderVerse) {
+  async function addVerseNote(event: SubmitEvent<HTMLFormElement>, verse: ReaderVerse) {
     event.preventDefault();
     const body = noteBodies[verse.id]?.trim();
     if (!body) return;
@@ -96,30 +98,34 @@ export function BibleReader({ verses }: { verses: ReaderVerse[] }) {
               <div className="greek-text text-[1.45rem] leading-10 text-slate-950">
                 {verse.tokens.length > 0
                   ? verse.tokens.map((token) => (
-                      <span key={token.id} className="relative inline-block">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedTokenId(selectedTokenId === token.id ? null : token.id)}
-                          className={`mx-0.5 rounded px-1 py-0.5 hover:bg-blue-100 ${
-                            token.highlighted ? "bg-yellow-200" : ""
-                          }`}
-                        >
-                          {token.surface}
-                        </button>
-                        {selectedTokenId === token.id ? (
-                          <MorphologyPopover
-                            token={token}
-                            reference={verse.reference}
-                            onClose={() => setSelectedTokenId(null)}
-                          />
-                        ) : null}
-                      </span>
+                      <Fragment key={token.id}>
+                        <span className="relative inline-block">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedTokenId(selectedTokenId === token.id ? null : token.id)}
+                            className={`mx-0.5 rounded px-1 py-0.5 hover:bg-blue-100 ${
+                              token.highlighted ? "bg-yellow-200" : ""
+                            }`}
+                          >
+                            {token.surface}
+                          </button>
+                          {selectedTokenId === token.id ? (
+                            <MorphologyPopover
+                              token={token}
+                              reference={verse.reference}
+                              onClose={() => setSelectedTokenId(null)}
+                            />
+                          ) : null}
+                        </span>{" "}
+                      </Fragment>
                     ))
                   : verse.greekText}
               </div>
             </div>
             <div>
-              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">NET</div>
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                {verse.englishCorpus}
+              </div>
               <p className="text-base leading-7 text-slate-800">{verse.englishText}</p>
             </div>
           </div>

@@ -1,7 +1,8 @@
 "use client";
 
-import { Download, Send } from "lucide-react";
-import { FormEvent, useState } from "react";
+import { Download, Save, Send } from "lucide-react";
+import type { SubmitEvent } from "react";
+import { useState } from "react";
 
 type AssistantResponse = {
   answer: string;
@@ -14,15 +15,26 @@ type AssistantResponse = {
   toolTrace: string[];
 };
 
-const samplePrompt = "Show me every use of λόγος in John 1 and summarize the pattern.";
+export type GeneratedStudyNoteRow = {
+  id: string;
+  prompt: string;
+  answer: string;
+  markdown: string;
+  createdAt: Date | string;
+};
 
-export function AiAssistant() {
+const samplePrompt = "Show me every use of logos in John 1 and summarize the pattern.";
+
+export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNoteRow[] }) {
   const [prompt, setPrompt] = useState(samplePrompt);
+  const [responsePrompt, setResponsePrompt] = useState("");
   const [response, setResponse] = useState<AssistantResponse | null>(null);
+  const [notes, setNotes] = useState(initialNotes);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [saveStatus, setSaveStatus] = useState<string | null>(null);
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoading(true);
     setError(null);
@@ -41,6 +53,8 @@ export function AiAssistant() {
     }
 
     setResponse(await result.json());
+    setResponsePrompt(prompt);
+    setSaveStatus(null);
   }
 
   function downloadMarkdown() {
@@ -52,6 +66,31 @@ export function AiAssistant() {
     anchor.download = "textlab-study-note.md";
     anchor.click();
     URL.revokeObjectURL(url);
+  }
+
+  async function saveGeneratedNote() {
+    if (!response) return;
+    setSaveStatus("Saving...");
+
+    const result = await fetch("/api/generated-study-notes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        prompt: responsePrompt,
+        answer: response.answer,
+        markdown: response.markdown,
+        citations: response.citations
+      })
+    });
+
+    if (!result.ok) {
+      setSaveStatus("Could not save generated note.");
+      return;
+    }
+
+    const body = await result.json();
+    setNotes((current) => [body.note, ...current].slice(0, 25));
+    setSaveStatus("Generated note saved.");
   }
 
   return (
@@ -79,15 +118,26 @@ export function AiAssistant() {
           <article className="rounded-md border border-stone-300 bg-white p-4 shadow-sm">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <h2 className="font-semibold text-slate-950">Answer</h2>
-              <button
-                type="button"
-                onClick={downloadMarkdown}
-                className="inline-flex items-center gap-2 rounded-md border border-stone-300 px-3 py-2 text-sm font-medium text-slate-700 hover:border-slate-500"
-              >
-                <Download size={16} />
-                Export Markdown
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={downloadMarkdown}
+                  className="inline-flex items-center gap-2 rounded-md border border-stone-300 px-3 py-2 text-sm font-medium text-slate-700 hover:border-slate-500"
+                >
+                  <Download size={16} />
+                  Export Markdown
+                </button>
+                <button
+                  type="button"
+                  onClick={saveGeneratedNote}
+                  className="inline-flex items-center gap-2 rounded-md bg-[#365f7e] px-3 py-2 text-sm font-medium text-white"
+                >
+                  <Save size={16} />
+                  Save generated note
+                </button>
+              </div>
             </div>
+            {saveStatus ? <p className="mb-3 text-sm text-slate-600">{saveStatus}</p> : null}
             <pre className="whitespace-pre-wrap text-sm leading-7 text-slate-800">{response.answer}</pre>
           </article>
         ) : (
@@ -128,6 +178,22 @@ export function AiAssistant() {
             ) : (
               <p>No citations yet.</p>
             )}
+          </div>
+        </section>
+
+        <section className="rounded-md border border-stone-300 bg-white p-4 shadow-sm">
+          <h2 className="font-semibold text-slate-950">Generated notes</h2>
+          <div className="mt-3 space-y-3">
+            {notes.map((note) => (
+              <article key={note.id} className="rounded border border-stone-200 p-3 text-sm">
+                <div className="font-medium text-slate-950">{note.prompt}</div>
+                <time className="mt-1 block text-xs text-slate-500">
+                  {new Date(note.createdAt).toLocaleString()}
+                </time>
+                <p className="mt-2 line-clamp-3 whitespace-pre-wrap text-slate-700">{note.answer}</p>
+              </article>
+            ))}
+            {notes.length === 0 ? <p className="text-sm text-slate-600">No generated notes saved yet.</p> : null}
           </div>
         </section>
 

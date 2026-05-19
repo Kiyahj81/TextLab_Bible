@@ -1,9 +1,17 @@
 import { AiAssistant } from "@/components/AiAssistant";
 import { aiSystemPrompt } from "@/lib/ai/systemPrompt";
+import { prisma } from "@/lib/db";
+import { localUserId } from "@/lib/user";
 
 export const dynamic = "force-dynamic";
 
-export default function AssistantPage() {
+export default async function AssistantPage() {
+  const generatedNotes = await prisma.generatedStudyNote.findMany({
+    where: { userId: localUserId },
+    orderBy: { createdAt: "desc" },
+    take: 25
+  });
+
   return (
     <div className="space-y-6">
       <div>
@@ -18,7 +26,15 @@ export default function AssistantPage() {
         <pre className="mt-3 whitespace-pre-wrap leading-6">{aiSystemPrompt}</pre>
       </details>
 
-      <AiAssistant />
+      <AiAssistant
+        initialNotes={generatedNotes.map((note) => ({
+          id: note.id,
+          prompt: note.prompt,
+          answer: note.answer,
+          markdown: note.markdown,
+          createdAt: note.createdAt.toISOString()
+        }))}
+      />
     </div>
   );
 }

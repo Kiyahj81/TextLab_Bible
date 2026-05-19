@@ -20,6 +20,23 @@ model Corpus {
   tokens Token[]
 }
 
+model ImportRun {
+  id             String    @id @default(cuid())
+  source         String
+  sourceUrl      String?
+  corpus         String?
+  status         String
+  booksImported  Int       @default(0)
+  versesImported Int       @default(0)
+  tokensImported Int       @default(0)
+  error          String?
+  startedAt      DateTime  @default(now())
+  completedAt    DateTime?
+
+  @@index([source, status])
+  @@index([startedAt])
+}
+
 model Book {
   id     String @id @default(cuid())
   osisId String @unique
@@ -85,6 +102,34 @@ model Note {
 
   verse Verse? @relation(fields: [verseId], references: [id])
   token Token? @relation(fields: [tokenId], references: [id])
+}
+
+model SavedSearch {
+  id        String   @id @default(cuid())
+  userId    String
+  label     String
+  mode      String
+  query     String
+  corpus    String?
+  book      String?
+  chapter   Int?
+  matchMode String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, updatedAt])
+}
+
+model GeneratedStudyNote {
+  id        String   @id @default(cuid())
+  userId    String
+  prompt    String
+  answer    String
+  markdown  String
+  citations Json?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
 }
 
 model Highlight {

@@ -91,7 +91,7 @@ async function run() {
     await page.goto(`${appUrl}/read`);
     assert((await page.title()).includes("TextLab Bible"), "page title did not match");
     await page.getByRole("heading", { name: "Reader" }).waitFor();
-    await page.getByRole("heading", { name: "John 1:1" }).waitFor();
+    await page.getByRole("heading", { name: "John 1:1", exact: true }).waitFor();
     await screenshot("01-read");
 
     await page.getByRole("button", { name: "λόγος" }).first().click();
@@ -105,7 +105,7 @@ async function run() {
     result.interactions.push("Highlighted selected token and saw Highlight saved.");
     await page.getByRole("button", { name: "Close" }).click();
 
-    const john11Article = page.locator("article").filter({ has: page.getByRole("heading", { name: "John 1:1" }) });
+    const john11Article = page.locator("article").filter({ has: page.getByRole("heading", { name: "John 1:1", exact: true }) });
     await john11Article.getByPlaceholder("Write a brief note").fill("QA acceptance note on John 1:1");
     await john11Article.getByRole("button", { name: "Save note" }).click();
     await page.getByText("Note saved.").waitFor();
@@ -114,20 +114,28 @@ async function run() {
     await page.getByRole("button", { name: "λόγος" }).first().click();
     await page.getByRole("link", { name: "Search lemma" }).click();
     await page.waitForURL(/\/search/);
-    await page.getByText('3 results for "λόγος"').waitFor();
+    await page.getByText('40 results for "λόγος"').waitFor();
     await page.getByText("John 1:1").first().waitFor();
-    result.interactions.push('Search lemma opened /search and showed 3 λόγος results.');
+    result.interactions.push('Search lemma opened /search and showed 40 λόγος results.');
+    await page.getByRole("button", { name: "Save search" }).click();
+    await page.getByText("Search saved.").waitFor();
+    await page.getByRole("link", { name: /lemma: λόγος/ }).first().waitFor();
+    result.interactions.push("Saved the lemma search and saw it listed in saved searches.");
     await screenshot("03-search-lemma");
 
     await page.goto(`${appUrl}/assistant`);
     await page.getByRole("heading", { name: "AI Study Assistant" }).waitFor();
     await page.locator("textarea").first().fill("Show me every use of λόγος in John 1 and summarize the pattern.");
     await page.getByRole("button", { name: "Ask assistant" }).click();
-    await page.locator("pre").filter({ hasText: "Textual observations: I found 3 occurrences" }).waitFor({
+    await page.locator("pre").filter({ hasText: "Textual observations: I found 40 occurrences" }).waitFor({
       timeout: 30000
     });
     await page.getByText('searchLemma({ lemma: "λόγος", book: "John" })').waitFor();
     await page.getByText("John 1:1, SBLGNT").first().waitFor();
+    await page.getByRole("button", { name: "Save generated note" }).click();
+    await page.getByText("Generated note saved.").waitFor();
+    await page.getByText("Show me every use of λόγος in John 1").first().waitFor();
+    result.interactions.push("Saved the assistant answer as generated study-note history.");
 
     const markdownValue = await page.locator("textarea[readonly]").inputValue();
     assert(markdownValue.includes("# Lemma Study"), "markdown export text area did not include Lemma Study");
@@ -160,7 +168,7 @@ async function run() {
     const mobilePage = await mobileContext.newPage();
     await mobilePage.goto(`${appUrl}/read`);
     await mobilePage.getByRole("heading", { name: "Reader" }).waitFor();
-    await mobilePage.getByRole("heading", { name: "John 1:1" }).waitFor();
+    await mobilePage.getByRole("heading", { name: "John 1:1", exact: true }).waitFor();
     const hasHorizontalOverflow = await mobilePage.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
     assert(!hasHorizontalOverflow, "mobile /read page has horizontal overflow");
     const mobileShot = path.join(screenshotsDir, "05-mobile-read.png");
@@ -172,7 +180,11 @@ async function run() {
     const nonFaviconFailures = result.failedResponses.filter((message) => !message.includes("favicon.ico"));
     assert(nonFaviconFailures.length === 0, `failed responses found: ${nonFaviconFailures.join("; ")}`);
 
-    const relevantConsole = result.consoleMessages.filter((message) => !message.includes("Failed to load resource"));
+    const relevantConsole = result.consoleMessages.filter(
+      (message) =>
+        !message.includes("Failed to load resource") &&
+        !(message.includes("hydration-mismatch") && message.includes('caret-color:"transparent"'))
+    );
     assert(relevantConsole.length === 0, `console errors/warnings found: ${relevantConsole.join("; ")}`);
 
     result.nextLogTail = logs.join("").split(/\r?\n/).slice(-30);

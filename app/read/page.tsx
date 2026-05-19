@@ -1,5 +1,6 @@
 import { BibleReader } from "@/components/BibleReader";
-import { getAvailablePassages, getReaderPassage } from "@/lib/search";
+import { getAvailablePassages, getAvailableReaderBooks, getReaderPassage } from "@/lib/search";
+import { bookName } from "@/lib/references";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -9,7 +10,11 @@ export default async function ReadPage({ searchParams }: { searchParams: SearchP
   const params = await searchParams;
   const book = getParam(params.book) ?? "John";
   const chapter = Number(getParam(params.chapter) ?? "1");
-  const [passages, verses] = await Promise.all([getAvailablePassages(), getReaderPassage(book, chapter)]);
+  const [books, passages, verses] = await Promise.all([
+    getAvailableReaderBooks(),
+    getAvailablePassages(),
+    getReaderPassage(book, chapter)
+  ]);
 
   return (
     <div className="space-y-6">
@@ -17,14 +22,14 @@ export default async function ReadPage({ searchParams }: { searchParams: SearchP
         <div>
           <h1 className="text-3xl font-semibold text-slate-950">Reader</h1>
           <p className="mt-2 max-w-2xl text-slate-600">
-            Read the sample Greek text beside English and click Greek words for morphology.
+            Read imported or sample Greek text beside English and click Greek words for morphology.
           </p>
         </div>
         <form className="flex flex-wrap gap-2" action="/read">
           <select name="book" defaultValue={book} className="rounded-md border border-stone-300 bg-white px-3 py-2 text-sm">
-            {Array.from(new Set(passages.map((passage) => passage.book))).map((bookOption) => (
-              <option key={bookOption} value={bookOption}>
-                {bookOption === "Rom" ? "Romans" : bookOption}
+            {books.map((bookOption) => (
+              <option key={bookOption.osisId} value={bookOption.osisId}>
+                {bookOption.label}
               </option>
             ))}
           </select>
@@ -37,7 +42,7 @@ export default async function ReadPage({ searchParams }: { searchParams: SearchP
               .filter((passage) => passage.book === book)
               .map((passage) => (
                 <option key={`${passage.book}-${passage.chapter}`} value={passage.chapter}>
-                  Chapter {passage.chapter}
+                  {bookName(passage.book)} {passage.chapter}
                 </option>
               ))}
           </select>

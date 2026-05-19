@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { parseTags } from "@/lib/references";
-
-const localUserId = "local-user";
+import { localUserId } from "@/lib/user";
 
 export async function GET() {
   const notes = await prisma.note.findMany({

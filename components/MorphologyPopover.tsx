@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { Highlighter, NotebookPen, Search } from "lucide-react";
-import { FormEvent, useState } from "react";
+import type { SubmitEvent } from "react";
+import { useState } from "react";
 
 export type ReaderToken = {
   id: string;
@@ -33,7 +34,7 @@ export function MorphologyPopover({
   const [status, setStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  async function addNote(event: FormEvent<HTMLFormElement>) {
+  async function addNote(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!body.trim()) return;
 

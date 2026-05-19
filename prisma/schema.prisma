@@ -1,0 +1,119 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Corpus {
+  id           String   @id @default(cuid())
+  name         String
+  abbreviation String   @unique
+  language     String
+  license      String?
+  sourceUrl    String?
+  createdAt    DateTime @default(now())
+
+  verses Verse[]
+  tokens Token[]
+}
+
+model Book {
+  id     String @id @default(cuid())
+  osisId String @unique
+  name   String
+  order  Int
+
+  verses Verse[]
+  tokens Token[]
+}
+
+model Verse {
+  id       String @id @default(cuid())
+  corpusId String
+  bookId   String
+  chapter  Int
+  verse    Int
+  text     String
+
+  corpus     Corpus      @relation(fields: [corpusId], references: [id])
+  book       Book        @relation(fields: [bookId], references: [id])
+  notes      Note[]
+  highlights Highlight[]
+
+  @@unique([corpusId, bookId, chapter, verse])
+  @@index([bookId, chapter, verse])
+}
+
+model Token {
+  id           String  @id @default(cuid())
+  corpusId     String
+  bookId       String
+  chapter      Int
+  verse        Int
+  wordIndex    Int
+  surface      String
+  normalized   String?
+  lemma        String?
+  morphCode    String?
+  partOfSpeech String?
+  gloss        String?
+
+  corpus     Corpus      @relation(fields: [corpusId], references: [id])
+  book       Book        @relation(fields: [bookId], references: [id])
+  notes      Note[]
+  highlights Highlight[]
+
+  @@unique([corpusId, bookId, chapter, verse, wordIndex])
+  @@index([lemma])
+  @@index([morphCode])
+  @@index([bookId, chapter, verse])
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  userId    String
+  verseId   String?
+  tokenId   String?
+  title     String?
+  body      String
+  tags      String[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  verse Verse? @relation(fields: [verseId], references: [id])
+  token Token? @relation(fields: [tokenId], references: [id])
+}
+
+model Highlight {
+  id        String   @id @default(cuid())
+  userId    String
+  verseId   String?
+  tokenId   String?
+  color     String
+  createdAt DateTime @default(now())
+
+  verse Verse? @relation(fields: [verseId], references: [id])
+  token Token? @relation(fields: [tokenId], references: [id])
+}
+
+model AiSession {
+  id        String      @id @default(cuid())
+  userId    String
+  title     String?
+  createdAt DateTime    @default(now())
+  messages  AiMessage[]
+}
+
+model AiMessage {
+  id        String   @id @default(cuid())
+  sessionId String
+  role      String
+  content   String
+  citations Json?
+  createdAt DateTime @default(now())
+
+  session AiSession @relation(fields: [sessionId], references: [id])
+}

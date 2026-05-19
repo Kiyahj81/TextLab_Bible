@@ -1,0 +1,154 @@
+"use client";
+
+import { Highlighter, NotebookPen } from "lucide-react";
+import { FormEvent, useState } from "react";
+import { MorphologyPopover, ReaderToken } from "@/components/MorphologyPopover";
+
+type ReaderVerse = {
+  id: string;
+  book: string;
+  bookName: string;
+  chapter: number;
+  verse: number;
+  reference: string;
+  greekText: string;
+  englishText: string;
+  tokens: ReaderToken[];
+  highlighted: boolean;
+};
+
+export function BibleReader({ verses }: { verses: ReaderVerse[] }) {
+  const [selectedTokenId, setSelectedTokenId] = useState<string | null>(null);
+  const [noteBodies, setNoteBodies] = useState<Record<string, string>>({});
+  const [status, setStatus] = useState<Record<string, string>>({});
+
+  async function addVerseNote(event: FormEvent<HTMLFormElement>, verse: ReaderVerse) {
+    event.preventDefault();
+    const body = noteBodies[verse.id]?.trim();
+    if (!body) return;
+
+    const response = await fetch("/api/notes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        verseId: verse.id,
+        title: verse.reference,
+        body,
+        tags: ["verse"]
+      })
+    });
+
+    setStatus((current) => ({
+      ...current,
+      [verse.id]: response.ok ? "Note saved." : "Could not save note."
+    }));
+
+    if (response.ok) {
+      setNoteBodies((current) => ({ ...current, [verse.id]: "" }));
+    }
+  }
+
+  async function highlightVerse(verse: ReaderVerse) {
+    const response = await fetch("/api/highlights", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ verseId: verse.id, color: "#fde68a" })
+    });
+
+    setStatus((current) => ({
+      ...current,
+      [verse.id]: response.ok ? "Highlight saved." : "Could not save highlight."
+    }));
+  }
+
+  if (verses.length === 0) {
+    return (
+      <div className="rounded-md border border-stone-300 bg-white p-6 text-slate-700">
+        No sample verses are available for this passage. Run the Prisma seed script after configuring PostgreSQL.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {verses.map((verse) => (
+        <article
+          key={verse.id}
+          className={`rounded-md border bg-white p-4 shadow-sm ${
+            verse.highlighted ? "border-yellow-300" : "border-stone-300"
+          }`}
+        >
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">{verse.reference}</h2>
+            <button
+              type="button"
+              onClick={() => highlightVerse(verse)}
+              className="inline-flex items-center gap-2 rounded-md border border-stone-300 px-3 py-2 text-sm font-medium text-slate-700 hover:border-slate-500"
+            >
+              <Highlighter size={16} />
+              Highlight verse
+            </button>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div>
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">SBLGNT</div>
+              <div className="greek-text text-[1.45rem] leading-10 text-slate-950">
+                {verse.tokens.length > 0
+                  ? verse.tokens.map((token) => (
+                      <span key={token.id} className="relative inline-block">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedTokenId(selectedTokenId === token.id ? null : token.id)}
+                          className={`mx-0.5 rounded px-1 py-0.5 hover:bg-blue-100 ${
+                            token.highlighted ? "bg-yellow-200" : ""
+                          }`}
+                        >
+                          {token.surface}
+                        </button>
+                        {selectedTokenId === token.id ? (
+                          <MorphologyPopover
+                            token={token}
+                            reference={verse.reference}
+                            onClose={() => setSelectedTokenId(null)}
+                          />
+                        ) : null}
+                      </span>
+                    ))
+                  : verse.greekText}
+              </div>
+            </div>
+            <div>
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">NET</div>
+              <p className="text-base leading-7 text-slate-800">{verse.englishText}</p>
+            </div>
+          </div>
+
+          <form onSubmit={(event) => addVerseNote(event, verse)} className="mt-4 border-t border-stone-200 pt-4">
+            <label className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700">
+              <NotebookPen size={16} />
+              Note on {verse.reference}
+            </label>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <input
+                value={noteBodies[verse.id] ?? ""}
+                onChange={(event) =>
+                  setNoteBodies((current) => ({ ...current, [verse.id]: event.target.value }))
+                }
+                className="min-w-0 flex-1 rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-slate-600"
+                placeholder="Write a brief note"
+              />
+              <button
+                type="submit"
+                className="rounded-md bg-[#365f7e] px-4 py-2 text-sm font-medium text-white"
+              >
+                Save note
+              </button>
+            </div>
+            {status[verse.id] ? <p className="mt-2 text-sm text-slate-600">{status[verse.id]}</p> : null}
+          </form>
+        </article>
+      ))}
+    </div>
+  );
+}

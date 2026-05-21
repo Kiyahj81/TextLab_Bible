@@ -241,7 +241,7 @@ export async function searchLemma(input: {
     })
   ]);
 
-  const results = await Promise.all(tokens.map(tokenToSearchResult));
+  const results = await hydrateTokens(tokens);
 
   return {
     lemma,
@@ -287,7 +287,7 @@ export async function searchMorphology(input: {
     })
   ]);
 
-  const results = await Promise.all(tokens.map(tokenToSearchResult));
+  const results = await hydrateTokens(tokens);
 
   return {
     morphCode,
@@ -348,7 +348,7 @@ function paginationResult(pagination: { page: number; pageSize: number }, total:
   };
 }
 
-async function tokenToSearchResult(token: {
+type HydratedToken = {
   id: string;
   surface: string;
   lemma: string | null;
@@ -357,23 +357,38 @@ async function tokenToSearchResult(token: {
   verse: number;
   book: { id: string; osisId: string };
   corpus: { abbreviation: string };
-}) {
-  const verse = await prisma.verse.findFirst({
+};
+
+async function hydrateTokens(tokens: HydratedToken[]) {
+  if (tokens.length === 0) return [];
+
+  const bookIds = Array.from(new Set(tokens.map((t) => t.book.id)));
+  const corpora = Array.from(new Set(tokens.map((t) => t.corpus.abbreviation)));
+
+  const verses = await prisma.verse.findMany({
     where: {
-      corpus: { abbreviation: token.corpus.abbreviation },
-      bookId: token.book.id,
-      chapter: token.chapter,
-      verse: token.verse
-    }
+      corpus: { abbreviation: { in: corpora } },
+      bookId: { in: bookIds },
+      OR: tokens.map((t) => ({ bookId: t.book.id, chapter: t.chapter, verse: t.verse }))
+    },
+    select: { bookId: true, chapter: true, verse: true, text: true, corpus: { select: { abbreviation: true } } }
   });
 
-  return {
+  const key = (bookId: string, chapter: number, verse: number, corpus: string) =>
+    `${corpus}|${bookId}|${chapter}|${verse}`;
+
+  const verseText = new Map<string, string>();
+  for (const v of verses) {
+    verseText.set(key(v.bookId, v.chapter, v.verse, v.corpus.abbreviation), v.text);
+  }
+
+  return tokens.map((token) => ({
     tokenId: token.id,
     corpus: token.corpus.abbreviation,
     reference: formatReference(token.book.osisId, token.chapter, token.verse),
     surface: token.surface,
     lemma: token.lemma ?? "",
     morphCode: token.morphCode ?? "",
-    verseText: verse?.text ?? ""
-  };
+    verseText: verseText.get(key(token.book.id, token.chapter, token.verse, token.corpus.abbreviation)) ?? ""
+  }));
 }

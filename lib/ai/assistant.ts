@@ -7,7 +7,7 @@ import {
   routeAssistantPrompt,
   synthesizeWithDefaultModel
 } from "@/lib/ai/modelRouter";
-import { getPassage, getTopLemmas, searchKeyword, searchLemma, searchMorphology } from "@/lib/search";
+import { findLemmaExamples, getPassage, getTopLemmas, searchKeyword, searchLemma, searchMorphology } from "@/lib/search";
 
 export type AssistantCitation = {
   reference: string;
@@ -85,31 +85,27 @@ async function answerFromLocalRetrieval(prompt: string, routing = routeAssistant
     const topLemmas = await getTopLemmas({ book, limit: 3 });
     toolTrace.push(`getTopLemmas({ book: "${book}", limit: 3 })`);
 
-    const examples = await Promise.all(
-      topLemmas.map(async (lemma) => ({
-        ...lemma,
-        search: await searchLemma({ lemma: lemma.lemma, book, pageSize: 5 })
-      }))
-    );
+    const examples = await findLemmaExamples({
+      lemmas: topLemmas.map((l) => l.lemma),
+      book,
+      perLemma: 5
+    });
+    toolTrace.push(`findLemmaExamples({ lemmas: ${JSON.stringify(topLemmas.map((l) => l.lemma))}, book: "${book}", perLemma: 5 })`);
 
-    for (const lemma of topLemmas) {
-      toolTrace.push(`searchLemma({ lemma: "${lemma.lemma}", book: "${book}", pageSize: 5 })`);
-    }
-
-    const citations = examples.flatMap((entry) =>
-      entry.search.results.map((result) => ({
+    const citations = topLemmas.flatMap((entry) =>
+      (examples.get(entry.lemma) ?? []).map((result) => ({
         reference: result.reference,
         corpus: result.corpus,
         searchQuery: `lemma:${entry.lemma}`,
-        toolName: "searchLemma",
+        toolName: "findLemmaExamples",
         tokenId: result.tokenId
       }))
     );
 
-    const rows = examples
+    const rows = topLemmas
       .map((entry) => {
-        const references = entry.search.results.map((result) => result.reference).join("; ");
-        return `| ${entry.lemma} | ${entry.count} | ${entry.partOfSpeech} | ${references || "No examples returned"} |`;
+        const refs = (examples.get(entry.lemma) ?? []).map((r) => r.reference).join("; ");
+        return `| ${entry.lemma} | ${entry.count} | ${entry.partOfSpeech} | ${refs || "No examples returned"} |`;
       })
       .join("\n");
 

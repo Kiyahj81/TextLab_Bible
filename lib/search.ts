@@ -297,6 +297,45 @@ export async function searchMorphology(input: {
   };
 }
 
+export async function findLemmaExamples(input: {
+  lemmas: string[];
+  corpus?: "SBLGNT";
+  book?: string;
+  perLemma?: number;
+}) {
+  if (input.lemmas.length === 0) return new Map<string, Awaited<ReturnType<typeof hydrateTokens>>>();
+  const book = normalizeBook(input.book);
+  const perLemma = Math.max(1, Math.min(input.perLemma ?? 5, 25));
+
+  const tokens = await prisma.token.findMany({
+    where: {
+      lemma: { in: input.lemmas },
+      corpus: { abbreviation: input.corpus ?? "SBLGNT" },
+      book: book ? { osisId: book } : undefined
+    },
+    include: { book: true, corpus: true },
+    orderBy: [{ book: { order: "asc" } }, { chapter: "asc" }, { verse: "asc" }, { wordIndex: "asc" }]
+  });
+
+  const grouped = new Map<string, typeof tokens>();
+  for (const token of tokens) {
+    if (!token.lemma) continue;
+    const bucket = grouped.get(token.lemma) ?? [];
+    if (bucket.length < perLemma) bucket.push(token);
+    grouped.set(token.lemma, bucket);
+  }
+
+  const flat = Array.from(grouped.values()).flat();
+  const hydrated = await hydrateTokens(flat);
+  const byId = new Map(hydrated.map((row) => [row.tokenId, row]));
+
+  const out = new Map<string, typeof hydrated>();
+  for (const [lemma, bucket] of grouped) {
+    out.set(lemma, bucket.map((t) => byId.get(t.id)!).filter(Boolean));
+  }
+  return out;
+}
+
 export async function getTopLemmas(input: {
   corpus?: "SBLGNT";
   book?: string;

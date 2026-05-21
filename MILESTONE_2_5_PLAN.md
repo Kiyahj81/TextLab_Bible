@@ -17,7 +17,7 @@ Milestone 2 is complete: the app can work against the full imported New Testamen
 - Milestone 2 verification passed with lint, TypeScript, production build, and acceptance tests.
 - Zip archives and extracted import data remain local-only and ignored by Git.
 
-## Step 2 Plan: Retrieval-First Assistant
+## Step 2 Plan: Retrieval-First Multi-Model Assistant Foundation
 
 ### Product Behavior
 
@@ -27,13 +27,18 @@ Milestone 2 is complete: the app can work against the full imported New Testamen
 - Do not add streaming in this step.
 - Show whether a response came from live assistant mode or local fallback mode.
 - Keep generated notes explicit: assistant Q&A history is saved automatically, but converting an answer into a user note remains a deliberate action.
+- Prepare for a multi-model architecture without making automatic scholarly-model calls in Milestone 2.5.
 
 ### Model And Configuration
 
 - Add `OPENAI_API_KEY` to `.env.example`.
-- Add `OPENAI_MODEL` with a cost-conscious default of `gpt-5.4-mini`.
-- Keep model selection environment-driven so a stronger model can be used without code changes.
-- Use the OpenAI Responses API with tool/function calls for local retrieval.
+- Add `OPENAI_DEFAULT_MODEL` with a default of `gpt-5.3-chat-latest`.
+- Add `OPENAI_SCHOLARLY_MODEL` with a default of `gpt-5.4`.
+- Use `gpt-5.3-chat-latest` for normal chat, tool orchestration, search planning, retrieval sequencing, citation assembly, table generation, study note drafting, UI interactions, and light synthesis.
+- Treat `gpt-5.4` as the future scholarly reasoning engine for deeper synthesis, complex theological nuance, cross-text reasoning, ambiguity handling, long-content analysis, and research-quality outputs.
+- In Milestone 2.5, only the default model is called. Scholarly mode is advisory metadata only.
+- Keep model selection environment-driven so stronger or replacement models can be used without code changes.
+- Use the OpenAI Responses API for synthesis over locally executed retrieval context.
 
 ### Local Tooling
 
@@ -66,6 +71,10 @@ Keep the existing `/api/assistant` response shape compatible, then extend it:
 - Add:
   - `mode`: `live` or `fallback`
   - `sessionId`
+  - `modelRole`: `default` in Milestone 2.5
+  - `modelUsed`
+  - `routingDecision`
+  - optional `recommendedUpgrade` for future scholarly mode
   - structured citation fields such as `toolName`, `book`, `chapter`, `verse`, `corpus`, `searchQuery`, and optional `tokenId`
 
 The UI should continue rendering current citations while being ready to show richer citation metadata as the assistant improves.
@@ -83,6 +92,8 @@ The UI should continue rendering current citations while being ready to show ric
 - If a user asks for content outside the imported corpus or local notes, explain the current corpus boundary.
 - Retry a failed live model call once only when the failure is transient.
 - Fall back locally when the API key is missing, the configured model is unavailable, or the live call fails after retry.
+- Never call `gpt-5.4` automatically in Milestone 2.5.
+- If a prompt appears to need scholarly reasoning, return advisory upgrade metadata only.
 - Keep tool traces concise and user-visible enough for debugging without exposing secrets or raw environment values.
 
 ### Tests And Verification
@@ -91,6 +102,8 @@ Add focused tests around assistant behavior:
 
 - No-key fallback returns a deterministic answer and `mode: "fallback"`.
 - Mocked live assistant can call local retrieval tools and returns `mode: "live"`.
+- Live/default routing returns `modelRole`, `modelUsed`, and `routingDecision`.
+- Scholarly prompts can return `recommendedUpgrade`, but no Milestone 2.5 path calls `gpt-5.4`.
 - Structured citations survive API serialization and UI rendering.
 - Empty retrieval produces a safe no-evidence response.
 - Assistant exchanges persist to `AiSession` and `AiMessage`.
@@ -108,7 +121,13 @@ npm run test:acceptance
 
 ## Next Steps After Step 2
 
-### Step 3: Reader Navigation
+### Step 3: Scholarly Mode V1
+
+- Add UI support for hybrid escalation: the app recommends deeper scholarly mode, then asks the user to confirm before using `gpt-5.4`.
+- Use `gpt-5.4` only after local retrieval has already gathered the relevant biblical text, morphology, notes, and search results.
+- Persist both default-model routing metadata and scholarly-model response metadata.
+
+### Step 4: Reader Navigation
 
 - Add previous/next chapter controls.
 - Add reference jump by book, chapter, and verse.
@@ -116,24 +135,24 @@ npm run test:acceptance
 - Keep selected token or selected verse reflected in the URL when practical.
 - Check mobile wrapping and long chapter performance against the full corpus.
 
-### Step 4: Import Parser Tests
+### Step 5: Import Parser Tests
 
 - Add tests for WEB USFM cleaning, including footnotes, cross references, `\w`, `\+w`, and Strong's-style residue.
 - Add tests for MorphGNT morphology normalization.
 - Add importer failure tests for missing WEB directory, failed MorphGNT fetch, and partial import rollback expectations.
 
-### Step 5: Notes Workflow
+### Step 6: Notes Workflow
 
 - Link generated notes to structured citations.
 - Add filters by reference, note type, and tag.
 - Improve the flow from assistant answer to editable saved note.
 
-### Step 6: Corpus And Import Visibility
+### Step 7: Corpus And Import Visibility
 
 - Add an admin or settings view showing imported corpora, verse counts, token counts, and latest import time.
 - Show WEB/SBLGNT status in a way that makes local corpus state obvious during development.
 
-### Step 7: Milestone 3 Decision Point
+### Step 8: Milestone 3 Decision Point
 
 - Choose the next vertical slice only after Milestone 2.5 passes verification.
 - Defer Hebrew Bible, LXX, richer lexicons, and manuscript features until the New Testament retrieval assistant is stable.

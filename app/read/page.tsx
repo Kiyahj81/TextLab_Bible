@@ -1,6 +1,6 @@
 import { BibleReader } from "@/components/BibleReader";
+import { ReaderControls } from "@/components/ReaderControls";
 import { getAvailablePassages, getAvailableReaderBooks, getReaderPassage } from "@/lib/search";
-import { bookName } from "@/lib/references";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -25,29 +25,7 @@ export default async function ReadPage({ searchParams }: { searchParams: SearchP
             Read imported or sample Greek text beside English and click Greek words for morphology.
           </p>
         </div>
-        <form className="flex flex-wrap gap-2" action="/read">
-          <select name="book" defaultValue={book} className="rounded-md border border-stone-300 bg-white px-3 py-2 text-sm">
-            {books.map((bookOption) => (
-              <option key={bookOption.osisId} value={bookOption.osisId}>
-                {bookOption.label}
-              </option>
-            ))}
-          </select>
-          <select
-            name="chapter"
-            defaultValue={String(chapter)}
-            className="rounded-md border border-stone-300 bg-white px-3 py-2 text-sm"
-          >
-            {passages
-              .filter((passage) => passage.book === book)
-              .map((passage) => (
-                <option key={`${passage.book}-${passage.chapter}`} value={passage.chapter}>
-                  {bookName(passage.book)} {passage.chapter}
-                </option>
-              ))}
-          </select>
-          <button className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white">Open</button>
-        </form>
+        <ReaderControls books={books} passages={passages} selectedBook={book} selectedChapter={chapter} />
       </section>
 
       <BibleReader verses={verses} />

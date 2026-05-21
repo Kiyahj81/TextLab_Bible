@@ -1,10 +1,23 @@
 import { createMarkdownExport } from "@/lib/export/markdown";
-import { getPassage, searchKeyword, searchLemma, searchMorphology } from "@/lib/search";
+import {
+  type AssistantMode,
+  type ModelRole,
+  type RecommendedUpgrade,
+  isLiveAssistantEnabled,
+  routeAssistantPrompt,
+  synthesizeWithDefaultModel
+} from "@/lib/ai/modelRouter";
+import { getPassage, getTopLemmas, searchKeyword, searchLemma, searchMorphology } from "@/lib/search";
 
 export type AssistantCitation = {
   reference: string;
   corpus: string;
   searchQuery: string;
+  toolName?: string;
+  book?: string;
+  chapter?: number;
+  verse?: number;
+  tokenId?: string;
 };
 
 export type AssistantAnswer = {
@@ -12,19 +25,111 @@ export type AssistantAnswer = {
   citations: AssistantCitation[];
   markdown: string;
   toolTrace: string[];
+  mode: AssistantMode;
+  modelRole: ModelRole;
+  modelUsed: string;
+  routingDecision: string;
+  recommendedUpgrade?: RecommendedUpgrade;
+  sessionId?: string;
 };
 
 const lemmaAliases: Array<{ needles: string[]; lemma: string; label: string }> = [
-  { needles: ["λόγος", "λογος", "logos", "word"], lemma: "λόγος", label: "λόγος" },
+  { needles: ["λόγος", "λογος", "logos"], lemma: "λόγος", label: "λόγος" },
   { needles: ["δικαιοσύνη", "δικαιοσυνη", "righteousness"], lemma: "δικαιοσύνη", label: "δικαιοσύνη" },
   { needles: ["πιστεύω", "πιστευω", "believe"], lemma: "πιστεύω", label: "πιστεύω" }
 ];
 
 export async function answerBibleQuestion(prompt: string): Promise<AssistantAnswer> {
+  const routing = routeAssistantPrompt(prompt);
+  const localAnswer = await answerFromLocalRetrieval(prompt, routing);
+
+  if (!isLiveAssistantEnabled()) {
+    return localAnswer;
+  }
+
+  try {
+    const liveAnswer = await synthesizeWithDefaultModel({ prompt, localAnswer, routing });
+
+    if (!liveAnswer) {
+      return localAnswer;
+    }
+
+    return withMarkdown("TextLab Assistant", liveAnswer, localAnswer.citations, [
+      ...localAnswer.toolTrace,
+      `modelRouter({ role: "${routing.modelRole}", model: "${routing.modelUsed}" })`,
+      `openai.responses.create({ model: "${routing.modelUsed}" })`
+    ], {
+      mode: "live",
+      ...routing
+    });
+  } catch (error) {
+    return withMarkdown("TextLab Assistant", localAnswer.answer, localAnswer.citations, [
+      ...localAnswer.toolTrace,
+      `modelRouter({ role: "${routing.modelRole}", model: "${routing.modelUsed}" })`,
+      `openai.responses.create failed: ${error instanceof Error ? error.message : "Unknown error"}`
+    ], {
+      mode: "fallback",
+      ...routing,
+      routingDecision: `${routing.routingDecision} The live model call failed, so TextLab returned the local retrieval fallback.`
+    });
+  }
+}
+
+async function answerFromLocalRetrieval(prompt: string, routing = routeAssistantPrompt(prompt)): Promise<AssistantAnswer> {
   const normalized = prompt.toLowerCase();
   const toolTrace: string[] = [];
 
   const book = normalized.includes("rom") || normalized.includes("romans") ? "Rom" : normalized.includes("john") ? "John" : undefined;
+
+  if (book && isImportantWordsPrompt(normalized)) {
+    const topLemmas = await getTopLemmas({ book, limit: 3 });
+    toolTrace.push(`getTopLemmas({ book: "${book}", limit: 3 })`);
+
+    const examples = await Promise.all(
+      topLemmas.map(async (lemma) => ({
+        ...lemma,
+        search: await searchLemma({ lemma: lemma.lemma, book, pageSize: 5 })
+      }))
+    );
+
+    for (const lemma of topLemmas) {
+      toolTrace.push(`searchLemma({ lemma: "${lemma.lemma}", book: "${book}", pageSize: 5 })`);
+    }
+
+    const citations = examples.flatMap((entry) =>
+      entry.search.results.map((result) => ({
+        reference: result.reference,
+        corpus: result.corpus,
+        searchQuery: `lemma:${entry.lemma}`,
+        toolName: "searchLemma",
+        tokenId: result.tokenId
+      }))
+    );
+
+    const rows = examples
+      .map((entry) => {
+        const references = entry.search.results.map((result) => result.reference).join("; ");
+        return `| ${entry.lemma} | ${entry.count} | ${entry.partOfSpeech} | ${references || "No examples returned"} |`;
+      })
+      .join("\n");
+
+    const answer = [
+      `Textual observations: I searched the full SBLGNT token data for ${book} and ranked frequent content lemmas after excluding common function words and helper verbs.`,
+      "",
+      "| Lemma | Occurrences | Part of speech | Sample references |",
+      "| --- | ---: | --- | --- |",
+      rows || "| None | 0 | - | No matching lemma data. |",
+      "",
+      "Interpretive suggestion: \"Most important\" is an interpretive category, so this answer uses prominence in the tagged corpus as the measurable starting point. These lemmas should be treated as a retrieval-based shortlist, not a final theological ranking.",
+      "",
+      "Application/reflection: Use the cited occurrences to test whether these frequent content words actually carry the themes you want to study in context."
+    ].join("\n");
+
+    return withMarkdown("Important Words", answer, citations, toolTrace, {
+      mode: "fallback",
+      ...routing
+    });
+  }
 
   const lemma = lemmaAliases.find((entry) =>
     entry.needles.some((needle) => normalized.includes(needle.toLowerCase()))
@@ -37,7 +142,9 @@ export async function answerBibleQuestion(prompt: string): Promise<AssistantAnsw
     const citations = search.results.map((result) => ({
       reference: result.reference,
       corpus: result.corpus,
-      searchQuery: `lemma:${lemma.lemma}`
+      searchQuery: `lemma:${lemma.lemma}`,
+      toolName: "searchLemma",
+      tokenId: result.tokenId
     }));
 
     const rows = search.results
@@ -59,7 +166,10 @@ export async function answerBibleQuestion(prompt: string): Promise<AssistantAnsw
       "Application/reflection: Use the cited verses as the starting point before making broader theological claims."
     ].join("\n");
 
-    return withMarkdown("Lemma Study", answer, citations, toolTrace);
+    return withMarkdown("Lemma Study", answer, citations, toolTrace, {
+      mode: "fallback",
+      ...routing
+    });
   }
 
   if (normalized.includes("morph") || normalized.includes("imperative")) {
@@ -70,7 +180,9 @@ export async function answerBibleQuestion(prompt: string): Promise<AssistantAnsw
     const citations = search.results.map((result) => ({
       reference: result.reference,
       corpus: result.corpus,
-      searchQuery: `morph:${morphCode}`
+      searchQuery: `morph:${morphCode}`,
+      toolName: "searchMorphology",
+      tokenId: result.tokenId
     }));
 
     const rows = search.results
@@ -89,7 +201,10 @@ export async function answerBibleQuestion(prompt: string): Promise<AssistantAnsw
       "Application/reflection: Review the cited forms in their immediate verses before drawing conclusions."
     ].join("\n");
 
-    return withMarkdown("Morphology Search", answer, citations, toolTrace);
+    return withMarkdown("Morphology Search", answer, citations, toolTrace, {
+      mode: "fallback",
+      ...routing
+    });
   }
 
   if (normalized.includes("john 1") || normalized.includes("passage")) {
@@ -104,12 +219,20 @@ export async function answerBibleQuestion(prompt: string): Promise<AssistantAnsw
       ...greek.references.map((result) => ({
         reference: result.reference,
         corpus: "SBLGNT",
-        searchQuery: "passage"
+        searchQuery: "passage",
+        toolName: "getPassage",
+        book: result.book,
+        chapter: result.chapter,
+        verse: result.verse
       })),
       ...english.references.map((result) => ({
         reference: result.reference,
         corpus: "WEB",
-        searchQuery: "passage"
+        searchQuery: "passage",
+        toolName: "getPassage",
+        book: result.book,
+        chapter: result.chapter,
+        verse: result.verse
       }))
     ];
 
@@ -125,7 +248,10 @@ export async function answerBibleQuestion(prompt: string): Promise<AssistantAnsw
       "Application/reflection: Keep any study note tied to the cited passage rather than importing outside lexical or manuscript claims."
     ].join("\n");
 
-    return withMarkdown("Passage Study", answer, citations, toolTrace);
+    return withMarkdown("Passage Study", answer, citations, toolTrace, {
+      mode: "fallback",
+      ...routing
+    });
   }
 
   const keyword = prompt.trim();
@@ -135,7 +261,8 @@ export async function answerBibleQuestion(prompt: string): Promise<AssistantAnsw
   const citations = search.results.map((result) => ({
     reference: result.reference,
     corpus: result.corpus,
-    searchQuery: `keyword:${keyword}`
+    searchQuery: `keyword:${keyword}`,
+    toolName: "searchKeyword"
   }));
 
   const answer = [
@@ -148,18 +275,35 @@ export async function answerBibleQuestion(prompt: string): Promise<AssistantAnsw
     "Application/reflection: Broader conclusions should wait until full-corpus import exists."
   ].join("\n");
 
-  return withMarkdown("Keyword Search", answer, citations, toolTrace);
+  return withMarkdown("Keyword Search", answer, citations, toolTrace, {
+    mode: "fallback",
+    ...routing
+  });
 }
 
 function extractMorphCode(prompt: string) {
   return prompt.match(/\b[A-Z]-[A-Z0-9-]+\b/)?.[0];
 }
 
+function isImportantWordsPrompt(normalizedPrompt: string) {
+  return (
+    (normalizedPrompt.includes("important") || normalizedPrompt.includes("top") || normalizedPrompt.includes("key")) &&
+    (normalizedPrompt.includes("word") || normalizedPrompt.includes("lemma") || normalizedPrompt.includes("theme"))
+  );
+}
+
 function withMarkdown(
   title: string,
   answer: string,
   citations: AssistantCitation[],
-  toolTrace: string[]
+  toolTrace: string[],
+  metadata: {
+    mode: AssistantMode;
+    modelRole: ModelRole;
+    modelUsed: string;
+    routingDecision: string;
+    recommendedUpgrade?: RecommendedUpgrade;
+  }
 ): AssistantAnswer {
   const exportResult = createMarkdownExport({
     title,
@@ -171,6 +315,7 @@ function withMarkdown(
     answer,
     citations,
     markdown: exportResult.markdown,
-    toolTrace
+    toolTrace,
+    ...metadata
   };
 }

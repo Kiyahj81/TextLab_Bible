@@ -11,8 +11,19 @@ type AssistantResponse = {
     reference: string;
     corpus: string;
     searchQuery: string;
+    toolName?: string;
   }>;
   toolTrace: string[];
+  mode: "live" | "fallback";
+  sessionId: string;
+  modelRole: "default" | "scholarly";
+  modelUsed: string;
+  routingDecision: string;
+  recommendedUpgrade?: {
+    modelRole: "scholarly";
+    model: string;
+    reason: string;
+  };
 };
 
 export type GeneratedStudyNoteRow = {
@@ -29,6 +40,7 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
   const [prompt, setPrompt] = useState(samplePrompt);
   const [responsePrompt, setResponsePrompt] = useState("");
   const [response, setResponse] = useState<AssistantResponse | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [notes, setNotes] = useState(initialNotes);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,7 +54,7 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
     const result = await fetch("/api/assistant", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt })
+      body: JSON.stringify({ prompt, sessionId })
     });
 
     setLoading(false);
@@ -52,7 +64,9 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
       return;
     }
 
-    setResponse(await result.json());
+    const body = (await result.json()) as AssistantResponse;
+    setResponse(body);
+    setSessionId(body.sessionId);
     setResponsePrompt(prompt);
     setSaveStatus(null);
   }
@@ -117,7 +131,12 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
         {response ? (
           <article className="rounded-md border border-stone-300 bg-white p-4 shadow-sm">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <h2 className="font-semibold text-slate-950">Answer</h2>
+              <div>
+                <h2 className="font-semibold text-slate-950">Answer</h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  {response.mode === "live" ? "Live" : "Local fallback"} - {response.modelRole} - {response.modelUsed}
+                </p>
+              </div>
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
@@ -136,6 +155,14 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
                   Save generated note
                 </button>
               </div>
+            </div>
+            <div className="mb-4 rounded-md border border-stone-200 bg-stone-50 p-3 text-xs text-slate-600">
+              <div>{response.routingDecision}</div>
+              {response.recommendedUpgrade ? (
+                <div className="mt-2">
+                  Scholarly mode recommended later: {response.recommendedUpgrade.model} - {response.recommendedUpgrade.reason}
+                </div>
+              ) : null}
             </div>
             {saveStatus ? <p className="mb-3 text-sm text-slate-600">{saveStatus}</p> : null}
             <pre className="whitespace-pre-wrap text-sm leading-7 text-slate-800">{response.answer}</pre>
@@ -172,7 +199,9 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
                   <div className="font-medium text-slate-950">
                     {citation.reference}, {citation.corpus}
                   </div>
-                  <div className="text-xs text-slate-500">{citation.searchQuery}</div>
+                  <div className="text-xs text-slate-500">
+                    {[citation.toolName, citation.searchQuery].filter(Boolean).join(" - ")}
+                  </div>
                 </div>
               ))
             ) : (

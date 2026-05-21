@@ -297,6 +297,38 @@ export async function searchMorphology(input: {
   };
 }
 
+export async function getTopLemmas(input: {
+  corpus?: "SBLGNT";
+  book?: string;
+  limit?: number;
+}) {
+  const book = normalizeBook(input.book);
+  const limit = Math.max(1, Math.min(input.limit ?? 10, 25));
+  const stopLemmas = new Set(["εἰμί", "πᾶς", "λέγω", "γίνομαι", "ἔχω", "ποιέω"]);
+
+  const rows = await prisma.token.groupBy({
+    by: ["lemma", "partOfSpeech"],
+    where: {
+      corpus: { abbreviation: input.corpus ?? "SBLGNT" },
+      book: book ? { osisId: book } : undefined,
+      lemma: { not: null },
+      partOfSpeech: { in: ["N-", "V-", "A-"] }
+    },
+    _count: { _all: true },
+    orderBy: { _count: { lemma: "desc" } },
+    take: limit + stopLemmas.size + 10
+  });
+
+  return rows
+    .filter((row) => Boolean(row.lemma) && !stopLemmas.has(row.lemma ?? ""))
+    .slice(0, limit)
+    .map((row) => ({
+      lemma: row.lemma ?? "",
+      partOfSpeech: row.partOfSpeech ?? "",
+      count: row._count._all
+    }));
+}
+
 function normalizePagination(input: PaginationInput) {
   const page = Number.isFinite(input.page) && input.page && input.page > 0 ? Math.floor(input.page) : 1;
   const requestedPageSize =

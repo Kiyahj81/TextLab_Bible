@@ -53,7 +53,7 @@ async function run() {
     "3000"
   ], {
     cwd: project,
-    env: { ...process.env, NODE_OPTIONS: "--use-system-ca" },
+    env: { ...process.env, NODE_OPTIONS: "--use-system-ca", TEXTLAB_ASSISTANT_DISABLE_LIVE: "1" },
     stdio: ["ignore", "pipe", "pipe"]
   });
 
@@ -130,6 +130,8 @@ async function run() {
     await page.locator("pre").filter({ hasText: "Textual observations: I found 40 occurrences" }).waitFor({
       timeout: 30000
     });
+    await page.getByText("Local fallback").waitFor();
+    await page.getByText("gpt-5.3-chat-latest").waitFor();
     await page.getByText('searchLemma({ lemma: "λόγος", book: "John" })').waitFor();
     await page.getByText("John 1:1, SBLGNT").first().waitFor();
     await page.getByRole("button", { name: "Save generated note" }).click();

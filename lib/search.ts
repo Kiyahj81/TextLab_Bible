@@ -297,6 +297,7 @@ export async function searchMorphology(input: {
   };
 }
 
+// DB take is bounded to lemmas.length * perLemma + 50 (cushion so JS-side per-lemma cap of `perLemma` can still fill each bucket if Prisma's row distribution is slightly weighted toward high-frequency lemmas).
 export async function findLemmaExamples(input: {
   lemmas: string[];
   corpus?: "SBLGNT";
@@ -314,7 +315,8 @@ export async function findLemmaExamples(input: {
       book: book ? { osisId: book } : undefined
     },
     include: { book: true, corpus: true },
-    orderBy: [{ book: { order: "asc" } }, { chapter: "asc" }, { verse: "asc" }, { wordIndex: "asc" }]
+    orderBy: [{ book: { order: "asc" } }, { chapter: "asc" }, { verse: "asc" }, { wordIndex: "asc" }],
+    take: input.lemmas.length * perLemma + 50
   });
 
   const grouped = new Map<string, typeof tokens>();

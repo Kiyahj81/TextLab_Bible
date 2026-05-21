@@ -157,7 +157,7 @@ model AiMessage {
   sessionId String
   role      String
   content   String
-  citations Json?
+  metadata  Json?
   createdAt DateTime @default(now())
 
   session AiSession @relation(fields: [sessionId], references: [id])

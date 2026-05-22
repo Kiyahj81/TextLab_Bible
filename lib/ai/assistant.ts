@@ -67,20 +67,28 @@ export async function answerBibleQuestion(prompt: string): Promise<AssistantAnsw
       return localAnswer;
     }
 
-    return withMarkdown("TextLab Assistant", liveAnswer, localAnswer.citations, [
-      ...localAnswer.toolTrace,
-      `modelRouter({ role: "${routing.modelRole}", model: "${routing.modelUsed}" })`,
-      `openai.responses.create({ model: "${routing.modelUsed}" })`
-    ], {
+    return withMarkdown({
+      title: "TextLab Assistant",
+      answer: liveAnswer,
+      citations: localAnswer.citations,
+      toolTrace: [
+        ...localAnswer.toolTrace,
+        `modelRouter({ role: "${routing.modelRole}", model: "${routing.modelUsed}" })`,
+        `openai.responses.create({ model: "${routing.modelUsed}" })`
+      ],
       mode: "live",
       ...routing
     });
   } catch (error) {
-    return withMarkdown("TextLab Assistant", localAnswer.answer, localAnswer.citations, [
-      ...localAnswer.toolTrace,
-      `modelRouter({ role: "${routing.modelRole}", model: "${routing.modelUsed}" })`,
-      `openai.responses.create failed: ${error instanceof Error ? error.message : "Unknown error"}`
-    ], {
+    return withMarkdown({
+      title: "TextLab Assistant",
+      answer: localAnswer.answer,
+      citations: localAnswer.citations,
+      toolTrace: [
+        ...localAnswer.toolTrace,
+        `modelRouter({ role: "${routing.modelRole}", model: "${routing.modelUsed}" })`,
+        `openai.responses.create failed: ${error instanceof Error ? error.message : "Unknown error"}`
+      ],
       mode: "fallback",
       ...routing,
       routingDecision: `${routing.routingDecision} The live model call failed, so TextLab returned the local retrieval fallback.`
@@ -134,7 +142,11 @@ async function answerFromLocalRetrieval(prompt: string, routing = routeAssistant
       "Application/reflection: Use the cited occurrences to test whether these frequent content words actually carry the themes you want to study in context."
     ].join("\n");
 
-    return withMarkdown("Important Words", answer, citations, toolTrace, {
+    return withMarkdown({
+      title: "Important Words",
+      answer,
+      citations,
+      toolTrace,
       mode: "fallback",
       ...routing
     });
@@ -175,7 +187,11 @@ async function answerFromLocalRetrieval(prompt: string, routing = routeAssistant
       "Application/reflection: Use the cited verses as the starting point before making broader theological claims."
     ].join("\n");
 
-    return withMarkdown("Lemma Study", answer, citations, toolTrace, {
+    return withMarkdown({
+      title: "Lemma Study",
+      answer,
+      citations,
+      toolTrace,
       mode: "fallback",
       ...routing
     });
@@ -210,7 +226,11 @@ async function answerFromLocalRetrieval(prompt: string, routing = routeAssistant
       "Application/reflection: Review the cited forms in their immediate verses before drawing conclusions."
     ].join("\n");
 
-    return withMarkdown("Morphology Search", answer, citations, toolTrace, {
+    return withMarkdown({
+      title: "Morphology Search",
+      answer,
+      citations,
+      toolTrace,
       mode: "fallback",
       ...routing
     });
@@ -257,7 +277,11 @@ async function answerFromLocalRetrieval(prompt: string, routing = routeAssistant
       "Application/reflection: Keep any study note tied to the cited passage rather than importing outside lexical or manuscript claims."
     ].join("\n");
 
-    return withMarkdown("Passage Study", answer, citations, toolTrace, {
+    return withMarkdown({
+      title: "Passage Study",
+      answer,
+      citations,
+      toolTrace,
       mode: "fallback",
       ...routing
     });
@@ -284,7 +308,11 @@ async function answerFromLocalRetrieval(prompt: string, routing = routeAssistant
     "Application/reflection: Broader conclusions should wait until full-corpus import exists."
   ].join("\n");
 
-  return withMarkdown("Keyword Search", answer, citations, toolTrace, {
+  return withMarkdown({
+    title: "Keyword Search",
+    answer,
+    citations,
+    toolTrace,
     mode: "fallback",
     ...routing
   });
@@ -301,19 +329,20 @@ function isImportantWordsPrompt(normalizedPrompt: string) {
   );
 }
 
-function withMarkdown(
-  title: string,
-  answer: string,
-  citations: AssistantCitation[],
-  toolTrace: string[],
-  metadata: {
-    mode: AssistantMode;
-    modelRole: ModelRole;
-    modelUsed: string;
-    routingDecision: string;
-    recommendedUpgrade?: RecommendedUpgrade;
-  }
-): AssistantAnswer {
+type WithMarkdownInput = {
+  title: string;
+  answer: string;
+  citations: AssistantCitation[];
+  toolTrace: string[];
+  mode: AssistantMode;
+  modelRole: ModelRole;
+  modelUsed: string;
+  routingDecision: string;
+  recommendedUpgrade?: RecommendedUpgrade;
+};
+
+function withMarkdown(input: WithMarkdownInput): AssistantAnswer {
+  const { title, answer, citations, toolTrace, ...metadata } = input;
   const exportResult = createMarkdownExport({
     title,
     body: answer,

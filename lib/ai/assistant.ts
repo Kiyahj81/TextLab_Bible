@@ -8,6 +8,7 @@ import {
   synthesizeWithDefaultModel
 } from "@/lib/ai/modelRouter";
 import { findLemmaExamples, getPassage, getTopLemmas, searchKeyword, searchLemma, searchMorphology } from "@/lib/search";
+import { ntBooks } from "@/lib/references";
 
 export type AssistantCitation = {
   reference: string;
@@ -38,6 +39,18 @@ const lemmaAliases: Array<{ needles: string[]; lemma: string; label: string }> =
   { needles: ["δικαιοσύνη", "δικαιοσυνη", "righteousness"], lemma: "δικαιοσύνη", label: "δικαιοσύνη" },
   { needles: ["πιστεύω", "πιστευω", "believe"], lemma: "πιστεύω", label: "πιστεύω" }
 ];
+
+export function detectBookFromPrompt(prompt: string): string | undefined {
+  const lower = prompt.toLowerCase();
+  for (const book of ntBooks) {
+    for (const alias of book.aliases) {
+      const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const pattern = new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, "i");
+      if (pattern.test(lower)) return book.osisId;
+    }
+  }
+  return undefined;
+}
 
 export async function answerBibleQuestion(prompt: string): Promise<AssistantAnswer> {
   const routing = routeAssistantPrompt(prompt);
@@ -79,7 +92,7 @@ async function answerFromLocalRetrieval(prompt: string, routing = routeAssistant
   const normalized = prompt.toLowerCase();
   const toolTrace: string[] = [];
 
-  const book = normalized.includes("rom") || normalized.includes("romans") ? "Rom" : normalized.includes("john") ? "John" : undefined;
+  const book = detectBookFromPrompt(prompt);
 
   if (book && isImportantWordsPrompt(normalized)) {
     const topLemmas = await getTopLemmas({ book, limit: 3 });

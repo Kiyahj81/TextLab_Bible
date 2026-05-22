@@ -16,7 +16,7 @@ vi.mock("@/lib/ai/modelRouter", async (orig) => {
   };
 });
 
-import { answerBibleQuestion } from "@/lib/ai/assistant";
+import { answerBibleQuestion, detectBookFromPrompt } from "@/lib/ai/assistant";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -44,5 +44,17 @@ describe("important-words branch", () => {
     await answerBibleQuestion("What are the most important words in John?");
     expect(prismaMock.token.findMany).toHaveBeenCalledTimes(1);
     expect(prismaMock.token.groupBy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("book detection", () => {
+  it("ignores substrings inside other words", () => {
+    expect(detectBookFromPrompt("from the start")).toBeUndefined();
+    expect(detectBookFromPrompt("romance languages")).toBeUndefined();
+  });
+  it("matches alias word boundaries", () => {
+    expect(detectBookFromPrompt("Tell me about Romans 8")).toBe("Rom");
+    expect(detectBookFromPrompt("john 1:1")).toBe("John");
+    expect(detectBookFromPrompt("1 cor 13")).toBe("1Cor");
   });
 });

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { answerBibleQuestion } from "@/lib/ai/assistant";
-import { recordAssistantExchange } from "@/lib/ai/sessions";
+import { finishAssistantExchange, startAssistantExchange } from "@/lib/ai/sessions";
 
 export async function POST(request: Request) {
   const body = await request.json();
@@ -11,8 +11,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Prompt is required." }, { status: 400 });
   }
 
+  const { sessionId, userMessagePromise } = await startAssistantExchange({
+    requestedSessionId,
+    prompt
+  });
   const answer = await answerBibleQuestion(prompt);
-  const sessionId = await recordAssistantExchange({ requestedSessionId, prompt, answer });
+  await finishAssistantExchange({ sessionId, userMessagePromise, answer });
 
   return NextResponse.json({ ...answer, sessionId });
 }

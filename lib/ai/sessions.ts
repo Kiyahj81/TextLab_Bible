@@ -13,11 +13,10 @@ export type AssistantMessageMetadata = {
   toolTrace: AssistantAnswer["toolTrace"];
 };
 
-export async function recordAssistantExchange(input: {
+export async function startAssistantExchange(input: {
   requestedSessionId: string;
   prompt: string;
-  answer: AssistantAnswer;
-}) {
+}): Promise<{ sessionId: string; userMessagePromise: Promise<unknown> }> {
   const existing = input.requestedSessionId
     ? await prisma.aiSession.findFirst({
         where: { id: input.requestedSessionId, userId: localUserId }
@@ -30,7 +29,7 @@ export async function recordAssistantExchange(input: {
       data: { userId: localUserId, title: input.prompt.slice(0, 80) }
     }));
 
-  const userWrite = prisma.aiMessage.create({
+  const userMessagePromise = prisma.aiMessage.create({
     data: {
       sessionId: session.id,
       role: "user",
@@ -39,6 +38,14 @@ export async function recordAssistantExchange(input: {
     }
   });
 
+  return { sessionId: session.id, userMessagePromise };
+}
+
+export async function finishAssistantExchange(input: {
+  sessionId: string;
+  userMessagePromise: Promise<unknown>;
+  answer: AssistantAnswer;
+}): Promise<void> {
   const metadata: AssistantMessageMetadata = {
     mode: input.answer.mode,
     modelRole: input.answer.modelRole,
@@ -50,9 +57,13 @@ export async function recordAssistantExchange(input: {
   };
 
   const assistantWrite = prisma.aiMessage.create({
-    data: { sessionId: session.id, role: "assistant", content: input.answer.answer, metadata }
+    data: {
+      sessionId: input.sessionId,
+      role: "assistant",
+      content: input.answer.answer,
+      metadata
+    }
   });
 
-  await Promise.all([userWrite, assistantWrite]);
-  return session.id;
+  await Promise.all([input.userMessagePromise, assistantWrite]);
 }

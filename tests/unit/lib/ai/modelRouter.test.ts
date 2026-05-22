@@ -32,17 +32,19 @@ describe("OpenAI request timeout", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const { synthesizeWithDefaultModel } = await import("@/lib/ai/modelRouter");
-    const promise = synthesizeWithDefaultModel({
-      prompt: "hi",
-      localAnswer: {
-        answer: "x", citations: [], markdown: "", toolTrace: [],
-        mode: "fallback", modelRole: "default", modelUsed: "gpt-5.3-chat-latest", routingDecision: ""
-      },
-      routing: { modelRole: "default", modelUsed: "gpt-5.3-chat-latest", routingDecision: "" }
-    });
+    const assertion = expect(
+      synthesizeWithDefaultModel({
+        prompt: "hi",
+        localAnswer: {
+          answer: "x", citations: [], markdown: "", toolTrace: [],
+          mode: "fallback", modelRole: "default", modelUsed: "gpt-5.3-chat-latest", routingDecision: ""
+        },
+        routing: { modelRole: "default", modelUsed: "gpt-5.3-chat-latest", routingDecision: "" }
+      })
+    ).rejects.toThrow(/abort|timed out/i);
 
     await vi.advanceTimersByTimeAsync(1100);
-    await expect(promise).rejects.toThrow(/abort|timed out/i);
+    await assertion;
     expect(aborts[0].aborted).toBe(true);
   });
 });

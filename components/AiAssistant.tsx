@@ -3,6 +3,7 @@
 import { Download, Save, Send } from "lucide-react";
 import type { SubmitEvent } from "react";
 import { useState } from "react";
+import { formatToolTrace, type ToolTraceEntry } from "@/lib/ai/toolTrace";
 
 type AssistantResponse = {
   answer: string;
@@ -13,7 +14,7 @@ type AssistantResponse = {
     searchQuery: string;
     toolName?: string;
   }>;
-  toolTrace: string[];
+  toolTrace: ToolTraceEntry[];
   mode: "live" | "fallback";
   sessionId: string;
   modelRole: "default" | "scholarly";
@@ -179,9 +180,9 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
           <h2 className="font-semibold text-slate-950">Retrieval trace</h2>
           <div className="mt-3 space-y-2 text-sm text-slate-700">
             {response?.toolTrace.length ? (
-              response.toolTrace.map((trace) => (
-                <code key={trace} className="block rounded bg-stone-100 p-2">
-                  {trace}
+              response.toolTrace.map((entry, index) => (
+                <code key={index} className="block rounded bg-stone-100 p-2">
+                  {formatToolTrace(entry)}
                 </code>
               ))
             ) : (

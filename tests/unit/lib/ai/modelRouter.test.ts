@@ -23,7 +23,7 @@ const baseLocalAnswer = {
   answer: "deterministic-draft",
   citations: [],
   markdown: "",
-  toolTrace: ["trace-line"],
+  toolTrace: [{ tool: "trace-line" }],
   mode: "fallback" as const,
   modelRole: "default" as const,
   modelUsed: "gpt-5.3-chat-latest",
@@ -178,6 +178,6 @@ describe("assistant fallback when the SDK call fails", () => {
     const { answerBibleQuestion } = await import("@/lib/ai/assistant");
     const answer = await answerBibleQuestion("Hello world");
     expect(answer.mode).toBe("fallback");
-    expect(answer.toolTrace.some((line) => line.includes("openai.responses.create failed"))).toBe(true);
+    expect(answer.toolTrace.some((entry) => entry.tool === "openai.responses.create" && entry.error)).toBe(true);
   });
 });

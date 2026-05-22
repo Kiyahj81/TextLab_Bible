@@ -1,6 +1,7 @@
 import { aiSystemPrompt } from "@/lib/ai/systemPrompt";
 import type { AssistantAnswer } from "@/lib/ai/assistant";
 import { getOpenAi } from "@/lib/ai/openaiClient";
+import { formatToolTrace } from "@/lib/ai/toolTrace";
 
 export type AssistantMode = "live" | "fallback";
 export type ModelRole = "default" | "scholarly";
@@ -58,7 +59,7 @@ function buildUserPayload(prompt: string, localAnswer: AssistantAnswer) {
   return [
     `User prompt:\n${prompt}`,
     `Retrieved citations:\n${JSON.stringify(localAnswer.citations.slice(0, 20))}`,
-    `Retrieval trace:\n${localAnswer.toolTrace.join("\n")}`,
+    `Retrieval trace:\n${localAnswer.toolTrace.map(formatToolTrace).join("\n")}`,
     `Deterministic draft:\n${localAnswer.answer}`
   ].join("\n\n");
 }

@@ -23,7 +23,7 @@ const answer: AssistantAnswer = {
   answer: "ok",
   citations: [{ reference: "John 1:1", corpus: "SBLGNT", searchQuery: "lemma:λόγος" }],
   markdown: "# x",
-  toolTrace: ["getPassage({...})"],
+  toolTrace: [{ tool: "getPassage", args: {} }],
   mode: "fallback",
   modelRole: "default",
   modelUsed: "gpt-5.3-chat-latest",
@@ -57,7 +57,7 @@ describe("assistant exchange persistence", () => {
         modelRole: "default",
         modelUsed: "gpt-5.3-chat-latest",
         routingDecision: "Handled by the default model",
-        toolTrace: ["getPassage({...})"],
+        toolTrace: [{ tool: "getPassage", args: {} }],
         citations: [{ reference: "John 1:1", corpus: "SBLGNT", searchQuery: "lemma:λόγος" }]
       }
     });

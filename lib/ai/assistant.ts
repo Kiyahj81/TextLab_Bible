@@ -9,6 +9,7 @@ import {
 } from "@/lib/ai/modelRouter";
 import { findLemmaExamples, getPassage, getTopLemmas, searchKeyword, searchLemma, searchMorphology } from "@/lib/search";
 import { ntBooks } from "@/lib/references";
+import { type ToolTraceEntry } from "@/lib/ai/toolTrace";
 
 export type AssistantCitation = {
   reference: string;
@@ -25,7 +26,7 @@ export type AssistantAnswer = {
   answer: string;
   citations: AssistantCitation[];
   markdown: string;
-  toolTrace: string[];
+  toolTrace: ToolTraceEntry[];
   mode: AssistantMode;
   modelRole: ModelRole;
   modelUsed: string;
@@ -73,8 +74,8 @@ export async function answerBibleQuestion(prompt: string): Promise<AssistantAnsw
       citations: localAnswer.citations,
       toolTrace: [
         ...localAnswer.toolTrace,
-        `modelRouter({ role: "${routing.modelRole}", model: "${routing.modelUsed}" })`,
-        `openai.responses.create({ model: "${routing.modelUsed}" })`
+        { tool: "modelRouter", args: { role: routing.modelRole, model: routing.modelUsed } },
+        { tool: "openai.responses.create", args: { model: routing.modelUsed } }
       ],
       mode: "live",
       ...routing
@@ -86,8 +87,8 @@ export async function answerBibleQuestion(prompt: string): Promise<AssistantAnsw
       citations: localAnswer.citations,
       toolTrace: [
         ...localAnswer.toolTrace,
-        `modelRouter({ role: "${routing.modelRole}", model: "${routing.modelUsed}" })`,
-        `openai.responses.create failed: ${error instanceof Error ? error.message : "Unknown error"}`
+        { tool: "modelRouter", args: { role: routing.modelRole, model: routing.modelUsed } },
+        { tool: "openai.responses.create", error: error instanceof Error ? error.message : "Unknown error" }
       ],
       mode: "fallback",
       ...routing,
@@ -98,20 +99,20 @@ export async function answerBibleQuestion(prompt: string): Promise<AssistantAnsw
 
 async function answerFromLocalRetrieval(prompt: string, routing = routeAssistantPrompt(prompt)): Promise<AssistantAnswer> {
   const normalized = prompt.toLowerCase();
-  const toolTrace: string[] = [];
+  const toolTrace: ToolTraceEntry[] = [];
 
   const book = detectBookFromPrompt(prompt);
 
   if (book && isImportantWordsPrompt(normalized)) {
     const topLemmas = await getTopLemmas({ book, limit: 3 });
-    toolTrace.push(`getTopLemmas({ book: "${book}", limit: 3 })`);
+    toolTrace.push({ tool: "getTopLemmas", args: { book, limit: 3 } });
 
     const examples = await findLemmaExamples({
       lemmas: topLemmas.map((l) => l.lemma),
       book,
       perLemma: 5
     });
-    toolTrace.push(`findLemmaExamples({ lemmas: ${JSON.stringify(topLemmas.map((l) => l.lemma))}, book: "${book}", perLemma: 5 })`);
+    toolTrace.push({ tool: "findLemmaExamples", args: { lemmas: topLemmas.map((l) => l.lemma), book, perLemma: 5 } });
 
     const citations = topLemmas.flatMap((entry) =>
       (examples.get(entry.lemma) ?? []).map((result) => ({
@@ -158,7 +159,7 @@ async function answerFromLocalRetrieval(prompt: string, routing = routeAssistant
 
   if (lemma) {
     const search = await searchLemma({ lemma: lemma.lemma, book });
-    toolTrace.push(`searchLemma({ lemma: "${lemma.lemma}"${book ? `, book: "${book}"` : ""} })`);
+    toolTrace.push({ tool: "searchLemma", args: book ? { lemma: lemma.lemma, book } : { lemma: lemma.lemma } });
 
     const citations = search.results.map((result) => ({
       reference: result.reference,
@@ -200,7 +201,7 @@ async function answerFromLocalRetrieval(prompt: string, routing = routeAssistant
   if (normalized.includes("morph") || normalized.includes("imperative")) {
     const morphCode = normalized.includes("imperative") ? "V-P" : extractMorphCode(prompt) ?? "V-";
     const search = await searchMorphology({ morphCode, matchMode: "prefix", book });
-    toolTrace.push(`searchMorphology({ morphCode: "${morphCode}", matchMode: "prefix"${book ? `, book: "${book}"` : ""} })`);
+    toolTrace.push({ tool: "searchMorphology", args: book ? { morphCode, matchMode: "prefix", book } : { morphCode, matchMode: "prefix" } });
 
     const citations = search.results.map((result) => ({
       reference: result.reference,
@@ -241,8 +242,8 @@ async function answerFromLocalRetrieval(prompt: string, routing = routeAssistant
       getPassage({ corpus: "SBLGNT", book: book ?? "John", chapter: 1, verseStart: 1, verseEnd: 5 }),
       getPassage({ corpus: "WEB", book: book ?? "John", chapter: 1, verseStart: 1, verseEnd: 5 })
     ]);
-    toolTrace.push(`getPassage({ corpus: "SBLGNT", book: "${book ?? "John"}", chapter: 1, verseStart: 1, verseEnd: 5 })`);
-    toolTrace.push(`getPassage({ corpus: "WEB", book: "${book ?? "John"}", chapter: 1, verseStart: 1, verseEnd: 5 })`);
+    toolTrace.push({ tool: "getPassage", args: { corpus: "SBLGNT", book: book ?? "John", chapter: 1, verseStart: 1, verseEnd: 5 } });
+    toolTrace.push({ tool: "getPassage", args: { corpus: "WEB", book: book ?? "John", chapter: 1, verseStart: 1, verseEnd: 5 } });
 
     const citations = [
       ...greek.references.map((result) => ({
@@ -289,7 +290,7 @@ async function answerFromLocalRetrieval(prompt: string, routing = routeAssistant
 
   const keyword = prompt.trim();
   const search = await searchKeyword({ query: keyword, book });
-  toolTrace.push(`searchKeyword({ query: "${keyword}"${book ? `, book: "${book}"` : ""} })`);
+  toolTrace.push({ tool: "searchKeyword", args: book ? { query: keyword, book } : { query: keyword } });
 
   const citations = search.results.map((result) => ({
     reference: result.reference,
@@ -333,7 +334,7 @@ type WithMarkdownInput = {
   title: string;
   answer: string;
   citations: AssistantCitation[];
-  toolTrace: string[];
+  toolTrace: ToolTraceEntry[];
   mode: AssistantMode;
   modelRole: ModelRole;
   modelUsed: string;

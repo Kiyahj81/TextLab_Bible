@@ -61,7 +61,7 @@ export async function finishAssistantExchange(input: {
       sessionId: input.sessionId,
       role: "assistant",
       content: input.answer.answer,
-      metadata
+      metadata: metadata as unknown as Prisma.InputJsonValue
     }
   });
 

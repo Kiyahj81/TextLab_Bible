@@ -98,15 +98,55 @@ export async function synthesizeWithDefaultModel(input: {
   return extractResponseText(payload);
 }
 
-async function fetchResponsesWithRetry(init: RequestInit) {
-  const response = await fetch("https://api.openai.com/v1/responses", init);
+function getRequestTimeoutMs() {
+  const raw = process.env.OPENAI_REQUEST_TIMEOUT_MS?.trim();
+  const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 25_000;
+}
 
-  if (![429, 500, 502, 503, 504].includes(response.status)) {
-    return response;
+async function fetchResponsesWithRetry(init: Omit<RequestInit, "signal">) {
+  const timeoutMs = getRequestTimeoutMs();
+
+  async function attempt() {
+    const controller = new AbortController();
+    const timer = setTimeout(
+      () => controller.abort(new Error(`OpenAI request timed out after ${timeoutMs}ms`)),
+      timeoutMs
+    );
+    try {
+      return await new Promise<Response>((resolve, reject) => {
+        // Reject on abort so a non-compliant fetch implementation (e.g. a test stub
+        // that ignores AbortSignal) still surfaces the timeout to the caller.
+        controller.signal.addEventListener(
+          "abort",
+          () => reject(controller.signal.reason ?? new Error("OpenAI request aborted")),
+          { once: true }
+        );
+        fetch("https://api.openai.com/v1/responses", { ...init, signal: controller.signal }).then(
+          resolve,
+          reject
+        );
+      });
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
-  await new Promise((resolve) => setTimeout(resolve, 500));
-  return fetch("https://api.openai.com/v1/responses", init);
+  const first = await attempt();
+  if (![429, 500, 502, 503, 504].includes(first.status)) return first;
+
+  const retryAfterMs = parseRetryAfter(first.headers.get("retry-after"), 500);
+  await new Promise((resolve) => setTimeout(resolve, retryAfterMs));
+  return attempt();
+}
+
+function parseRetryAfter(value: string | null, fallback: number) {
+  if (!value) return fallback;
+  const seconds = Number.parseFloat(value);
+  if (Number.isFinite(seconds)) return Math.max(0, Math.min(seconds * 1000, 10_000));
+  const date = Date.parse(value);
+  if (Number.isFinite(date)) return Math.max(0, Math.min(date - Date.now(), 10_000));
+  return fallback;
 }
 
 function recommendScholarlyUpgrade(prompt: string): RecommendedUpgrade | undefined {

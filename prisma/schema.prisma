@@ -87,6 +87,7 @@ model Token {
   @@index([lemma])
   @@index([morphCode])
   @@index([bookId, chapter, verse])
+  @@index([corpusId, bookId, partOfSpeech, lemma])
 }
 
 model Note {

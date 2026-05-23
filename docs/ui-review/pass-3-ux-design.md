@@ -9,8 +9,8 @@ Method: source review of every in-scope component + live HTML inspection at `htt
 
 - Critical: 2 (1 fixed ✅)
 - Moderate: 15 (5 fixed ✅)
-- Minor: 11 (5 fixed ✅)
-- **Total: 28 (11 fixed: 2 in PR2, 3 in PR4, 2 in PR5, 4 in PR6)**
+- Minor: 11 (6 fixed ✅)
+- **Total: 28 (12 fixed: 2 in PR2, 3 in PR4, 2 in PR5, 4 in PR6, 1 in PR7)**
 
 Note: F-3.1 through F-3.16 are UX findings (interaction, hierarchy, primary-use-case friction). F-3.17 through F-3.28 are **design-identity findings** added via a second pass through the `frontend-design` skill lens — covering visual identity, typography, color system, motion, and distinctive-pattern gaps that the first pass de-prioritized.
 
@@ -124,7 +124,7 @@ Note: F-3.1 through F-3.16 are UX findings (interaction, hierarchy, primary-use-
 - **Problem:** Clicking a note's reference takes the user to `/read?book=John&chapter=1` (no verse). The Reader has no `?verse=` param support and no auto-scroll behavior. For a note attached to Romans 8:28, the user lands at Romans 8:1 and has to scroll.
 - **Suggested fix:** Add a `verse` query param to the link and to `ReadPage`. Inside `BibleReader`, scroll to `#verse-${id}` on mount if present. Also add `id="verse-${id}"` to each verse `<article>`.
 
-### F-3.15 — Reader has no toggle for Greek-only / English-only / both; the parallel view is mandatory
+### F-3.15 — Reader has no toggle for Greek-only / English-only / both; the parallel view is mandatory ✅ Fixed in PR7
 - **View:** Reader
 - **File:** `components/BibleReader.tsx:95-130`
 - **Severity:** minor

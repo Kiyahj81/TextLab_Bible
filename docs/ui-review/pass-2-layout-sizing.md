@@ -8,9 +8,9 @@ Method: source review of every in-scope component + live HTML inspection at `htt
 ## Summary
 
 - Critical: 1 (1 fixed ✅)
-- Moderate: 6 (3 fixed ✅)
-- Minor: 5 (4 fixed ✅)
-- **Total: 12 (8 fixed: 1 in PR2, 2 in PR5, 5 in PR6)**
+- Moderate: 6 (5 fixed ✅)
+- Minor: 5 (5 fixed ✅)
+- **Total: 12 (11 fixed: 1 in PR2, 2 in PR5, 5 in PR6, 3 in PR7)**
 
 ---
 
@@ -41,14 +41,14 @@ Method: source review of every in-scope component + live HTML inspection at `htt
 - **Problem:** Trace entries render inside `<code class="block rounded bg-stone-100 p-2">` with no overflow rules. Real entries look like `searchMorphology({"morphCode":"V-PAI-3S","matchMode":"prefix","book":"John"})` — easily 60+ chars. The 360 px sidebar (lg breakpoint) can't fit them, and they wrap awkwardly inside the rounded card or overflow horizontally.
 - **Suggested fix:** Add `overflow-x-auto whitespace-nowrap` on the `<code>` so each trace becomes scrollable horizontally. Optionally tooltip/expand on click. If we want wrapping instead, add `break-all`.
 
-### F-2.4 — Reader 2-column grid only at lg+; tablet portrait stacks English below Greek with no parallel view
+### F-2.4 — Reader 2-column grid only at lg+; tablet portrait stacks English below Greek with no parallel view ✅ Fixed in PR7
 - **View:** Reader
 - **File:** `components/BibleReader.tsx:95`
 - **Severity:** moderate
 - **Problem:** `grid gap-4 lg:grid-cols-2` means at <1024 px the English translation appears *below* the Greek block for every verse. iPad portrait (768 px wide) — a primary study form factor — loses the parallel reading layout. With multi-verse passages, English is far below the Greek text.
 - **Suggested fix:** Lower the breakpoint to `md:grid-cols-2` (768 px). For sub-md, consider a tab toggle ("Greek / English / Both") rather than fixed stacking.
 
-### F-2.5 — Greek-token touch targets are below mobile minimum (~24–28 px tall)
+### F-2.5 — Greek-token touch targets are below mobile minimum (~24–28 px tall) ✅ Fixed in PR7
 - **View:** Reader
 - **File:** `components/BibleReader.tsx:103-111`
 - **Severity:** moderate
@@ -97,7 +97,7 @@ Method: source review of every in-scope component + live HTML inspection at `htt
 - **Problem:** `whitespace-pre-wrap` wraps on whitespace, but a long URL or compound lemma string with no spaces causes horizontal overflow of the response card. The card itself doesn't have `overflow-x-auto`, so it pushes the whole grid wider.
 - **Suggested fix:** Add `break-words` (CSS `overflow-wrap: anywhere`) to the `<pre>` so long unbroken sequences wrap.
 
-### F-2.12 — Reader top-row layout (title + ReaderControls) wraps awkwardly at narrow widths
+### F-2.12 — Reader top-row layout (title + ReaderControls) wraps awkwardly at narrow widths ✅ Fixed in PR7
 - **View:** Reader
 - **File:** `app/read/page.tsx:21-29`, `components/ReaderControls.tsx:27`
 - **Severity:** minor

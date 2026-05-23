@@ -28,15 +28,18 @@ export type ReaderToken = {
 export function MorphologyPopover({
   token,
   reference,
+  body,
+  onBodyChange,
   onClose
 }: {
   token: ReaderToken;
   reference: string;
+  body: string;
+  onBodyChange: (next: string) => void;
   onClose: () => void;
 }) {
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const [body, setBody] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [horizontalAlign, setHorizontalAlign] = useState<"left" | "right">("left");
@@ -94,7 +97,7 @@ export function MorphologyPopover({
       });
 
       if (response.ok) {
-        setBody("");
+        onBodyChange("");
         setStatus("Note saved.");
       } else {
         setStatus("Could not save note.");
@@ -190,7 +193,7 @@ export function MorphologyPopover({
         </label>
         <textarea
           value={body}
-          onChange={(event) => setBody(event.target.value)}
+          onChange={(event) => onBodyChange(event.target.value)}
           className="min-h-20 w-full rounded-md border border-stone-300 p-2 text-sm outline-none focus:border-slate-600"
           placeholder="Write a note on this token"
         />

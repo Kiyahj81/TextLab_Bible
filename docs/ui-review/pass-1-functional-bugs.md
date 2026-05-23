@@ -8,11 +8,11 @@ Method: source review of every in-scope component + live behavioral probes again
 ## Summary
 
 - Critical: 4 (4 fixed ✅)
-- Moderate: 6 (5 fixed ✅)
+- Moderate: 6 (6 fixed ✅)
 - Minor: 5 (4 fixed ✅)
-- **Total: 15 (14 fixed: 5 in PR1, 1 in PR2, 6 in PR3, 1 in PR4, 1 in PR5)**
+- **Total: 15 (15 fixed: 5 in PR1, 1 in PR2, 6 in PR3, 1 in PR4, 1 in PR5, 1 in PR7)**
 
-Remaining: F-1.9 (token popover state loss when switching tokens — noted as moderate, not yet scheduled).
+**Pass 1 is fully closed.** ✅
 
 ---
 
@@ -99,7 +99,7 @@ Remaining: F-1.9 (token popover state loss when switching tokens — noted as mo
 - **Repro / evidence:** Source: `verse.highlighted ? "border-yellow-300" : "border-stone-300"` (line 79-81) and `token.highlighted ? "bg-yellow-200" : ""` (line 107-108) are derived from the original props.
 - **Suggested fix:** After a 201 response, optimistically update local state (lift `highlighted` into a `useState` map in `BibleReader`), OR call `router.refresh()` from `next/navigation` to re-fetch the server component.
 
-### F-1.9 — Selecting a different token leaves the previously-open popover's local form state lost; no warning if there were unsaved edits
+### F-1.9 — Selecting a different token leaves the previously-open popover's local form state lost; no warning if there were unsaved edits ✅ Fixed in PR7
 - **View:** Reader
 - **File:** `components/BibleReader.tsx:103-118`, `components/MorphologyPopover.tsx:33-60`
 - **Severity:** moderate

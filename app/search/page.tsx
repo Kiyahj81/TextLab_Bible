@@ -16,17 +16,18 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
   const book = getParam(params.book) ?? "";
   const chapter = getParam(params.chapter) ?? "";
   const parsedChapter = parsePositiveInt(chapter);
-  const page = parsePositiveInt(getParam(params.page)) ?? 1;
+  const requestedPage = parsePositiveInt(getParam(params.page)) ?? 1;
   const pageSize = Math.min(parsePositiveInt(getParam(params.pageSize)) ?? 25, 100);
   const matchMode = getParam(params.matchMode) === "prefix" ? "prefix" : "exact";
 
   let results: SearchPanelResult[] = [];
   let count = 0;
   let pageCount = 0;
+  let page = requestedPage;
 
   if (query.trim()) {
     if (mode === "lemma") {
-      const search = await searchLemma({ lemma: query, book: book || undefined, chapter: parsedChapter, page, pageSize });
+      const search = await searchLemma({ lemma: query, book: book || undefined, chapter: parsedChapter, page: requestedPage, pageSize });
       count = search.count;
       pageCount = search.pagination.pageCount;
       results = search.results.map((result) => ({ kind: "token" as const, ...result }));
@@ -36,18 +37,23 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
         matchMode,
         book: book || undefined,
         chapter: parsedChapter,
-        page,
+        page: requestedPage,
         pageSize
       });
       count = search.count;
       pageCount = search.pagination.pageCount;
       results = search.results.map((result) => ({ kind: "token" as const, ...result }));
     } else {
-      const search = await searchKeyword({ query, book: book || undefined, chapter: parsedChapter, page, pageSize });
+      const search = await searchKeyword({ query, book: book || undefined, chapter: parsedChapter, page: requestedPage, pageSize });
       count = search.pagination.total;
       pageCount = search.pagination.pageCount;
       results = search.results.map((result) => ({ kind: "keyword" as const, ...result }));
     }
+
+    // Clamp the displayed page to a valid range so out-of-bounds URLs (e.g.
+    // ?page=999 for a 7-page result) render the last real page instead of
+    // an empty list with a Previous link that walks down through phantom pages.
+    page = Math.min(requestedPage, Math.max(pageCount, 1));
   }
 
   const [books, savedSearches] = await Promise.all([

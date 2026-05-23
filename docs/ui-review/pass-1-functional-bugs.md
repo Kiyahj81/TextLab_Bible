@@ -8,11 +8,11 @@ Method: source review of every in-scope component + live behavioral probes again
 ## Summary
 
 - Critical: 4 (4 fixed ✅)
-- Moderate: 6 (4 fixed ✅)
+- Moderate: 6 (5 fixed ✅)
 - Minor: 5 (3 fixed ✅)
-- **Total: 15 (12 fixed: 5 in PR1, 1 in PR2, 6 in PR3)**
+- **Total: 15 (13 fixed: 5 in PR1, 1 in PR2, 6 in PR3, 1 in PR4)**
 
-Remaining: F-1.5 (pagination clamp portion — covered by PR4 search hygiene), F-1.9 (token popover state loss when switching tokens — noted as moderate, not yet scheduled), F-1.14 (notes filter URL sync — PR5).
+Remaining: F-1.9 (token popover state loss when switching tokens — noted as moderate, not yet scheduled), F-1.14 (notes filter URL sync — PR5).
 
 ---
 
@@ -50,12 +50,13 @@ Remaining: F-1.5 (pagination clamp portion — covered by PR4 search hygiene), F
 - **Repro / evidence:** Source review. The same pattern repeats in DELETE at `app/api/notes/[id]/route.ts:38-44` — deleting a non-existent note returns 200 `{ ok: true }`.
 - **Suggested fix:** After `updateMany`, inspect `count`; return 404 if 0. Or use `prisma.note.update` which throws on miss, caught and converted to 404. The client should then surface "Note not found" status.
 
-### F-1.5 — Pagination "Previous" stays enabled past `pageCount`; URL accepts arbitrary `page`
+### F-1.5 — Pagination "Previous" stays enabled past `pageCount`; URL accepts arbitrary `page` ✅ Fixed in PR4
 
 > Note: the "Save/Delete/Highlight buttons lack in-flight disabled state — double-submit hazard"
 > aspect of F-1.5 (which the report originally bundled into this entry's neighborhood) was
 > addressed in PR3 — every async button now disables during in-flight. The pagination clamp
-> portion of F-1.5 remains for PR4.
+> portion is closed in PR4 (`app/search/page.tsx` clamps the displayed page to
+> `[1, max(pageCount, 1)]` after running the query).
 
 - **View:** Search
 - **File:** `components/SearchPanel.tsx:88-89`, `211-232`; result text at `:167`; server at `app/search/page.tsx:18`

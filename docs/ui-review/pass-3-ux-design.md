@@ -8,9 +8,9 @@ Method: source review of every in-scope component + live HTML inspection at `htt
 ## Summary
 
 - Critical: 2 (1 fixed ✅)
-- Moderate: 15 (1 fixed ✅)
-- Minor: 11 (0 fixed)
-- **Total: 28 (2 fixed in PR2)**
+- Moderate: 15 (3 fixed ✅)
+- Minor: 11 (1 fixed ✅)
+- **Total: 28 (5 fixed: 2 in PR2, 3 in PR4)**
 
 Note: F-3.1 through F-3.16 are UX findings (interaction, hierarchy, primary-use-case friction). F-3.17 through F-3.28 are **design-identity findings** added via a second pass through the `frontend-design` skill lens — covering visual identity, typography, color system, motion, and distinctive-pattern gaps that the first pass de-prioritized.
 
@@ -39,7 +39,7 @@ Note: F-3.1 through F-3.16 are UX findings (interaction, hierarchy, primary-use-
 - **Problem:** Every highlight is identical yellow. There's no way to color-code by theme (e.g. promises = blue, commands = red), which is the primary reason long-form study readers highlight at all. The backend schema already accepts `color`, so this is purely a missing UI affordance.
 - **Suggested fix:** Replace the single "Highlight" button with a small palette dropdown — 5 colors covering common categories (yellow / blue / green / red / purple) — clicking applies that color. Persist the last-used color as the default per user. Tie color → tag if categories are needed.
 
-### F-3.4 — "Morph match" toggle is shown for every search mode but only respected by morphology
+### F-3.4 — "Morph match" toggle is shown for every search mode but only respected by morphology ✅ Fixed in PR4
 - **View:** Search
 - **File:** `components/SearchPanel.tsx:133-143`, `app/search/page.tsx:20`
 - **Severity:** moderate
@@ -48,7 +48,7 @@ Note: F-3.1 through F-3.16 are UX findings (interaction, hierarchy, primary-use-
   1. Make `mode` a client `useState`, and conditionally render the morph-match column when `mode === "morphology"`.
   2. Move morph-specific fields into a separate row that appears only when the morphology mode is selected.
 
-### F-3.5 — Saved searches have no delete / rename / clear-all affordance; list grows unbounded
+### F-3.5 — Saved searches have no delete / rename / clear-all affordance; list grows unbounded ✅ Fixed in PR4 (delete + rename; clear-all deferred)
 - **View:** Search
 - **File:** `components/SearchPanel.tsx:237-263`, `app/api/saved-searches/route.ts` (no DELETE handler)
 - **Severity:** moderate
@@ -103,7 +103,7 @@ Note: F-3.1 through F-3.16 are UX findings (interaction, hierarchy, primary-use-
 - **Problem:** `text-xs text-slate-600` on `bg-stone-50` for the routing decision (e.g. multi-line reasoning + recommended upgrade text). Insufficient contrast; small text. Users skim past it.
 - **Suggested fix:** Bump to `text-sm`, contrast to `text-slate-700`. Consider collapsing into a `<details>` so it doesn't always occupy header space.
 
-### F-3.12 — Saved-search auto-labels collide; no rename or context
+### F-3.12 — Saved-search auto-labels collide; no rename or context ✅ Fixed in PR4
 - **View:** Search
 - **File:** `app/api/saved-searches/route.ts:30`, `components/SearchPanel.tsx:240-258`
 - **Severity:** minor

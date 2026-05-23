@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { BookmarkPlus, Search } from "lucide-react";
+import { BookmarkPlus, Pencil, Search, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 export type SearchPanelResult =
@@ -63,9 +63,17 @@ export function SearchPanel({
   books: SearchBookOption[];
   savedSearches: SavedSearchRow[];
 }) {
+  const [activeMode, setActiveMode] = useState(mode);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(savedSearches);
+  const [pending, setPending] = useState<Record<string, boolean>>({});
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [itemStatus, setItemStatus] = useState<Record<string, string>>({});
+
+  function setRowStatus(id: string, message: string | null) {
+    setItemStatus((current) => ({ ...current, [id]: message ?? "" }));
+  }
 
   async function saveSearch() {
     if (!query.trim()) return;
@@ -77,7 +85,7 @@ export function SearchPanel({
       const response = await fetch("/api/saved-searches", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode, query, book, chapter, matchMode, pageSize })
+        body: JSON.stringify({ mode: activeMode, query, book, chapter, matchMode, pageSize })
       });
 
       if (!response.ok) {
@@ -95,17 +103,75 @@ export function SearchPanel({
     }
   }
 
+  async function deleteSavedSearch(id: string) {
+    if (pending[id]) return;
+    setPending((current) => ({ ...current, [id]: true }));
+    try {
+      const response = await fetch(`/api/saved-searches/${id}`, { method: "DELETE" });
+      if (response.ok) {
+        setSaved((current) => current.filter((row) => row.id !== id));
+        return;
+      }
+      const message = response.status === 404 ? "Already removed." : "Could not delete.";
+      setRowStatus(id, message);
+    } catch {
+      setRowStatus(id, "Network error.");
+    } finally {
+      setPending((current) => ({ ...current, [id]: false }));
+    }
+  }
+
+  async function renameSavedSearch(id: string, newLabel: string) {
+    const label = newLabel.trim();
+    if (!label) {
+      setEditingId(null);
+      return;
+    }
+    if (pending[id]) return;
+    setPending((current) => ({ ...current, [id]: true }));
+    try {
+      const response = await fetch(`/api/saved-searches/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label })
+      });
+      if (response.ok) {
+        setSaved((current) => current.map((row) => (row.id === id ? { ...row, label } : row)));
+        setEditingId(null);
+        return;
+      }
+      const message = response.status === 404 ? "Already removed." : "Could not rename.";
+      setRowStatus(id, message);
+    } catch {
+      setRowStatus(id, "Network error.");
+    } finally {
+      setPending((current) => ({ ...current, [id]: false }));
+    }
+  }
+
   const previousPage = Math.max(page - 1, 1);
   const nextPage = Math.min(page + 1, Math.max(pageCount, 1));
+  const showMorphMatch = activeMode === "morphology";
 
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
       <div className="space-y-6">
       <form className="rounded-md border border-stone-300 bg-white p-4 shadow-sm" action="/search">
-        <div className="grid gap-3 md:grid-cols-[150px_1fr_150px_120px_150px_120px_auto]">
+        <div
+          className={`grid gap-3 ${
+            showMorphMatch
+              ? "md:grid-cols-[150px_1fr_150px_120px_150px_120px_auto]"
+              : "md:grid-cols-[150px_1fr_150px_120px_120px_auto]"
+          }`}
+        >
           <label className="space-y-1">
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mode</span>
-            <select name="mode" defaultValue={mode} className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm">
+            <select
+              name="mode"
+              value={activeMode}
+              onChange={(event) => setActiveMode(event.target.value)}
+              className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm"
+            >
               <option value="keyword">Keyword</option>
               <option value="lemma">Lemma</option>
               <option value="morphology">Morphology</option>
@@ -140,17 +206,19 @@ export function SearchPanel({
               placeholder="Any"
             />
           </label>
-          <label className="space-y-1">
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Morph match</span>
-            <select
-              name="matchMode"
-              defaultValue={matchMode}
-              className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm"
-            >
-              <option value="exact">Exact</option>
-              <option value="prefix">Prefix</option>
-            </select>
-          </label>
+          {showMorphMatch ? (
+            <label className="space-y-1">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Morph match</span>
+              <select
+                name="matchMode"
+                defaultValue={matchMode}
+                className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm"
+              >
+                <option value="exact">Exact</option>
+                <option value="prefix">Prefix</option>
+              </select>
+            </label>
+          ) : null}
           <label className="space-y-1">
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Page size</span>
             <input
@@ -225,7 +293,7 @@ export function SearchPanel({
               className={`rounded-md border border-stone-300 px-3 py-2 ${
                 page <= 1 ? "pointer-events-none opacity-50" : "hover:border-slate-500"
               }`}
-              href={searchHref({ mode, query, book, chapter, matchMode, page: previousPage, pageSize })}
+              href={searchHref({ mode: activeMode, query, book, chapter, matchMode, page: previousPage, pageSize })}
             >
               Previous
             </Link>
@@ -236,7 +304,7 @@ export function SearchPanel({
               className={`rounded-md border border-stone-300 px-3 py-2 ${
                 page >= pageCount ? "pointer-events-none opacity-50" : "hover:border-slate-500"
               }`}
-              href={searchHref({ mode, query, book, chapter, matchMode, page: nextPage, pageSize })}
+              href={searchHref({ mode: activeMode, query, book, chapter, matchMode, page: nextPage, pageSize })}
             >
               Next
             </Link>
@@ -249,24 +317,66 @@ export function SearchPanel({
         <h2 className="font-semibold text-slate-950">Saved searches</h2>
         <div className="mt-3 space-y-2">
           {saved.map((item) => (
-            <Link
-              key={item.id}
-              href={searchHref({
-                mode: item.mode,
-                query: item.query,
-                book: item.book ?? "",
-                chapter: item.chapter ? String(item.chapter) : "",
-                matchMode: item.matchMode ?? "exact",
-                page: 1,
-                pageSize
-              })}
-              className="block rounded-md border border-stone-200 p-3 text-sm hover:border-slate-400"
-            >
-              <span className="font-medium text-slate-950">{item.label}</span>
-              <span className="mt-1 block text-xs text-slate-500">
-                {item.mode} {item.book ? `in ${item.book}` : "in all books"}
-              </span>
-            </Link>
+            <div key={item.id} className="rounded-md border border-stone-200 p-3 text-sm">
+              {editingId === item.id ? (
+                <input
+                  autoFocus
+                  defaultValue={item.label}
+                  onBlur={(event) => renameSavedSearch(item.id, event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      renameSavedSearch(item.id, event.currentTarget.value);
+                    } else if (event.key === "Escape") {
+                      setEditingId(null);
+                    }
+                  }}
+                  disabled={pending[item.id]}
+                  className="w-full rounded-md border border-stone-300 px-2 py-1 text-sm outline-none focus:border-slate-600 disabled:opacity-50"
+                />
+              ) : (
+                <Link
+                  href={searchHref({
+                    mode: item.mode,
+                    query: item.query,
+                    book: item.book ?? "",
+                    chapter: item.chapter ? String(item.chapter) : "",
+                    matchMode: item.matchMode ?? "exact",
+                    page: 1,
+                    pageSize
+                  })}
+                  className="block hover:underline"
+                >
+                  <span className="font-medium text-slate-950">{item.label}</span>
+                  <span className="mt-1 block text-xs text-slate-500">
+                    {item.mode} {item.book ? `in ${item.book}` : "in all books"}
+                  </span>
+                </Link>
+              )}
+              <div className="mt-2 flex items-center gap-3 text-xs text-slate-500">
+                <button
+                  type="button"
+                  onClick={() => setEditingId(editingId === item.id ? null : item.id)}
+                  disabled={pending[item.id]}
+                  className="inline-flex items-center gap-1 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Pencil size={12} aria-hidden />
+                  Rename
+                </button>
+                <button
+                  type="button"
+                  onClick={() => deleteSavedSearch(item.id)}
+                  disabled={pending[item.id]}
+                  className="inline-flex items-center gap-1 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Trash2 size={12} aria-hidden />
+                  Delete
+                </button>
+                {itemStatus[item.id] ? (
+                  <span className="ml-auto text-slate-500">{itemStatus[item.id]}</span>
+                ) : null}
+              </div>
+            </div>
           ))}
           {saved.length === 0 ? <p className="text-sm text-slate-600">No saved searches yet.</p> : null}
         </div>
@@ -295,13 +405,13 @@ function searchHref({
   const params = new URLSearchParams({
     mode,
     q: query,
-    matchMode,
     page: String(page),
     pageSize: String(pageSize)
   });
 
   if (book) params.set("book", book);
   if (chapter) params.set("chapter", chapter);
+  if (mode === "morphology") params.set("matchMode", matchMode);
 
   return `/search?${params.toString()}`;
 }

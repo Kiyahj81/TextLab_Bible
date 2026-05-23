@@ -52,4 +52,33 @@ describe("POST /api/saved-searches", () => {
     const args = prismaMock.savedSearch.create.mock.calls[0][0];
     expect(args.data.matchMode).toBe("prefix");
   });
+
+  it("auto-labels without book/chapter scope when book is omitted", async () => {
+    await POST(jsonRequest({ mode: "lemma", query: "λόγος" }));
+    const args = prismaMock.savedSearch.create.mock.calls[0][0];
+    expect(args.data.label).toBe("lemma: λόγος");
+  });
+
+  it("auto-labels with book scope when book is supplied", async () => {
+    await POST(jsonRequest({ mode: "lemma", query: "λόγος", book: "John" }));
+    const args = prismaMock.savedSearch.create.mock.calls[0][0];
+    expect(args.data.label).toBe("lemma: λόγος (John)");
+  });
+
+  it("auto-labels with book and chapter scope when both are supplied", async () => {
+    await POST(jsonRequest({ mode: "lemma", query: "λόγος", book: "John", chapter: 1 }));
+    const args = prismaMock.savedSearch.create.mock.calls[0][0];
+    expect(args.data.label).toBe("lemma: λόγος (John 1)");
+  });
+
+  it("honors a user-supplied label over the auto-generated one", async () => {
+    await POST(jsonRequest({
+      mode: "lemma",
+      query: "λόγος",
+      book: "John",
+      label: "My favorite verses"
+    }));
+    const args = prismaMock.savedSearch.create.mock.calls[0][0];
+    expect(args.data.label).toBe("My favorite verses");
+  });
 });

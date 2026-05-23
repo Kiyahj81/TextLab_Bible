@@ -1,42 +1,52 @@
 # TextLab Bible
 
-Milestone 2 implementation for the TextLab Bible MVP. This is a single full-stack Next.js app using Prisma and PostgreSQL with sample passages, import infrastructure, saved searches, and generated study-note history.
+Milestone 2.5 of the TextLab Bible MVP: a single full-stack Next.js app delivering a corpus-backed reader, search, and **retrieval-first AI Study Assistant** over SBLGNT (Greek NT) and WEB (English NT). Built with Next.js 15, React 19, TypeScript, Prisma 6, and PostgreSQL.
 
 ## Current Scope
 
-- Reader for seeded SBLGNT-style Greek and WEB English sample verses
-- Clickable Greek tokens with lemma and morphology popup
+- Reader for the full SBLGNT Greek and WEB English NT
+- Clickable Greek tokens with lemma and morphology popover
 - Keyword, lemma, and morphology search with pagination and saved searches
-- Basic notes and highlights with a local user id
-- Retrieval-first assistant route with citations, Markdown export, and saved generated study notes
-- Import tracking for open Bible text sources
+- Notes and highlights scoped to a local user id (no auth yet)
+- **AI Study Assistant** at `/assistant`:
+  - Retrieval-first dispatch over local corpus (important-words, lemma, morphology, passage, keyword fallback)
+  - Live OpenAI synthesis when `OPENAI_API_KEY` is set; deterministic local fallback otherwise
+  - Structured citations and `ToolTraceEntry[]` retrieval trace visible in the UI
+  - Q&A history persisted to `AiSession` / `AiMessage` with typed JSON `metadata`
+  - Markdown export of any generated answer
+- Import tracking for open Bible text sources via the `ImportRun` table
 
-Not included yet: NET import, auth, Hebrew Bible, LXX, cloud sync, or PDF/DOCX/PPTX export.
+Not included yet: NET import, auth / multi-user, Hebrew Bible, LXX, cloud sync, scholarly-model escalation (Step 3), or PDF/DOCX/PPTX export.
 
 ## Setup
 
-1. Install dependencies:
+1. **Install dependencies:**
 
 ```bash
 npm install
 ```
 
-2. Create an `.env` file:
+On Windows, if `npm install` fails with `UNABLE_TO_VERIFY_LEAF_SIGNATURE`, prefix with `NODE_OPTIONS=--use-system-ca` (Bash) or `$env:NODE_OPTIONS="--use-system-ca"; ...` (PowerShell).
+
+2. **Create an `.env` file:**
 
 ```bash
 cp .env.example .env
 ```
 
-3. Set `DATABASE_URL` to a running PostgreSQL database.
+- Set `DATABASE_URL` to a running PostgreSQL instance. The default in `.env.example` expects Postgres on `localhost:5433`.
+- Set `OPENAI_API_KEY` to enable live assistant mode. Without it, the assistant gracefully falls back to local-only retrieval. Next.js reads system environment variables with higher precedence than `.env`, so a user/system-level `OPENAI_API_KEY` is also picked up automatically.
 
-4. Create tables and seed sample data:
+3. **Apply migrations and seed the corpus:**
 
 ```bash
-npm run db:push
+npm run db:migrate
 npm run db:seed
 ```
 
-5. Start the app:
+(`npm run db:push` is also available for throwaway dev databases that skip migrations.)
+
+4. **Start the app:**
 
 ```bash
 npm run dev
@@ -44,9 +54,31 @@ npm run dev
 
 Open `http://localhost:3000/read`.
 
+## Testing
+
+```bash
+# 15 unit tests across 7 files (~3s)
+npm run test:unit
+
+# Playwright end-to-end suite — spins up its own dev server (~30s)
+npm run test:acceptance
+```
+
+Full verification gate sequence (mirrors what's run before each milestone close):
+
+```bash
+npm run lint
+npx tsc --noEmit
+npm run build
+npm run test:unit
+npm run test:acceptance
+```
+
+All five gates exit 0 on the current `main`.
+
 ## Open Text Imports
 
-Milestone 2 includes an import script for MorphGNT/SBLGNT-style Greek files and WEB USFM files. Imported runs are tracked in the `ImportRun` table.
+The project includes an import script for MorphGNT/SBLGNT-style Greek files and WEB USFM files. Imported runs are tracked in the `ImportRun` table.
 
 Import MorphGNT directly from GitHub raw files:
 
@@ -66,8 +98,16 @@ The MorphGNT repository documents its columns and license at `https://github.com
 
 1. Open `/read`.
 2. View John 1:1-5 in Greek and English.
-3. Click `logos` / `λόγος`.
-4. Use `Search lemma` to open lemma results.
+3. Click `logos` / `λόγος` to see the morphology popover (`N-NSM` for John 1:1).
+4. Use `Search lemma` to open lemma results at `/search?mode=lemma&q=λόγος&book=John` (40 hits).
 5. Save the search, then add a note or highlight from the reader.
 6. Open `/assistant` and ask: `Show me every use of λόγος in John 1 and summarize the pattern.`
-7. Review the retrieval trace, cited answer, Markdown export, and save the generated note.
+7. Review the **Retrieval trace** panel — entries are structured as `searchLemma({"lemma":"λόγος","book":"John"})`.
+8. Confirm the metadata bar shows `Live` (when `OPENAI_API_KEY` is set) or `Local fallback`.
+9. Click **Save generated note**, then **Export Markdown** to download the study note.
+
+## Project Documentation
+
+- `MILESTONE_2_PLAN.md`, `MILESTONE_2_5_PLAN.md` — historical milestone planning
+- `docs/PROJECT_STATE.md` — current state snapshot and logical next steps
+- `docs/superpowers/plans/` — execution plans for prior code review remediations

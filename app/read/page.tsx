@@ -17,6 +17,7 @@ export default async function ReadPage({ searchParams }: { searchParams: SearchP
   const params = await searchParams;
   const book = getParam(params.book) ?? "John";
   const chapter = parsePositiveInt(getParam(params.chapter)) ?? 1;
+  const targetVerse = parsePositiveInt(getParam(params.verse)) ?? null;
   const [books, passages, verses, neighbors] = await Promise.all([
     getAvailableReaderBooks(),
     getAvailablePassages(),
@@ -38,7 +39,7 @@ export default async function ReadPage({ searchParams }: { searchParams: SearchP
 
       <ChapterNav prev={neighbors.prev} next={neighbors.next} />
 
-      <BibleReader verses={verses} />
+      <BibleReader verses={verses} targetVerse={targetVerse} />
     </div>
   );
 }

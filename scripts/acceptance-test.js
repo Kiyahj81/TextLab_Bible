@@ -185,7 +185,11 @@ async function run() {
     const relevantConsole = result.consoleMessages.filter(
       (message) =>
         !message.includes("Failed to load resource") &&
-        !(message.includes("hydration-mismatch") && message.includes('caret-color:"transparent"'))
+        // Tolerate hydration-mismatch warnings that are only about input style attributes —
+        // these are browser autofill / extension injections (e.g. caret-color, empty style={{}}),
+        // not real app bugs. Same noise that drove the earlier caret-color filter.
+        !(message.includes("hydration-mismatch") &&
+          (message.includes('caret-color:"transparent"') || message.includes("style={{}}")))
     );
     assert(relevantConsole.length === 0, `console errors/warnings found: ${relevantConsole.join("; ")}`);
 

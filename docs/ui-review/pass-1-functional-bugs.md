@@ -9,10 +9,10 @@ Method: source review of every in-scope component + live behavioral probes again
 
 - Critical: 4 (4 fixed ✅)
 - Moderate: 6 (5 fixed ✅)
-- Minor: 5 (3 fixed ✅)
-- **Total: 15 (13 fixed: 5 in PR1, 1 in PR2, 6 in PR3, 1 in PR4)**
+- Minor: 5 (4 fixed ✅)
+- **Total: 15 (14 fixed: 5 in PR1, 1 in PR2, 6 in PR3, 1 in PR4, 1 in PR5)**
 
-Remaining: F-1.9 (token popover state loss when switching tokens — noted as moderate, not yet scheduled), F-1.14 (notes filter URL sync — PR5).
+Remaining: F-1.9 (token popover state loss when switching tokens — noted as moderate, not yet scheduled).
 
 ---
 
@@ -135,7 +135,7 @@ Remaining: F-1.9 (token popover state loss when switching tokens — noted as mo
 - **Problem:** After submit, `prompt` keeps the submitted text. To ask a new question the user has to manually clear the textarea. Most chat-style UIs clear the input on submit and let history scroll.
 - **Suggested fix:** Either `setPrompt("")` after successful submit, or add a small "Clear" button next to "Ask assistant".
 
-### F-1.14 — Notes filter inputs do not sync to URL; refresh loses filter state
+### F-1.14 — Notes filter inputs do not sync to URL; refresh loses filter state ✅ Fixed in PR5
 - **View:** Notes
 - **File:** `components/NotesPanel.tsx:18-78`
 - **Severity:** minor

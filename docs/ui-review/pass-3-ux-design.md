@@ -9,8 +9,8 @@ Method: source review of every in-scope component + live HTML inspection at `htt
 
 - Critical: 2 (1 fixed ✅)
 - Moderate: 15 (3 fixed ✅)
-- Minor: 11 (1 fixed ✅)
-- **Total: 28 (5 fixed: 2 in PR2, 3 in PR4)**
+- Minor: 11 (3 fixed ✅)
+- **Total: 28 (7 fixed: 2 in PR2, 3 in PR4, 2 in PR5)**
 
 Note: F-3.1 through F-3.16 are UX findings (interaction, hierarchy, primary-use-case friction). F-3.17 through F-3.28 are **design-identity findings** added via a second pass through the `frontend-design` skill lens — covering visual identity, typography, color system, motion, and distinctive-pattern gaps that the first pass de-prioritized.
 
@@ -110,14 +110,14 @@ Note: F-3.1 through F-3.16 are UX findings (interaction, hierarchy, primary-use-
 - **Problem:** Labels default to `${mode}: ${query}`. Two saves of `λόγος` in lemma mode (one filtered to John, one to all books) both display the same label. The secondary line shows `mode + book scope` but the *primary* label is the same — users can't tell them apart without clicking.
 - **Suggested fix:** Either include book/chapter in the auto-label, or expose an inline rename. Even better: at save time, prompt for an optional name.
 
-### F-3.13 — Notes panel cannot be sorted; can't see most-recently-edited first vs by reference
+### F-3.13 — Notes panel cannot be sorted; can't see most-recently-edited first vs by reference ✅ Fixed in PR5
 - **View:** Notes
 - **File:** `components/NotesPanel.tsx`, `app/notes/page.tsx:15`
 - **Severity:** minor
 - **Problem:** Server orders by `updatedAt: "desc"` and the panel renders that order. There is no sort toggle for "by reference (canonical)" or "by title" or "by tag". For long lists of notes attached to a specific book, canonical sorting is the natural reading order.
 - **Suggested fix:** Add a small sort dropdown ("Most recent / Canonical / Title"). Easy server-side change.
 
-### F-3.14 — Note links from /notes lose verse anchor — Reader doesn't scroll to the note's verse
+### F-3.14 — Note links from /notes lose verse anchor — Reader doesn't scroll to the note's verse ✅ Fixed in PR5
 - **View:** Notes → Reader navigation
 - **File:** `components/NotesPanel.tsx:84-89`, `app/read/page.tsx:9-17`
 - **Severity:** minor

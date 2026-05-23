@@ -3,7 +3,7 @@
 import { Highlighter, NotebookPen } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { SubmitEvent } from "react";
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { MorphologyPopover, ReaderToken } from "@/components/MorphologyPopover";
 
 type ReaderVerse = {
@@ -20,13 +20,25 @@ type ReaderVerse = {
   highlighted: boolean;
 };
 
-export function BibleReader({ verses }: { verses: ReaderVerse[] }) {
+export function BibleReader({
+  verses,
+  targetVerse
+}: {
+  verses: ReaderVerse[];
+  targetVerse?: number | null;
+}) {
   const router = useRouter();
   const [selectedTokenId, setSelectedTokenId] = useState<string | null>(null);
   const [noteBodies, setNoteBodies] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<Record<string, string>>({});
   const [savingNote, setSavingNote] = useState<Record<string, boolean>>({});
   const [highlighting, setHighlighting] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (!targetVerse) return;
+    const node = document.getElementById(`verse-${targetVerse}`);
+    if (node) node.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [targetVerse]);
 
   function setVerseStatus(verseId: string, message: string) {
     setStatus((current) => ({ ...current, [verseId]: message }));
@@ -101,9 +113,10 @@ export function BibleReader({ verses }: { verses: ReaderVerse[] }) {
       {verses.map((verse) => (
         <article
           key={verse.id}
-          className={`rounded-md border bg-white p-4 shadow-sm ${
+          id={`verse-${verse.verse}`}
+          className={`rounded-md border bg-white p-4 shadow-sm scroll-mt-24 ${
             verse.highlighted ? "border-yellow-300" : "border-stone-300"
-          }`}
+          } ${targetVerse === verse.verse ? "ring-2 ring-amber-300" : ""}`}
         >
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">{verse.reference}</h2>

@@ -8,9 +8,9 @@ Method: source review of every in-scope component + live HTML inspection at `htt
 ## Summary
 
 - Critical: 1 (1 fixed ✅)
-- Moderate: 6 (0 fixed)
-- Minor: 5 (0 fixed)
-- **Total: 12 (1 fixed in PR2)**
+- Moderate: 6 (1 fixed ✅)
+- Minor: 5 (1 fixed ✅)
+- **Total: 12 (3 fixed: 1 in PR2, 2 in PR5)**
 
 ---
 
@@ -55,14 +55,14 @@ Method: source review of every in-scope component + live HTML inspection at `htt
 - **Problem:** Tokens are `<button className="mx-0.5 rounded px-1 py-0.5">` — vertical padding totals ~4 px on top of 1.45 rem (~23 px) text. Short particles (ὁ, ἡ, ὃς) tap-target out at ~12-16 px wide. WCAG 2.1 minimum is 24×24 px (AAA: 44×44). Mobile users — particularly with thumbs — will mis-tap onto adjacent tokens.
 - **Suggested fix:** Increase to `px-1.5 py-1` for >40 px height, and consider `min-w-[24px]` for narrow tokens. Adjust line height (`leading-10` is fine, gives 40 px line box).
 
-### F-2.6 — `app/notes` has no pagination or list virtualization; all notes render at once
+### F-2.6 — `app/notes` has no pagination or list virtualization; all notes render at once ✅ Fixed in PR5
 - **View:** Notes
 - **File:** `app/notes/page.tsx:9-16`, `components/NotesPanel.tsx:79-141`
 - **Severity:** moderate
 - **Problem:** `prisma.note.findMany` with no `take`. NotesPanel renders the entire list as full editable articles (each with title input, body textarea ~100 px tall, save/delete buttons). At ~30 notes the page is already a long scroll; at 100+ notes the page will be a layout-and-typing latency problem.
 - **Suggested fix:** Server-side pagination (default 25 per page, `take`/`skip` from URL). Optionally collapse each note by default (header only) with click-to-expand.
 
-### F-2.7 — Notes textareas have no max-height; large note bodies push siblings off-screen
+### F-2.7 — Notes textareas have no max-height; large note bodies push siblings off-screen ✅ Fixed in PR5
 - **View:** Notes
 - **File:** `components/NotesPanel.tsx:130-138`
 - **Severity:** moderate

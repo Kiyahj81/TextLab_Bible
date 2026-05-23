@@ -1,6 +1,7 @@
 "use client";
 
 import { Highlighter, NotebookPen } from "lucide-react";
+import { useRouter } from "next/navigation";
 import type { SubmitEvent } from "react";
 import { Fragment, useState } from "react";
 import { MorphologyPopover, ReaderToken } from "@/components/MorphologyPopover";
@@ -20,6 +21,7 @@ type ReaderVerse = {
 };
 
 export function BibleReader({ verses }: { verses: ReaderVerse[] }) {
+  const router = useRouter();
   const [selectedTokenId, setSelectedTokenId] = useState<string | null>(null);
   const [noteBodies, setNoteBodies] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<Record<string, string>>({});
@@ -61,6 +63,8 @@ export function BibleReader({ verses }: { verses: ReaderVerse[] }) {
       ...current,
       [verse.id]: response.ok ? "Highlight saved." : "Could not save highlight."
     }));
+
+    if (response.ok) router.refresh();
   }
 
   if (verses.length === 0) {

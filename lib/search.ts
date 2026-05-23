@@ -67,6 +67,34 @@ export async function getAvailableReaderBooks() {
   }));
 }
 
+export type PassageNeighbor = { book: string; chapter: number };
+
+export async function getPassageNeighbors(
+  bookInput: string,
+  chapter: number
+): Promise<{ prev: PassageNeighbor | null; next: PassageNeighbor | null }> {
+  const book = normalizeBook(bookInput) ?? bookInput;
+
+  const rows = await prisma.verse.findMany({
+    where: { corpus: { abbreviation: "SBLGNT" }, book: { osisId: book } },
+    select: { chapter: true },
+    distinct: ["chapter"],
+    orderBy: { chapter: "asc" }
+  });
+
+  const chapters = rows.map((row) => row.chapter);
+  if (chapters.length === 0) return { prev: null, next: null };
+
+  const index = chapters.indexOf(chapter);
+  const prevChapter = index > 0 ? chapters[index - 1] : null;
+  const nextChapter = index >= 0 && index < chapters.length - 1 ? chapters[index + 1] : null;
+
+  return {
+    prev: prevChapter !== null ? { book, chapter: prevChapter } : null,
+    next: nextChapter !== null ? { book, chapter: nextChapter } : null
+  };
+}
+
 export async function getReaderPassage(bookInput = "John", chapter = 1) {
   const book = normalizeBook(bookInput) ?? "John";
 

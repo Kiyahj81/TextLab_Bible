@@ -7,16 +7,16 @@ Method: source review of every in-scope component + live HTML inspection at `htt
 
 ## Summary
 
-- Critical: 1
-- Moderate: 6
-- Minor: 5
-- **Total: 12**
+- Critical: 1 (1 fixed ✅)
+- Moderate: 6 (0 fixed)
+- Minor: 5 (0 fixed)
+- **Total: 12 (1 fixed in PR2)**
 
 ---
 
 ## Findings
 
-### F-2.1 — `MorphologyPopover` is hard-pinned to `left-0`; overflows viewport for right-side tokens and on mobile
+### F-2.1 — `MorphologyPopover` is hard-pinned to `left-0`; overflows viewport for right-side tokens and on mobile ✅ Fixed in PR2
 - **View:** Reader, Search (popover is shared)
 - **File:** `components/MorphologyPopover.tsx:76`
 - **Severity:** critical

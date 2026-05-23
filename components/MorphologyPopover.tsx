@@ -2,8 +2,12 @@
 
 import Link from "next/link";
 import { Highlighter, NotebookPen, Search } from "lucide-react";
+import { useRouter } from "next/navigation";
 import type { SubmitEvent } from "react";
-import { useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+
+const POPOVER_MARGIN = 8;
+const useIsomorphicLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 export type ReaderToken = {
   id: string;
@@ -30,9 +34,20 @@ export function MorphologyPopover({
   reference: string;
   onClose: () => void;
 }) {
+  const router = useRouter();
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const [body, setBody] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [horizontalAlign, setHorizontalAlign] = useState<"left" | "right">("left");
+
+  useIsomorphicLayoutEffect(() => {
+    const node = containerRef.current;
+    if (!node) return;
+    const rect = node.getBoundingClientRect();
+    const overflowsRight = rect.right > window.innerWidth - POPOVER_MARGIN;
+    setHorizontalAlign(overflowsRight ? "right" : "left");
+  }, [token.id]);
 
   async function addNote(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -68,12 +83,18 @@ export function MorphologyPopover({
     });
     setSaving(false);
     setStatus(response.ok ? "Highlight saved." : "Could not save highlight.");
+    if (response.ok) router.refresh();
   }
 
   const lemmaSearchHref = `/search?mode=lemma&q=${encodeURIComponent(token.lemma ?? token.normalized ?? token.surface)}&book=${token.book}`;
 
   return (
-    <div className="absolute left-0 top-full z-20 mt-2 w-80 rounded-md border border-stone-300 bg-white p-4 text-left shadow-xl">
+    <div
+      ref={containerRef}
+      className={`absolute top-full z-20 mt-2 w-80 max-w-[calc(100vw-1rem)] rounded-md border border-stone-300 bg-white p-4 text-left shadow-xl ${
+        horizontalAlign === "right" ? "right-0" : "left-0"
+      }`}
+    >
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="greek-text text-2xl font-semibold">{token.surface}</div>

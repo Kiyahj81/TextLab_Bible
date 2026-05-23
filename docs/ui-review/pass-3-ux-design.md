@@ -7,10 +7,10 @@ Method: source review of every in-scope component + live HTML inspection at `htt
 
 ## Summary
 
-- Critical: 2
-- Moderate: 15
-- Minor: 11
-- **Total: 28**
+- Critical: 2 (1 fixed ✅)
+- Moderate: 15 (1 fixed ✅)
+- Minor: 11 (0 fixed)
+- **Total: 28 (2 fixed in PR2)**
 
 Note: F-3.1 through F-3.16 are UX findings (interaction, hierarchy, primary-use-case friction). F-3.17 through F-3.28 are **design-identity findings** added via a second pass through the `frontend-design` skill lens — covering visual identity, typography, color system, motion, and distinctive-pattern gaps that the first pass de-prioritized.
 
@@ -18,7 +18,7 @@ Note: F-3.1 through F-3.16 are UX findings (interaction, hierarchy, primary-use-
 
 ## Findings
 
-### F-3.1 — Reader has no Previous / Next chapter affordance; sequential reading is dropdown-only
+### F-3.1 — Reader has no Previous / Next chapter affordance; sequential reading is dropdown-only ✅ Fixed in PR2
 - **View:** Reader
 - **File:** `components/ReaderControls.tsx:27-46`, `app/read/page.tsx:19-33`
 - **Severity:** critical (against the *primary use case*: reading a book sequentially)
@@ -65,7 +65,7 @@ Note: F-3.1 through F-3.16 are UX findings (interaction, hierarchy, primary-use-
 - **Problem:** While waiting on `/api/assistant`, the only visible change is the button text "Retrieving..." and the disabled state. The main pane below is unchanged. With live OpenAI synthesis the round-trip is 5-10 s; users will retry or navigate away assuming the click didn't register.
 - **Suggested fix:** Add a `Loader2` (lucide) `animate-spin` icon next to "Retrieving...". In the answer card area, show a brief skeleton (3 grey bars) while loading. Optionally stream the answer (`ReadableStream` from OpenAI) so partial text shows immediately — but that's a bigger feature than this report scopes.
 
-### F-3.7 — Token highlight click doesn't visually confirm; user can't see what was highlighted
+### F-3.7 — Token highlight click doesn't visually confirm; user can't see what was highlighted ✅ Fixed in PR2
 - **View:** Reader
 - **File:** `components/MorphologyPopover.tsx:62-71`, `components/BibleReader.tsx:106-108`
 - **Severity:** moderate (overlaps with F-1.8; rephrased for UX framing)

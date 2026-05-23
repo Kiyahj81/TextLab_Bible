@@ -8,9 +8,9 @@ Method: source review of every in-scope component + live behavioral probes again
 ## Summary
 
 - Critical: 4 (4 fixed ✅)
-- Moderate: 6 (1 fixed ✅)
+- Moderate: 6 (2 fixed ✅)
 - Minor: 5 (0 fixed)
-- **Total: 15 (5 fixed in PR1)**
+- **Total: 15 (6 fixed: 5 in PR1, 1 in PR2)**
 
 ---
 
@@ -82,7 +82,7 @@ Method: source review of every in-scope component + live behavioral probes again
 - **Problem:** Async handlers run without disabling their trigger button. A rapid double-click duplicates highlights/notes (two POSTs land before the state catches up). `MorphologyPopover` correctly uses `disabled={saving}` (lines 113, 134) — the other components should match.
 - **Suggested fix:** Mirror `MorphologyPopover`'s `saving` flag in each component; disable the button while `saving === true`.
 
-### F-1.8 — Reader token highlight does not update visually until full page reload
+### F-1.8 — Reader token highlight does not update visually until full page reload ✅ Fixed in PR2
 - **View:** Reader
 - **File:** `components/BibleReader.tsx:106-108`, `components/MorphologyPopover.tsx:62-71`
 - **Severity:** moderate

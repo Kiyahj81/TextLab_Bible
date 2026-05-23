@@ -1,7 +1,13 @@
 import { BibleReader } from "@/components/BibleReader";
+import { ChapterNav } from "@/components/ChapterNav";
 import { ReaderControls } from "@/components/ReaderControls";
 import { parsePositiveInt } from "@/lib/params";
-import { getAvailablePassages, getAvailableReaderBooks, getReaderPassage } from "@/lib/search";
+import {
+  getAvailablePassages,
+  getAvailableReaderBooks,
+  getPassageNeighbors,
+  getReaderPassage
+} from "@/lib/search";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -11,10 +17,11 @@ export default async function ReadPage({ searchParams }: { searchParams: SearchP
   const params = await searchParams;
   const book = getParam(params.book) ?? "John";
   const chapter = parsePositiveInt(getParam(params.chapter)) ?? 1;
-  const [books, passages, verses] = await Promise.all([
+  const [books, passages, verses, neighbors] = await Promise.all([
     getAvailableReaderBooks(),
     getAvailablePassages(),
-    getReaderPassage(book, chapter)
+    getReaderPassage(book, chapter),
+    getPassageNeighbors(book, chapter)
   ]);
 
   return (
@@ -28,6 +35,8 @@ export default async function ReadPage({ searchParams }: { searchParams: SearchP
         </div>
         <ReaderControls books={books} passages={passages} selectedBook={book} selectedChapter={chapter} />
       </section>
+
+      <ChapterNav prev={neighbors.prev} next={neighbors.next} />
 
       <BibleReader verses={verses} />
     </div>

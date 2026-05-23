@@ -162,10 +162,19 @@ export async function getReaderPassage(bookInput = "John", chapter = 1) {
       partOfSpeech: token.partOfSpeech,
       gloss: token.gloss,
       noteCount: token.notes.length,
-      highlighted: token.highlights.length > 0
+      highlightColor: latestHighlightColor(token.highlights)
     })),
-    highlighted: verse.highlights.length > 0
+    highlightColor: latestHighlightColor(verse.highlights)
   }));
+}
+
+function latestHighlightColor(
+  highlights: { color: string; createdAt: Date }[]
+): string | null {
+  if (highlights.length === 0) return null;
+  return highlights.reduce((latest, current) =>
+    current.createdAt > latest.createdAt ? current : latest
+  ).color;
 }
 
 export async function getPassage(input: PassageInput) {

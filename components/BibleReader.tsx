@@ -1,9 +1,10 @@
 "use client";
 
-import { Highlighter, NotebookPen } from "lucide-react";
+import { NotebookPen } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { SubmitEvent } from "react";
 import { Fragment, useEffect, useState } from "react";
+import { HighlightMenu } from "@/components/HighlightMenu";
 import { MorphologyPopover, ReaderToken } from "@/components/MorphologyPopover";
 import { ReaderModeToggle, type ReaderMode } from "@/components/ReaderModeToggle";
 import { useAutoDismissMap } from "@/lib/useAutoDismissStatus";
@@ -26,7 +27,7 @@ type ReaderVerse = {
   englishText: string;
   englishCorpus: string;
   tokens: ReaderToken[];
-  highlighted: boolean;
+  highlightColor: string | null;
 };
 
 export function BibleReader({
@@ -105,7 +106,7 @@ export function BibleReader({
     }
   }
 
-  async function highlightVerse(verse: ReaderVerse) {
+  async function highlightVerse(verse: ReaderVerse, color: string) {
     if (highlighting[verse.id]) return;
 
     setHighlighting((current) => ({ ...current, [verse.id]: true }));
@@ -113,7 +114,7 @@ export function BibleReader({
       const response = await fetch("/api/highlights", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ verseId: verse.id, color: "#fde68a" })
+        body: JSON.stringify({ verseId: verse.id, color })
       });
 
       if (response.ok) {
@@ -151,21 +152,18 @@ export function BibleReader({
         <article
           key={verse.id}
           id={`verse-${verse.verse}`}
+          style={verse.highlightColor ? { borderColor: verse.highlightColor } : undefined}
           className={`rounded-md border bg-white p-4 shadow-sm scroll-mt-24 ${
-            verse.highlighted ? "border-yellow-300" : "border-stone-300"
+            verse.highlightColor ? "" : "border-stone-300"
           } ${targetVerse === verse.verse ? "ring-2 ring-amber-300" : ""}`}
         >
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">{verse.reference}</h2>
-            <button
-              type="button"
-              onClick={() => highlightVerse(verse)}
+            <HighlightMenu
+              label="Highlight verse"
+              onPick={(color) => highlightVerse(verse, color)}
               disabled={highlighting[verse.id]}
-              className="inline-flex items-center gap-2 rounded-md border border-stone-300 px-3 py-2 text-sm font-medium text-slate-700 hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Highlighter size={16} />
-              Highlight verse
-            </button>
+            />
           </div>
 
           <div className={`grid gap-4 ${showBothColumns ? "md:grid-cols-2" : ""}`}>
@@ -180,9 +178,8 @@ export function BibleReader({
                             <button
                               type="button"
                               onClick={() => setSelectedTokenId(selectedTokenId === token.id ? null : token.id)}
-                              className={`mx-0.5 rounded px-1.5 py-1 hover:bg-blue-100 ${
-                                token.highlighted ? "bg-yellow-200" : ""
-                              }`}
+                              style={token.highlightColor ? { backgroundColor: token.highlightColor } : undefined}
+                              className="mx-0.5 rounded px-1.5 py-1 hover:bg-blue-100"
                             >
                               {token.surface}
                             </button>

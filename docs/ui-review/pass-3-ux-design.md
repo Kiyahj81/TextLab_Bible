@@ -8,9 +8,9 @@ Method: source review of every in-scope component + live HTML inspection at `htt
 ## Summary
 
 - Critical: 2 (1 fixed ✅)
-- Moderate: 15 (6 fixed ✅)
-- Minor: 11 (7 fixed ✅)
-- **Total: 28 (14 fixed: 2 in PR2, 3 in PR4, 2 in PR5, 4 in PR6, 1 in PR7, 2 in PR8)**
+- Moderate: 15 (7 fixed ✅)
+- Minor: 11 (8 fixed ✅)
+- **Total: 28 (16 fixed: 2 in PR2, 3 in PR4, 2 in PR5, 4 in PR6, 1 in PR7, 2 in PR8, 2 in PR9)**
 
 Note: F-3.1 through F-3.16 are UX findings (interaction, hierarchy, primary-use-case friction). F-3.17 through F-3.28 are **design-identity findings** added via a second pass through the `frontend-design` skill lens — covering visual identity, typography, color system, motion, and distinctive-pattern gaps that the first pass de-prioritized.
 
@@ -32,7 +32,7 @@ Note: F-3.1 through F-3.16 are UX findings (interaction, hierarchy, primary-use-
 - **Problem:** Tokens render as `<button>` (good for a11y) but have no static visual affordance — no underline, no color, no caret, no icon. The only cue is `hover:bg-blue-100` which (a) requires hover, so it's invisible to touch users, and (b) is a faint blue tint discovered only by scrubbing. New users may not realize the entire reading surface is clickable.
 - **Suggested fix:** Apply a quiet but persistent affordance — e.g. `border-b border-dotted border-slate-300` on tokens, deepening to `border-slate-700` on hover. Or set token text to `text-slate-900` while surrounding non-token Greek (rare here) stays `text-slate-600`. Keep it subtle so the page doesn't look like every word is underlined.
 
-### F-3.3 — Highlight is a single yellow color with no categorization
+### F-3.3 — Highlight is a single yellow color with no categorization ✅ Fixed in PR9
 - **View:** Reader, MorphologyPopover
 - **File:** `components/BibleReader.tsx:57` (`color: "#fde68a"`), `components/MorphologyPopover.tsx:67` (same)
 - **Severity:** moderate
@@ -210,7 +210,7 @@ The following findings come from applying the `frontend-design` skill's audit le
 - **Problem:** "John 1:1" should be a typographic event in a Bible app — it's the indexing scheme for the entire corpus. Today it shares its styling with the SBLGNT/WEB corpus labels and the form-field labels. It blends in.
 - **Suggested fix:** Set the reference in the display serif at a larger size with letterforms that catch the eye (e.g., small caps for the book name, oldstyle figures for the numbers: "John 1:1" with `font-variant-numeric: oldstyle-nums`). Corpus labels (SBLGNT, WEB) can stay as the muted section labels they currently are.
 
-### F-3.25 — Token highlight is the only personality color used; otherwise the palette is stone/slate
+### F-3.25 — Token highlight is the only personality color used; otherwise the palette is stone/slate ✅ Fixed in PR9 (5-color palette)
 - **View:** Reader, Notes
 - **File:** `components/BibleReader.tsx:57, 80, 107`, `components/MorphologyPopover.tsx:67`
 - **Severity:** minor (overlaps F-3.3 thematically)

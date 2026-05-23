@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { Highlighter, NotebookPen, Search } from "lucide-react";
+import { NotebookPen, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { SubmitEvent } from "react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { HighlightMenu } from "@/components/HighlightMenu";
 import { useAutoDismissString } from "@/lib/useAutoDismissStatus";
 
 const POPOVER_MARGIN = 8;
@@ -23,7 +24,7 @@ export type ReaderToken = {
   partOfSpeech: string | null;
   gloss: string | null;
   noteCount: number;
-  highlighted: boolean;
+  highlightColor: string | null;
 };
 
 export function MorphologyPopover({
@@ -112,7 +113,7 @@ export function MorphologyPopover({
     }
   }
 
-  async function highlightToken() {
+  async function highlightToken(color: string) {
     if (saving) return;
 
     setSaving(true);
@@ -120,7 +121,7 @@ export function MorphologyPopover({
       const response = await fetch("/api/highlights", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tokenId: token.id, color: "#fde68a" })
+        body: JSON.stringify({ tokenId: token.id, color })
       });
 
       if (response.ok) {
@@ -178,15 +179,7 @@ export function MorphologyPopover({
           <Search size={16} />
           Search lemma
         </Link>
-        <button
-          type="button"
-          onClick={highlightToken}
-          disabled={saving}
-          className="inline-flex items-center gap-2 rounded-md border border-stone-300 px-3 py-2 text-sm font-medium text-slate-700 hover:border-slate-500"
-        >
-          <Highlighter size={16} />
-          Highlight
-        </button>
+        <HighlightMenu label="Highlight" onPick={highlightToken} disabled={saving} />
       </div>
 
       <form onSubmit={addNote} className="mt-4 space-y-2">

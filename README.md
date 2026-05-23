@@ -108,6 +108,6 @@ The MorphGNT repository documents its columns and license at `https://github.com
 
 ## Project Documentation
 
-- `MILESTONE_2_PLAN.md`, `MILESTONE_2_5_PLAN.md` — historical milestone planning
+- `docs/archived/MILESTONE_2_PLAN.md`, `docs/archived/MILESTONE_2_5_PLAN.md` — historical milestone planning
 - `docs/PROJECT_STATE.md` — current state snapshot and logical next steps
 - `docs/superpowers/plans/` — execution plans for prior code review remediations

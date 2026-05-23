@@ -181,20 +181,20 @@ export async function searchKeyword(input: {
   }
 
   const where: Prisma.VerseWhereInput = {
-      text: { contains: query, mode: "insensitive" },
-      corpus: input.corpus ? { abbreviation: input.corpus } : { abbreviation: { not: "NET" } },
-      book: book ? { osisId: book } : undefined,
-      chapter: input.chapter
-    };
+    text: { contains: query, mode: "insensitive" },
+    corpus: input.corpus ? { abbreviation: input.corpus } : { abbreviation: { not: "NET" } },
+    book: book ? { osisId: book } : undefined,
+    chapter: input.chapter
+  };
 
   const [total, verses] = await Promise.all([
     prisma.verse.count({ where }),
     prisma.verse.findMany({
-    where,
-    include: { corpus: true, book: true },
-    orderBy: [{ book: { order: "asc" } }, { chapter: "asc" }, { verse: "asc" }],
-    skip: (pagination.page - 1) * pagination.pageSize,
-    take: pagination.pageSize
+      where,
+      include: { corpus: true, book: true },
+      orderBy: [{ book: { order: "asc" } }, { chapter: "asc" }, { verse: "asc" }],
+      skip: (pagination.page - 1) * pagination.pageSize,
+      take: pagination.pageSize
     })
   ]);
 
@@ -224,20 +224,20 @@ export async function searchLemma(input: {
   }
 
   const where: Prisma.TokenWhereInput = {
-      lemma,
-      corpus: { abbreviation: input.corpus ?? "SBLGNT" },
-      book: book ? { osisId: book } : undefined,
-      chapter: input.chapter
-    };
+    lemma,
+    corpus: { abbreviation: input.corpus ?? "SBLGNT" },
+    book: book ? { osisId: book } : undefined,
+    chapter: input.chapter
+  };
 
   const [total, tokens] = await Promise.all([
     prisma.token.count({ where }),
     prisma.token.findMany({
-    where,
-    include: { book: true, corpus: true },
-    orderBy: [{ book: { order: "asc" } }, { chapter: "asc" }, { verse: "asc" }, { wordIndex: "asc" }],
-    skip: (pagination.page - 1) * pagination.pageSize,
-    take: pagination.pageSize
+      where,
+      include: { book: true, corpus: true },
+      orderBy: [{ book: { order: "asc" } }, { chapter: "asc" }, { verse: "asc" }, { wordIndex: "asc" }],
+      skip: (pagination.page - 1) * pagination.pageSize,
+      take: pagination.pageSize
     })
   ]);
 
@@ -267,23 +267,23 @@ export async function searchMorphology(input: {
   }
 
   const where: Prisma.TokenWhereInput = {
-      morphCode:
-        input.matchMode === "prefix"
-          ? { startsWith: morphCode, mode: "insensitive" as const }
-          : { equals: morphCode, mode: "insensitive" as const },
-      corpus: { abbreviation: input.corpus ?? "SBLGNT" },
-      book: book ? { osisId: book } : undefined,
-      chapter: input.chapter
-    };
+    morphCode:
+      input.matchMode === "prefix"
+        ? { startsWith: morphCode, mode: "insensitive" as const }
+        : { equals: morphCode, mode: "insensitive" as const },
+    corpus: { abbreviation: input.corpus ?? "SBLGNT" },
+    book: book ? { osisId: book } : undefined,
+    chapter: input.chapter
+  };
 
   const [total, tokens] = await Promise.all([
     prisma.token.count({ where }),
     prisma.token.findMany({
-    where,
-    include: { book: true, corpus: true },
-    orderBy: [{ book: { order: "asc" } }, { chapter: "asc" }, { verse: "asc" }, { wordIndex: "asc" }],
-    skip: (pagination.page - 1) * pagination.pageSize,
-    take: pagination.pageSize
+      where,
+      include: { book: true, corpus: true },
+      orderBy: [{ book: { order: "asc" } }, { chapter: "asc" }, { verse: "asc" }, { wordIndex: "asc" }],
+      skip: (pagination.page - 1) * pagination.pageSize,
+      take: pagination.pageSize
     })
   ]);
 

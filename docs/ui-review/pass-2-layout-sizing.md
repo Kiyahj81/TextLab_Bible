@@ -8,9 +8,9 @@ Method: source review of every in-scope component + live HTML inspection at `htt
 ## Summary
 
 - Critical: 1 (1 fixed ✅)
-- Moderate: 6 (1 fixed ✅)
-- Minor: 5 (1 fixed ✅)
-- **Total: 12 (3 fixed: 1 in PR2, 2 in PR5)**
+- Moderate: 6 (3 fixed ✅)
+- Minor: 5 (4 fixed ✅)
+- **Total: 12 (8 fixed: 1 in PR2, 2 in PR5, 5 in PR6)**
 
 ---
 
@@ -34,7 +34,7 @@ Method: source review of every in-scope component + live HTML inspection at `htt
 - **Repro / evidence:** Resize to 768 px in DevTools — labels start truncating; at 700 px the grid breaks down.
 - **Suggested fix:** Two-tier disclosure. Top tier always visible: Mode, Query, Search button. Secondary controls (Book, Chapter, Page size, Morph match) tucked under a "Filters" toggle / expandable panel. Reduces visual noise and matches the dominant search action.
 
-### F-2.3 — Assistant retrieval-trace code blocks overflow the 360 px sidebar
+### F-2.3 — Assistant retrieval-trace code blocks overflow the 360 px sidebar ✅ Fixed in PR6
 - **View:** Assistant
 - **File:** `components/AiAssistant.tsx:178-181`
 - **Severity:** moderate
@@ -69,28 +69,28 @@ Method: source review of every in-scope component + live HTML inspection at `htt
 - **Problem:** `min-h-28` (~112 px) but no max-height. A pasted study note of 500 words renders as a single uncapped textarea that occupies most of the viewport. The text area is *also* scrollable internally — so the visual cue ("this is one note") gets lost.
 - **Suggested fix:** `min-h-28 max-h-72 overflow-auto` on the textarea. If we want autosize-on-content, add a small autosize utility (~10 lines) but cap at 50% viewport height.
 
-### F-2.8 — Generated-notes history uses `line-clamp-3` with no expand affordance
+### F-2.8 — Generated-notes history uses `line-clamp-3` with no expand affordance ✅ Fixed in PR6
 - **View:** Assistant
 - **File:** `components/AiAssistant.tsx:213-220`
 - **Severity:** minor
 - **Problem:** Each history card clamps the answer at 3 lines. There is no expand/collapse, no link to view the full note, and clicking the card does nothing — so the rest of the answer is effectively unreadable from this view. Users must re-ask the question to see the full output again.
 - **Suggested fix:** Wrap each card in a button or expandable `<details>` that reveals the full `note.answer`. Alternatively, clicking a history card should rehydrate the main answer pane.
 
-### F-2.9 — Markdown export textarea uses `text-xs`; hard to scan
+### F-2.9 — Markdown export textarea uses `text-xs`; hard to scan ✅ Fixed in PR6
 - **View:** Assistant
 - **File:** `components/AiAssistant.tsx:226-233`
 - **Severity:** minor
 - **Problem:** Read-only `<textarea readOnly value={response.markdown} className="... text-xs ...">` is 12 px text. Below recommended body-text size; users squint to verify the export before copying.
 - **Suggested fix:** `text-sm` (14 px) and switch to monospace via Tailwind `font-mono` for markdown clarity.
 
-### F-2.10 — Assistant layout has no md breakpoint; sidebar only appears at lg+ (≥1024 px)
+### F-2.10 — Assistant layout has no md breakpoint; sidebar only appears at lg+ (≥1024 px) ✅ Fixed in PR6
 - **View:** Assistant
 - **File:** `components/AiAssistant.tsx:107`
 - **Severity:** minor
 - **Problem:** `grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]` — between md and lg (768-1023 px, common for tablet landscape), the trace/citations/notes/markdown columns all drop below the main pane, forcing significant scroll after every answer.
 - **Suggested fix:** Add `md:grid-cols-[minmax(0,1fr)_280px]` as an intermediate; the 280-px sidebar fits at md without crowding the answer.
 
-### F-2.11 — `<pre>` answer block uses `whitespace-pre-wrap` only; long unbroken tokens (URLs, lemma chains) can overflow
+### F-2.11 — `<pre>` answer block uses `whitespace-pre-wrap` only; long unbroken tokens (URLs, lemma chains) can overflow ✅ Fixed in PR6
 - **View:** Assistant
 - **File:** `components/AiAssistant.tsx:164`
 - **Severity:** minor

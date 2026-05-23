@@ -8,9 +8,9 @@ Method: source review of every in-scope component + live HTML inspection at `htt
 ## Summary
 
 - Critical: 2 (1 fixed ✅)
-- Moderate: 15 (3 fixed ✅)
-- Minor: 11 (3 fixed ✅)
-- **Total: 28 (7 fixed: 2 in PR2, 3 in PR4, 2 in PR5)**
+- Moderate: 15 (5 fixed ✅)
+- Minor: 11 (5 fixed ✅)
+- **Total: 28 (11 fixed: 2 in PR2, 3 in PR4, 2 in PR5, 4 in PR6)**
 
 Note: F-3.1 through F-3.16 are UX findings (interaction, hierarchy, primary-use-case friction). F-3.17 through F-3.28 are **design-identity findings** added via a second pass through the `frontend-design` skill lens — covering visual identity, typography, color system, motion, and distinctive-pattern gaps that the first pass de-prioritized.
 
@@ -58,7 +58,7 @@ Note: F-3.1 through F-3.16 are UX findings (interaction, hierarchy, primary-use-
   - UI: tiny `×` per card, an "Edit" pencil for rename, and a low-emphasis "Clear all" link below the list.
   - Optional: dedupe at save time (if an identical mode+query+book+chapter+matchMode already exists, update its `updatedAt` instead of inserting).
 
-### F-3.6 — Assistant has no loading skeleton / spinner; only button text changes for 5–10+ s
+### F-3.6 — Assistant has no loading skeleton / spinner; only button text changes for 5–10+ s ✅ Fixed in PR6
 - **View:** Assistant
 - **File:** `components/AiAssistant.tsx:117-123`
 - **Severity:** moderate
@@ -79,14 +79,14 @@ Note: F-3.1 through F-3.16 are UX findings (interaction, hierarchy, primary-use-
 - **Problem:** Success/error strings ("Note saved.", "Could not save.", "Search saved.") appear under their respective forms and remain until the next action that overwrites them. After several edits the UI is dotted with stale messages, none of which are current.
 - **Suggested fix:** Auto-clear success messages after ~3 s via `setTimeout` (clear on next status update). Keep error messages until user interacts with the offending control again. Or move all transient feedback to a single global toast surface (one component, one state slot).
 
-### F-3.9 — Sample prompt is hardcoded into the Assistant textarea on first load
+### F-3.9 — Sample prompt is hardcoded into the Assistant textarea on first load ✅ Fixed in PR6
 - **View:** Assistant
 - **File:** `components/AiAssistant.tsx:35-38`
 - **Severity:** moderate
 - **Problem:** `const samplePrompt = "Show me every use of logos in John 1 and summarize the pattern."` is set as the initial `prompt` value. If the user lands on `/assistant` and clicks "Ask assistant" without editing, they get the answer to *that* example rather than their own question. The example also obscures whether the textarea is empty (placeholder-like, but actually content).
 - **Suggested fix:** Move the sample to the `placeholder` attribute (so it shows greyed out until the user types) and start with `useState("")`. Optionally add a small "Try an example" link below the form that fills the textarea on click.
 
-### F-3.10 — Live / Local-fallback indicator is typographically the *smallest* element in the answer card
+### F-3.10 — Live / Local-fallback indicator is typographically the *smallest* element in the answer card ✅ Fixed in PR6
 - **View:** Assistant
 - **File:** `components/AiAssistant.tsx:132-134`
 - **Severity:** moderate
@@ -96,7 +96,7 @@ Note: F-3.1 through F-3.16 are UX findings (interaction, hierarchy, primary-use-
   - `Local fallback` → `bg-amber-50 text-amber-800`
   - Model role / id can stay subtle below.
 
-### F-3.11 — Routing-decision panel uses 11 px text on bg-stone-50; near-illegible at a glance
+### F-3.11 — Routing-decision panel uses 11 px text on bg-stone-50; near-illegible at a glance ✅ Fixed in PR6
 - **View:** Assistant
 - **File:** `components/AiAssistant.tsx:155-162`
 - **Severity:** minor

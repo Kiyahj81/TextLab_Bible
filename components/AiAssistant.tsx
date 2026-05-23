@@ -4,6 +4,7 @@ import { Download, Save, Send } from "lucide-react";
 import type { SubmitEvent } from "react";
 import { useState } from "react";
 import { formatToolTrace, type ToolTraceEntry } from "@/lib/ai/toolTrace";
+import type { AssistantMode, ModelRole, RecommendedUpgrade } from "@/lib/ai/modelRouter";
 
 type AssistantResponse = {
   answer: string;
@@ -15,16 +16,12 @@ type AssistantResponse = {
     toolName?: string;
   }>;
   toolTrace: ToolTraceEntry[];
-  mode: "live" | "fallback";
+  mode: AssistantMode;
   sessionId: string;
-  modelRole: "default" | "scholarly";
+  modelRole: ModelRole;
   modelUsed: string;
   routingDecision: string;
-  recommendedUpgrade?: {
-    modelRole: "scholarly";
-    model: string;
-    reason: string;
-  };
+  recommendedUpgrade?: RecommendedUpgrade;
 };
 
 export type GeneratedStudyNoteRow = {
@@ -41,7 +38,6 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
   const [prompt, setPrompt] = useState(samplePrompt);
   const [responsePrompt, setResponsePrompt] = useState("");
   const [response, setResponse] = useState<AssistantResponse | null>(null);
-  const [sessionId, setSessionId] = useState<string | null>(null);
   const [notes, setNotes] = useState(initialNotes);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,7 +51,7 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
     const result = await fetch("/api/assistant", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt, sessionId })
+      body: JSON.stringify({ prompt, sessionId: response?.sessionId ?? null })
     });
 
     setLoading(false);
@@ -67,7 +63,6 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
 
     const body = (await result.json()) as AssistantResponse;
     setResponse(body);
-    setSessionId(body.sessionId);
     setResponsePrompt(prompt);
     setSaveStatus(null);
   }
@@ -158,7 +153,7 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
               </div>
             </div>
             <div className="mb-4 rounded-md border border-stone-200 bg-stone-50 p-3 text-xs text-slate-600">
-              <div>{response.routingDecision}</div>
+              {response.routingDecision}
               {response.recommendedUpgrade ? (
                 <div className="mt-2">
                   Scholarly mode recommended later: {response.recommendedUpgrade.model} - {response.recommendedUpgrade.reason}

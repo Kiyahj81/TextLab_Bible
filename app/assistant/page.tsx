@@ -1,4 +1,5 @@
 import { AiAssistant } from "@/components/AiAssistant";
+import { DismissibleIntro } from "@/components/DismissibleIntro";
 import { aiSystemPrompt } from "@/lib/ai/systemPrompt";
 import { prisma } from "@/lib/db";
 import { localUserId } from "@/lib/user";
@@ -16,9 +17,9 @@ export default async function AssistantPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-semibold text-slate-950">AI Study Assistant</h1>
-        <p className="mt-2 max-w-2xl text-slate-600">
+        <DismissibleIntro id="assistant">
           Ask corpus-backed Bible questions. The assistant shows model routing, retrieval trace, and citations before export.
-        </p>
+        </DismissibleIntro>
       </div>
 
       <details className="rounded-md border border-stone-300 bg-white p-4 text-sm text-slate-700">

@@ -8,9 +8,9 @@ Method: source review of every in-scope component + live HTML inspection at `htt
 ## Summary
 
 - Critical: 2 (1 fixed ✅)
-- Moderate: 15 (5 fixed ✅)
-- Minor: 11 (6 fixed ✅)
-- **Total: 28 (12 fixed: 2 in PR2, 3 in PR4, 2 in PR5, 4 in PR6, 1 in PR7)**
+- Moderate: 15 (6 fixed ✅)
+- Minor: 11 (7 fixed ✅)
+- **Total: 28 (14 fixed: 2 in PR2, 3 in PR4, 2 in PR5, 4 in PR6, 1 in PR7, 2 in PR8)**
 
 Note: F-3.1 through F-3.16 are UX findings (interaction, hierarchy, primary-use-case friction). F-3.17 through F-3.28 are **design-identity findings** added via a second pass through the `frontend-design` skill lens — covering visual identity, typography, color system, motion, and distinctive-pattern gaps that the first pass de-prioritized.
 
@@ -72,7 +72,7 @@ Note: F-3.1 through F-3.16 are UX findings (interaction, hierarchy, primary-use-
 - **Problem:** The status text "Highlight saved." appears in the popover, but the token underneath still looks unhighlighted (no yellow background). Without a page reload, the user has no visual confirmation that their highlight applied to the correct word. For a primary study action this is jarring.
 - **Suggested fix:** See F-1.8 — optimistic local state, or `router.refresh()` after success.
 
-### F-3.8 — Status messages don't auto-dismiss; UI accumulates stale "saved" / "could not" text
+### F-3.8 — Status messages don't auto-dismiss; UI accumulates stale "saved" / "could not" text ✅ Fixed in PR8
 - **View:** Reader, MorphologyPopover, Notes, Assistant, Search
 - **File:** `components/BibleReader.tsx:43-46, 60-63, 154`; `components/MorphologyPopover.tsx:54-58, 69-70, 141`; `components/NotesPanel.tsx:41-44, 51-53, 139`; `components/AiAssistant.tsx:163`; `components/SearchPanel.tsx:69-86, 180`
 - **Severity:** moderate
@@ -131,7 +131,7 @@ Note: F-3.1 through F-3.16 are UX findings (interaction, hierarchy, primary-use-
 - **Problem:** Some study workflows want Greek-only (translation hidden) for retention practice; others want English-only after looking up a word. The current layout forces both, always.
 - **Suggested fix:** Add a 3-way segmented control (Greek | English | Parallel) in the Reader header. Persist preference in localStorage.
 
-### F-3.16 — Reader description copy is generic ("sample" wording) and not load-bearing
+### F-3.16 — Reader description copy is generic ("sample" wording) and not load-bearing ✅ Fixed in PR8
 - **View:** Reader
 - **File:** `app/read/page.tsx:24-26`
 - **Severity:** minor

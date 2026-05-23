@@ -1,5 +1,6 @@
 import { BibleReader } from "@/components/BibleReader";
 import { ChapterNav } from "@/components/ChapterNav";
+import { DismissibleIntro } from "@/components/DismissibleIntro";
 import { ReaderControls } from "@/components/ReaderControls";
 import { parsePositiveInt } from "@/lib/params";
 import {
@@ -30,9 +31,9 @@ export default async function ReadPage({ searchParams }: { searchParams: SearchP
       <section className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
           <h1 className="text-3xl font-semibold text-slate-950">Reader</h1>
-          <p className="mt-2 max-w-2xl text-slate-600">
-            Read imported or sample Greek text beside English and click Greek words for morphology.
-          </p>
+          <DismissibleIntro id="read">
+            Read the Greek New Testament beside English, and click any Greek word for its morphology.
+          </DismissibleIntro>
         </div>
         <ReaderControls books={books} passages={passages} selectedBook={book} selectedChapter={chapter} />
       </section>

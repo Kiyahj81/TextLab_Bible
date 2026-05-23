@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { BookmarkPlus, Pencil, Search, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { useAutoDismissMap, useAutoDismissString } from "@/lib/useAutoDismissStatus";
 
 export type SearchPanelResult =
   | {
@@ -70,6 +71,9 @@ export function SearchPanel({
   const [pending, setPending] = useState<Record<string, boolean>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const [itemStatus, setItemStatus] = useState<Record<string, string>>({});
+
+  useAutoDismissString(saveStatus, setSaveStatus);
+  useAutoDismissMap(itemStatus, setItemStatus);
 
   function setRowStatus(id: string, message: string | null) {
     setItemStatus((current) => ({ ...current, [id]: message ?? "" }));

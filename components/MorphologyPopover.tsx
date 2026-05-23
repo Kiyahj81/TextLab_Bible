@@ -5,6 +5,7 @@ import { Highlighter, NotebookPen, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { SubmitEvent } from "react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useAutoDismissString } from "@/lib/useAutoDismissStatus";
 
 const POPOVER_MARGIN = 8;
 const useIsomorphicLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
@@ -43,6 +44,8 @@ export function MorphologyPopover({
   const [status, setStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [horizontalAlign, setHorizontalAlign] = useState<"left" | "right">("left");
+
+  useAutoDismissString(status, setStatus);
 
   useIsomorphicLayoutEffect(() => {
     const node = containerRef.current;

@@ -5,6 +5,7 @@ import { Save, Trash2 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { NotesSort } from "@/lib/notes-filter";
+import { useAutoDismissMap } from "@/lib/useAutoDismissStatus";
 
 export type NoteRow = {
   id: string;
@@ -46,6 +47,8 @@ export function NotesPanel({
   const [referenceFilter, setReferenceFilter] = useState(reference);
   const [status, setStatus] = useState<Record<string, string>>({});
   const [pending, setPending] = useState<Record<string, boolean>>({});
+
+  useAutoDismissMap(status, setStatus);
   const initialRender = useRef(true);
 
   // Reset local state when the server resends a fresh page (different filter / sort / page).

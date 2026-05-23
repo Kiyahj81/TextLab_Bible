@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { DismissibleIntro } from "@/components/DismissibleIntro";
 import { NotesPanel, NoteRow } from "@/components/NotesPanel";
 import { prisma } from "@/lib/db";
 import { parseNotesSort, parseReferenceFilter } from "@/lib/notes-filter";
@@ -92,9 +93,9 @@ export default async function NotesPage({ searchParams }: { searchParams: Search
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-semibold text-slate-950">Notes</h1>
-        <p className="mt-2 max-w-2xl text-slate-600">
-          Review and edit sample local notes attached to verses or Greek tokens.
-        </p>
+        <DismissibleIntro id="notes">
+          Review and edit notes attached to verses or Greek tokens.
+        </DismissibleIntro>
       </div>
       <NotesPanel
         notes={rows}

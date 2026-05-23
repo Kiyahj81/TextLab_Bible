@@ -6,6 +6,7 @@ import type { SubmitEvent } from "react";
 import { Fragment, useEffect, useState } from "react";
 import { MorphologyPopover, ReaderToken } from "@/components/MorphologyPopover";
 import { ReaderModeToggle, type ReaderMode } from "@/components/ReaderModeToggle";
+import { useAutoDismissMap } from "@/lib/useAutoDismissStatus";
 
 const READER_MODE_STORAGE_KEY = "textlab-reader-mode";
 const READER_MODES: ReaderMode[] = ["greek", "english", "parallel"];
@@ -43,6 +44,8 @@ export function BibleReader({
   const [savingNote, setSavingNote] = useState<Record<string, boolean>>({});
   const [highlighting, setHighlighting] = useState<Record<string, boolean>>({});
   const [readerMode, setReaderMode] = useState<ReaderMode>("parallel");
+
+  useAutoDismissMap(status, setStatus);
 
   useEffect(() => {
     if (!targetVerse) return;

@@ -5,6 +5,7 @@ import type { SubmitEvent } from "react";
 import { useState } from "react";
 import { formatToolTrace, type ToolTraceEntry } from "@/lib/ai/toolTrace";
 import type { AssistantMode, ModelRole, RecommendedUpgrade } from "@/lib/ai/modelRouter";
+import { useAutoDismissString } from "@/lib/useAutoDismissStatus";
 
 type AssistantResponse = {
   answer: string;
@@ -51,6 +52,9 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
   const [error, setError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [savingNote, setSavingNote] = useState(false);
+
+  // error stays persistent — user retries before it should clear.
+  useAutoDismissString(saveStatus, setSaveStatus);
 
   async function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();

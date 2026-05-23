@@ -1,3 +1,4 @@
+import { DismissibleIntro } from "@/components/DismissibleIntro";
 import { SearchPanel, SearchPanelResult } from "@/components/SearchPanel";
 import { prisma } from "@/lib/db";
 import { parsePositiveInt } from "@/lib/params";
@@ -69,9 +70,9 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-semibold text-slate-950">Search</h1>
-        <p className="mt-2 max-w-2xl text-slate-600">
-          Search sample verses by keyword, Greek tokens by lemma, or morphology codes by exact or prefix match.
-        </p>
+        <DismissibleIntro id="search">
+          Search verses by keyword, Greek tokens by lemma, or morphology codes by exact or prefix match.
+        </DismissibleIntro>
       </div>
       <SearchPanel
         mode={mode}

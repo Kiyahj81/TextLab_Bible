@@ -181,20 +181,20 @@ export async function searchKeyword(input: {
   }
 
   const where: Prisma.VerseWhereInput = {
-      text: { contains: query, mode: "insensitive" },
-      corpus: input.corpus ? { abbreviation: input.corpus } : { abbreviation: { not: "NET" } },
-      book: book ? { osisId: book } : undefined,
-      chapter: input.chapter
-    };
+    text: { contains: query, mode: "insensitive" },
+    corpus: input.corpus ? { abbreviation: input.corpus } : { abbreviation: { not: "NET" } },
+    book: book ? { osisId: book } : undefined,
+    chapter: input.chapter
+  };
 
   const [total, verses] = await Promise.all([
     prisma.verse.count({ where }),
     prisma.verse.findMany({
-    where,
-    include: { corpus: true, book: true },
-    orderBy: [{ book: { order: "asc" } }, { chapter: "asc" }, { verse: "asc" }],
-    skip: (pagination.page - 1) * pagination.pageSize,
-    take: pagination.pageSize
+      where,
+      include: { corpus: true, book: true },
+      orderBy: [{ book: { order: "asc" } }, { chapter: "asc" }, { verse: "asc" }],
+      skip: (pagination.page - 1) * pagination.pageSize,
+      take: pagination.pageSize
     })
   ]);
 
@@ -224,24 +224,24 @@ export async function searchLemma(input: {
   }
 
   const where: Prisma.TokenWhereInput = {
-      lemma,
-      corpus: { abbreviation: input.corpus ?? "SBLGNT" },
-      book: book ? { osisId: book } : undefined,
-      chapter: input.chapter
-    };
+    lemma,
+    corpus: { abbreviation: input.corpus ?? "SBLGNT" },
+    book: book ? { osisId: book } : undefined,
+    chapter: input.chapter
+  };
 
   const [total, tokens] = await Promise.all([
     prisma.token.count({ where }),
     prisma.token.findMany({
-    where,
-    include: { book: true, corpus: true },
-    orderBy: [{ book: { order: "asc" } }, { chapter: "asc" }, { verse: "asc" }, { wordIndex: "asc" }],
-    skip: (pagination.page - 1) * pagination.pageSize,
-    take: pagination.pageSize
+      where,
+      include: { book: true, corpus: true },
+      orderBy: [{ book: { order: "asc" } }, { chapter: "asc" }, { verse: "asc" }, { wordIndex: "asc" }],
+      skip: (pagination.page - 1) * pagination.pageSize,
+      take: pagination.pageSize
     })
   ]);
 
-  const results = await Promise.all(tokens.map(tokenToSearchResult));
+  const results = await hydrateTokens(tokens);
 
   return {
     lemma,
@@ -267,27 +267,27 @@ export async function searchMorphology(input: {
   }
 
   const where: Prisma.TokenWhereInput = {
-      morphCode:
-        input.matchMode === "prefix"
-          ? { startsWith: morphCode, mode: "insensitive" as const }
-          : { equals: morphCode, mode: "insensitive" as const },
-      corpus: { abbreviation: input.corpus ?? "SBLGNT" },
-      book: book ? { osisId: book } : undefined,
-      chapter: input.chapter
-    };
+    morphCode:
+      input.matchMode === "prefix"
+        ? { startsWith: morphCode, mode: "insensitive" as const }
+        : { equals: morphCode, mode: "insensitive" as const },
+    corpus: { abbreviation: input.corpus ?? "SBLGNT" },
+    book: book ? { osisId: book } : undefined,
+    chapter: input.chapter
+  };
 
   const [total, tokens] = await Promise.all([
     prisma.token.count({ where }),
     prisma.token.findMany({
-    where,
-    include: { book: true, corpus: true },
-    orderBy: [{ book: { order: "asc" } }, { chapter: "asc" }, { verse: "asc" }, { wordIndex: "asc" }],
-    skip: (pagination.page - 1) * pagination.pageSize,
-    take: pagination.pageSize
+      where,
+      include: { book: true, corpus: true },
+      orderBy: [{ book: { order: "asc" } }, { chapter: "asc" }, { verse: "asc" }, { wordIndex: "asc" }],
+      skip: (pagination.page - 1) * pagination.pageSize,
+      take: pagination.pageSize
     })
   ]);
 
-  const results = await Promise.all(tokens.map(tokenToSearchResult));
+  const results = await hydrateTokens(tokens);
 
   return {
     morphCode,
@@ -297,6 +297,52 @@ export async function searchMorphology(input: {
   };
 }
 
+// DB take is bounded to lemmas.length * perLemma + 50 (cushion so JS-side per-lemma cap of `perLemma` can still fill each bucket if Prisma's row distribution is slightly weighted toward high-frequency lemmas).
+export async function findLemmaExamples(input: {
+  lemmas: string[];
+  corpus?: "SBLGNT";
+  book?: string;
+  perLemma?: number;
+}) {
+  if (input.lemmas.length === 0) return new Map<string, Awaited<ReturnType<typeof hydrateTokens>>>();
+  const book = normalizeBook(input.book);
+  const perLemma = Math.max(1, Math.min(input.perLemma ?? 5, 25));
+
+  const tokens = await prisma.token.findMany({
+    where: {
+      lemma: { in: input.lemmas },
+      corpus: { abbreviation: input.corpus ?? "SBLGNT" },
+      book: book ? { osisId: book } : undefined
+    },
+    include: { book: true, corpus: true },
+    orderBy: [{ book: { order: "asc" } }, { chapter: "asc" }, { verse: "asc" }, { wordIndex: "asc" }],
+    take: input.lemmas.length * perLemma + 50
+  });
+
+  const grouped = new Map<string, typeof tokens>();
+  for (const token of tokens) {
+    if (!token.lemma) continue;
+    const bucket = grouped.get(token.lemma) ?? [];
+    if (bucket.length < perLemma) bucket.push(token);
+    grouped.set(token.lemma, bucket);
+  }
+
+  const flat = Array.from(grouped.values()).flat();
+  const hydrated = await hydrateTokens(flat);
+  const byId = new Map(hydrated.map((row) => [row.tokenId, row]));
+
+  const out = new Map<string, typeof hydrated>();
+  for (const [lemma, bucket] of grouped) {
+    out.set(lemma, bucket.map((t) => byId.get(t.id)!).filter(Boolean));
+  }
+  return out;
+}
+
+export const LEMMA_STOP_WORDS: ReadonlySet<string> = new Set([
+  "εἰμί", "πᾶς", "λέγω", "γίνομαι", "ἔχω", "ποιέω"
+]);
+export const CONTENT_PART_OF_SPEECH = ["N-", "V-", "A-"] as const;
+
 export async function getTopLemmas(input: {
   corpus?: "SBLGNT";
   book?: string;
@@ -304,29 +350,25 @@ export async function getTopLemmas(input: {
 }) {
   const book = normalizeBook(input.book);
   const limit = Math.max(1, Math.min(input.limit ?? 10, 25));
-  const stopLemmas = new Set(["εἰμί", "πᾶς", "λέγω", "γίνομαι", "ἔχω", "ποιέω"]);
 
   const rows = await prisma.token.groupBy({
     by: ["lemma", "partOfSpeech"],
     where: {
       corpus: { abbreviation: input.corpus ?? "SBLGNT" },
       book: book ? { osisId: book } : undefined,
-      lemma: { not: null },
-      partOfSpeech: { in: ["N-", "V-", "A-"] }
+      lemma: { not: null, notIn: Array.from(LEMMA_STOP_WORDS) },
+      partOfSpeech: { in: [...CONTENT_PART_OF_SPEECH] }
     },
     _count: { _all: true },
     orderBy: { _count: { lemma: "desc" } },
-    take: limit + stopLemmas.size + 10
+    take: limit
   });
 
-  return rows
-    .filter((row) => Boolean(row.lemma) && !stopLemmas.has(row.lemma ?? ""))
-    .slice(0, limit)
-    .map((row) => ({
-      lemma: row.lemma ?? "",
-      partOfSpeech: row.partOfSpeech ?? "",
-      count: row._count._all
-    }));
+  return rows.map((row) => ({
+    lemma: row.lemma ?? "",
+    partOfSpeech: row.partOfSpeech ?? "",
+    count: row._count._all
+  }));
 }
 
 function normalizePagination(input: PaginationInput) {
@@ -348,7 +390,7 @@ function paginationResult(pagination: { page: number; pageSize: number }, total:
   };
 }
 
-async function tokenToSearchResult(token: {
+type HydratedToken = {
   id: string;
   surface: string;
   lemma: string | null;
@@ -357,23 +399,38 @@ async function tokenToSearchResult(token: {
   verse: number;
   book: { id: string; osisId: string };
   corpus: { abbreviation: string };
-}) {
-  const verse = await prisma.verse.findFirst({
+};
+
+async function hydrateTokens(tokens: HydratedToken[]) {
+  if (tokens.length === 0) return [];
+
+  const bookIds = Array.from(new Set(tokens.map((t) => t.book.id)));
+  const corpora = Array.from(new Set(tokens.map((t) => t.corpus.abbreviation)));
+
+  const verses = await prisma.verse.findMany({
     where: {
-      corpus: { abbreviation: token.corpus.abbreviation },
-      bookId: token.book.id,
-      chapter: token.chapter,
-      verse: token.verse
-    }
+      corpus: { abbreviation: { in: corpora } },
+      bookId: { in: bookIds },
+      OR: tokens.map((t) => ({ bookId: t.book.id, chapter: t.chapter, verse: t.verse }))
+    },
+    select: { bookId: true, chapter: true, verse: true, text: true, corpus: { select: { abbreviation: true } } }
   });
 
-  return {
+  const key = (bookId: string, chapter: number, verse: number, corpus: string) =>
+    `${corpus}|${bookId}|${chapter}|${verse}`;
+
+  const verseText = new Map<string, string>();
+  for (const v of verses) {
+    verseText.set(key(v.bookId, v.chapter, v.verse, v.corpus.abbreviation), v.text);
+  }
+
+  return tokens.map((token) => ({
     tokenId: token.id,
     corpus: token.corpus.abbreviation,
     reference: formatReference(token.book.osisId, token.chapter, token.verse),
     surface: token.surface,
     lemma: token.lemma ?? "",
     morphCode: token.morphCode ?? "",
-    verseText: verse?.text ?? ""
-  };
+    verseText: verseText.get(key(token.book.id, token.chapter, token.verse, token.corpus.abbreviation)) ?? ""
+  }));
 }

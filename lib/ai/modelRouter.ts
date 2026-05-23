@@ -1,5 +1,7 @@
 import { aiSystemPrompt } from "@/lib/ai/systemPrompt";
 import type { AssistantAnswer } from "@/lib/ai/assistant";
+import { getOpenAi } from "@/lib/ai/openaiClient";
+import { formatToolTrace } from "@/lib/ai/toolTrace";
 
 export type AssistantMode = "live" | "fallback";
 export type ModelRole = "default" | "scholarly";
@@ -19,6 +21,13 @@ export type RoutingDecision = {
 
 const DEFAULT_MODEL = "gpt-5.3-chat-latest";
 const SCHOLARLY_MODEL = "gpt-5.4";
+
+const ASSISTANT_INSTRUCTIONS = [
+  aiSystemPrompt,
+  "Use only the retrieved evidence and deterministic draft supplied by TextLab Bible.",
+  "Preserve the three sections: Textual observations, Interpretive suggestion, and Application/reflection.",
+  "Do not add lexical, manuscript, historical, or scholarly claims that are not present in the retrieved evidence."
+].join("\n\n");
 
 export function getModelForRole(role: ModelRole) {
   if (role === "scholarly") {
@@ -46,67 +55,37 @@ export function routeAssistantPrompt(prompt: string): RoutingDecision {
   };
 }
 
+function buildUserPayload(prompt: string, localAnswer: AssistantAnswer) {
+  return [
+    `User prompt:\n${prompt}`,
+    `Retrieved citations:\n${JSON.stringify(localAnswer.citations.slice(0, 20))}`,
+    `Retrieval trace:\n${localAnswer.toolTrace.map(formatToolTrace).join("\n")}`,
+    `Deterministic draft:\n${localAnswer.answer}`
+  ].join("\n\n");
+}
+
 export async function synthesizeWithDefaultModel(input: {
   prompt: string;
   localAnswer: AssistantAnswer;
   routing: RoutingDecision;
 }) {
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  const client = getOpenAi();
+  if (!client) return null;
 
-  if (!apiKey) {
-    return null;
-  }
-
-  const response = await fetchResponsesWithRetry({
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model: input.routing.modelUsed,
-      instructions: [
-        aiSystemPrompt,
-        "Use only the retrieved evidence and deterministic draft supplied by TextLab Bible.",
-        "Preserve the three sections: Textual observations, Interpretive suggestion, and Application/reflection.",
-        "Do not add lexical, manuscript, historical, or scholarly claims that are not present in the retrieved evidence."
-      ].join("\n\n"),
-      input: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "input_text",
-              text: [
-                `User prompt:\n${input.prompt}`,
-                `Retrieved citations:\n${JSON.stringify(input.localAnswer.citations, null, 2)}`,
-                `Retrieval trace:\n${input.localAnswer.toolTrace.join("\n")}`,
-                `Deterministic draft:\n${input.localAnswer.answer}`
-              ].join("\n\n")
-            }
-          ]
-        }
-      ]
-    })
+  const response = await client.responses.create({
+    model: input.routing.modelUsed,
+    instructions: ASSISTANT_INSTRUCTIONS,
+    input: [
+      {
+        role: "user",
+        content: [
+          { type: "input_text", text: buildUserPayload(input.prompt, input.localAnswer) }
+        ]
+      }
+    ]
   });
 
-  if (!response.ok) {
-    throw new Error(`OpenAI Responses API returned ${response.status}`);
-  }
-
-  const payload = (await response.json()) as OpenAiResponsePayload;
-  return extractResponseText(payload);
-}
-
-async function fetchResponsesWithRetry(init: RequestInit) {
-  const response = await fetch("https://api.openai.com/v1/responses", init);
-
-  if (![429, 500, 502, 503, 504].includes(response.status)) {
-    return response;
-  }
-
-  await new Promise((resolve) => setTimeout(resolve, 500));
-  return fetch("https://api.openai.com/v1/responses", init);
+  return response.output_text?.trim() || null;
 }
 
 function recommendScholarlyUpgrade(prompt: string): RecommendedUpgrade | undefined {
@@ -136,29 +115,4 @@ function recommendScholarlyUpgrade(prompt: string): RecommendedUpgrade | undefin
     model: getModelForRole("scholarly"),
     reason: "This prompt appears to ask for deeper scholarly synthesis; a later milestone should ask for confirmation before using the scholarly model."
   };
-}
-
-type OpenAiResponsePayload = {
-  output_text?: string;
-  output?: Array<{
-    content?: Array<{
-      text?: string;
-      type?: string;
-    }>;
-  }>;
-};
-
-function extractResponseText(payload: OpenAiResponsePayload) {
-  if (typeof payload.output_text === "string" && payload.output_text.trim()) {
-    return payload.output_text.trim();
-  }
-
-  const text = payload.output
-    ?.flatMap((item) => item.content ?? [])
-    .map((content) => content.text)
-    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-    .join("\n")
-    .trim();
-
-  return text || null;
 }

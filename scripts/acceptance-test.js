@@ -21,7 +21,7 @@ async function waitForServer(timeoutMs = 60000) {
       const response = await fetch(`${appUrl}/read`);
       if (response.ok) return;
     } catch {
-      // Keep polling until Next finishes compiling the first route.
+      // Wait for Next to start serving; ECONNREFUSED is expected during boot.
     }
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
@@ -132,7 +132,7 @@ async function run() {
     });
     await page.getByText("Local fallback").waitFor();
     await page.getByText("gpt-5.3-chat-latest").waitFor();
-    await page.getByText('searchLemma({ lemma: "λόγος", book: "John" })').waitFor();
+    await page.getByText('searchLemma({"lemma":"λόγος","book":"John"})').waitFor();
     await page.getByText("John 1:1, SBLGNT").first().waitFor();
     await page.getByRole("button", { name: "Save generated note" }).click();
     await page.getByText("Generated note saved.").waitFor();

@@ -11,3 +11,4 @@ test-results
 *.tsbuildinfo
 *.zip
 data/
+.claude/

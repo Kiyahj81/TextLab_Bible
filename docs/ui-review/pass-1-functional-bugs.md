@@ -8,9 +8,11 @@ Method: source review of every in-scope component + live behavioral probes again
 ## Summary
 
 - Critical: 4 (4 fixed ✅)
-- Moderate: 6 (2 fixed ✅)
-- Minor: 5 (0 fixed)
-- **Total: 15 (6 fixed: 5 in PR1, 1 in PR2)**
+- Moderate: 6 (4 fixed ✅)
+- Minor: 5 (3 fixed ✅)
+- **Total: 15 (12 fixed: 5 in PR1, 1 in PR2, 6 in PR3)**
+
+Remaining: F-1.5 (pagination clamp portion — covered by PR4 search hygiene), F-1.9 (token popover state loss when switching tokens — noted as moderate, not yet scheduled), F-1.14 (notes filter URL sync — PR5).
 
 ---
 
@@ -49,6 +51,12 @@ Method: source review of every in-scope component + live behavioral probes again
 - **Suggested fix:** After `updateMany`, inspect `count`; return 404 if 0. Or use `prisma.note.update` which throws on miss, caught and converted to 404. The client should then surface "Note not found" status.
 
 ### F-1.5 — Pagination "Previous" stays enabled past `pageCount`; URL accepts arbitrary `page`
+
+> Note: the "Save/Delete/Highlight buttons lack in-flight disabled state — double-submit hazard"
+> aspect of F-1.5 (which the report originally bundled into this entry's neighborhood) was
+> addressed in PR3 — every async button now disables during in-flight. The pagination clamp
+> portion of F-1.5 remains for PR4.
+
 - **View:** Search
 - **File:** `components/SearchPanel.tsx:88-89`, `211-232`; result text at `:167`; server at `app/search/page.tsx:18`
 - **Severity:** moderate
@@ -56,7 +64,7 @@ Method: source review of every in-scope component + live behavioral probes again
 - **Repro / evidence:** Live: `curl http://localhost:3000/search?mode=keyword&q=test&page=999` shows `page 999 of 7` in the header and `Showing 0 of 42`.
 - **Suggested fix:** Clamp server-side: in `app/search/page.tsx` after computing `pageCount`, set `page = Math.min(Math.max(page, 1), Math.max(pageCount, 1))`. Then the URL still works but the panel renders consistent state.
 
-### F-1.6 — Async fetch handlers have no `try`/`catch`; network failures leave UI in stuck states
+### F-1.6 — Async fetch handlers have no `try`/`catch`; network failures leave UI in stuck states ✅ Fixed in PR3
 - **View:** Reader, MorphologyPopover, Notes, Search, Assistant
 - **File:** `components/AiAssistant.tsx:46-68` (worst symptom); also `components/BibleReader.tsx:27-64`, `components/MorphologyPopover.tsx:37-71`, `components/NotesPanel.tsx:35-54`, `components/SearchPanel.tsx:69-86`
 - **Severity:** moderate
@@ -75,7 +83,7 @@ Method: source review of every in-scope component + live behavioral probes again
   }
   ```
 
-### F-1.7 — Save / Delete / Highlight buttons lack in-flight disabled state; double-submit hazard
+### F-1.7 — Save / Delete / Highlight buttons lack in-flight disabled state; double-submit hazard ✅ Fixed in PR3
 - **View:** Reader, Notes
 - **File:** `components/BibleReader.tsx:85-92` (verse highlight), `:147-152` (verse note save); `components/NotesPanel.tsx:102-118` (note save & delete); `components/SearchPanel.tsx:172-179` (save search)
 - **Severity:** moderate
@@ -98,28 +106,28 @@ Method: source review of every in-scope component + live behavioral probes again
 - **Repro / evidence:** Source review (`<MorphologyPopover>` is conditionally rendered on `selectedTokenId === token.id`; unmount drops local state).
 - **Suggested fix:** Either prompt before switching when `body.trim()` is non-empty, lift the per-token note draft into `BibleReader`'s `noteBodies` map, or warn via a small "Unsaved note discarded" toast.
 
-### F-1.10 — BibleReader silently ignores empty-body note submissions
+### F-1.10 — BibleReader silently ignores empty-body note submissions ✅ Fixed in PR3
 - **View:** Reader
 - **File:** `components/BibleReader.tsx:29-30`
 - **Severity:** minor
 - **Problem:** `if (!body) return;` early-returns with no status update. User clicks "Save note" with an empty input and gets no feedback; the request didn't fire but the UI gives no indication. Many users will assume saved.
 - **Suggested fix:** Either set `status[verse.id] = "Write a note before saving."` or disable the Save button while body is empty (matching `MorphologyPopover` at line 134: `disabled={saving || !body.trim()}`).
 
-### F-1.11 — Saved-search "Save" button doesn't disable while `Saving...`; clicking twice creates duplicates
+### F-1.11 — Saved-search "Save" button doesn't disable while `Saving...`; clicking twice creates duplicates ✅ Fixed in PR3
 - **View:** Search
 - **File:** `components/SearchPanel.tsx:69-86`, `172-179`
 - **Severity:** minor
 - **Problem:** `saveSearch()` sets `saveStatus = "Saving..."` but doesn't disable the button. Two clicks → two POSTs → two saved-search rows with identical auto-labels. Tracked separately from F-1.7 because the symptom is more visible (duplicate sidebar entries).
 - **Suggested fix:** Add a `saving` boolean; `disabled={saving}` on the button.
 
-### F-1.12 — `MorphologyPopover` has no outside-click or Escape-to-close affordances
+### F-1.12 — `MorphologyPopover` has no outside-click or Escape-to-close affordances ✅ Fixed in PR3
 - **View:** Reader
 - **File:** `components/MorphologyPopover.tsx:75-143`
 - **Severity:** minor
 - **Problem:** Only the explicit "Close" button or clicking the same token again closes the popover. Clicking elsewhere on the page leaves it open. Pressing Escape doesn't close it. Both are conventional popover behaviors users will expect to "just work."
 - **Suggested fix:** `useEffect` that registers `mousedown` on `document` and closes when the event target is outside a ref'd container; also a `keydown` listener for `Escape`.
 
-### F-1.13 — Assistant `prompt` textarea stays prefilled with the just-submitted question
+### F-1.13 — Assistant `prompt` textarea stays prefilled with the just-submitted question ✅ Fixed in PR3
 - **View:** Assistant
 - **File:** `components/AiAssistant.tsx:38-68`
 - **Severity:** minor

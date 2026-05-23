@@ -42,29 +42,36 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
+  const [savingNote, setSavingNote] = useState(false);
 
   async function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (loading) return;
+
     setLoading(true);
     setError(null);
+    try {
+      const result = await fetch("/api/assistant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt, sessionId: response?.sessionId ?? null })
+      });
 
-    const result = await fetch("/api/assistant", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt, sessionId: response?.sessionId ?? null })
-    });
+      if (!result.ok) {
+        setError("The assistant could not answer this prompt.");
+        return;
+      }
 
-    setLoading(false);
-
-    if (!result.ok) {
-      setError("The assistant could not answer this prompt.");
-      return;
+      const body = (await result.json()) as AssistantResponse;
+      setResponse(body);
+      setResponsePrompt(prompt);
+      setPrompt("");
+      setSaveStatus(null);
+    } catch {
+      setError("Network error. Try again.");
+    } finally {
+      setLoading(false);
     }
-
-    const body = (await result.json()) as AssistantResponse;
-    setResponse(body);
-    setResponsePrompt(prompt);
-    setSaveStatus(null);
   }
 
   function downloadMarkdown() {
@@ -80,27 +87,35 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
 
   async function saveGeneratedNote() {
     if (!response) return;
+    if (savingNote) return;
+
+    setSavingNote(true);
     setSaveStatus("Saving...");
+    try {
+      const result = await fetch("/api/generated-study-notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: responsePrompt,
+          answer: response.answer,
+          markdown: response.markdown,
+          citations: response.citations
+        })
+      });
 
-    const result = await fetch("/api/generated-study-notes", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        prompt: responsePrompt,
-        answer: response.answer,
-        markdown: response.markdown,
-        citations: response.citations
-      })
-    });
+      if (!result.ok) {
+        setSaveStatus("Could not save generated note.");
+        return;
+      }
 
-    if (!result.ok) {
-      setSaveStatus("Could not save generated note.");
-      return;
+      const body = await result.json();
+      setNotes((current) => [body.note, ...current].slice(0, 25));
+      setSaveStatus("Generated note saved.");
+    } catch {
+      setSaveStatus("Network error. Try again.");
+    } finally {
+      setSavingNote(false);
     }
-
-    const body = await result.json();
-    setNotes((current) => [body.note, ...current].slice(0, 25));
-    setSaveStatus("Generated note saved.");
   }
 
   return (
@@ -145,7 +160,8 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
                 <button
                   type="button"
                   onClick={saveGeneratedNote}
-                  className="inline-flex items-center gap-2 rounded-md bg-[#365f7e] px-3 py-2 text-sm font-medium text-white"
+                  disabled={savingNote}
+                  className="inline-flex items-center gap-2 rounded-md bg-[#365f7e] px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Save size={16} />
                   Save generated note

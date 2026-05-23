@@ -64,25 +64,35 @@ export function SearchPanel({
   savedSearches: SavedSearchRow[];
 }) {
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(savedSearches);
 
   async function saveSearch() {
     if (!query.trim()) return;
+    if (saving) return;
+
+    setSaving(true);
     setSaveStatus("Saving...");
-    const response = await fetch("/api/saved-searches", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode, query, book, chapter, matchMode, pageSize })
-    });
+    try {
+      const response = await fetch("/api/saved-searches", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode, query, book, chapter, matchMode, pageSize })
+      });
 
-    if (!response.ok) {
-      setSaveStatus("Could not save search.");
-      return;
+      if (!response.ok) {
+        setSaveStatus("Could not save search.");
+        return;
+      }
+
+      const body = await response.json();
+      setSaved((current) => [body.savedSearch, ...current].slice(0, 25));
+      setSaveStatus("Search saved.");
+    } catch {
+      setSaveStatus("Network error. Try again.");
+    } finally {
+      setSaving(false);
     }
-
-    const body = await response.json();
-    setSaved((current) => [body.savedSearch, ...current].slice(0, 25));
-    setSaveStatus("Search saved.");
   }
 
   const previousPage = Math.max(page - 1, 1);
@@ -172,7 +182,8 @@ export function SearchPanel({
               <button
                 type="button"
                 onClick={saveSearch}
-                className="inline-flex items-center gap-2 rounded-md border border-stone-300 px-3 py-2 text-sm font-medium text-slate-700 hover:border-slate-500"
+                disabled={saving}
+                className="inline-flex items-center gap-2 rounded-md border border-stone-300 px-3 py-2 text-sm font-medium text-slate-700 hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <BookmarkPlus size={16} />
                 Save search

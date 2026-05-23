@@ -49,41 +49,85 @@ export function MorphologyPopover({
     setHorizontalAlign(overflowsRight ? "right" : "left");
   }, [token.id]);
 
+  useEffect(() => {
+    function onMouseDown(event: MouseEvent) {
+      const node = containerRef.current;
+      if (!node) return;
+      // The trigger token button is a sibling of this popover inside a shared
+      // wrapper span. Widening the "inside" check to the popover's parent
+      // ensures clicking the same token still toggles via its own onClick
+      // handler instead of being treated as an outside click.
+      const scope = node.parentElement ?? node;
+      if (event.target instanceof Node && !scope.contains(event.target)) {
+        onClose();
+      }
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+
+    document.addEventListener("mousedown", onMouseDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onMouseDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [onClose]);
+
   async function addNote(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!body.trim()) return;
+    if (saving) return;
 
     setSaving(true);
-    const response = await fetch("/api/notes", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        tokenId: token.id,
-        title: `${reference} ${token.surface}`,
-        body,
-        tags: ["word"]
-      })
-    });
-    setSaving(false);
+    try {
+      const response = await fetch("/api/notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tokenId: token.id,
+          title: `${reference} ${token.surface}`,
+          body,
+          tags: ["word"]
+        })
+      });
 
-    if (response.ok) {
-      setBody("");
-      setStatus("Note saved.");
-    } else {
-      setStatus("Could not save note.");
+      if (response.ok) {
+        setBody("");
+        setStatus("Note saved.");
+      } else {
+        setStatus("Could not save note.");
+      }
+    } catch {
+      setStatus("Network error. Try again.");
+    } finally {
+      setSaving(false);
     }
   }
 
   async function highlightToken() {
+    if (saving) return;
+
     setSaving(true);
-    const response = await fetch("/api/highlights", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tokenId: token.id, color: "#fde68a" })
-    });
-    setSaving(false);
-    setStatus(response.ok ? "Highlight saved." : "Could not save highlight.");
-    if (response.ok) router.refresh();
+    try {
+      const response = await fetch("/api/highlights", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tokenId: token.id, color: "#fde68a" })
+      });
+
+      if (response.ok) {
+        setStatus("Highlight saved.");
+        router.refresh();
+      } else {
+        setStatus("Could not save highlight.");
+      }
+    } catch {
+      setStatus("Network error. Try again.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   const lemmaSearchHref = `/search?mode=lemma&q=${encodeURIComponent(token.lemma ?? token.normalized ?? token.surface)}&book=${token.book}`;

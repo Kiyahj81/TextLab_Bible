@@ -20,6 +20,11 @@ export function NotesPanel({ notes }: { notes: NoteRow[] }) {
   const [tagFilter, setTagFilter] = useState("");
   const [referenceFilter, setReferenceFilter] = useState("");
   const [status, setStatus] = useState<Record<string, string>>({});
+  const [pending, setPending] = useState<Record<string, boolean>>({});
+
+  function setNoteStatus(id: string, message: string) {
+    setStatus((current) => ({ ...current, [id]: message }));
+  }
 
   const filteredRows = useMemo(
     () =>
@@ -33,24 +38,40 @@ export function NotesPanel({ notes }: { notes: NoteRow[] }) {
   );
 
   async function save(note: NoteRow) {
-    const response = await fetch(`/api/notes/${note.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(note)
-    });
-    const message =
-      response.ok ? "Saved." : response.status === 404 ? "Note not found." : "Could not save.";
-    setStatus((current) => ({ ...current, [note.id]: message }));
+    if (pending[note.id]) return;
+    setPending((current) => ({ ...current, [note.id]: true }));
+    try {
+      const response = await fetch(`/api/notes/${note.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(note)
+      });
+      const message =
+        response.ok ? "Saved." : response.status === 404 ? "Note not found." : "Could not save.";
+      setNoteStatus(note.id, message);
+    } catch {
+      setNoteStatus(note.id, "Network error. Try again.");
+    } finally {
+      setPending((current) => ({ ...current, [note.id]: false }));
+    }
   }
 
   async function remove(noteId: string) {
-    const response = await fetch(`/api/notes/${noteId}`, { method: "DELETE" });
-    if (response.ok) {
-      setRows((current) => current.filter((note) => note.id !== noteId));
-      return;
+    if (pending[noteId]) return;
+    setPending((current) => ({ ...current, [noteId]: true }));
+    try {
+      const response = await fetch(`/api/notes/${noteId}`, { method: "DELETE" });
+      if (response.ok) {
+        setRows((current) => current.filter((note) => note.id !== noteId));
+        return;
+      }
+      const message = response.status === 404 ? "Note not found." : "Could not delete.";
+      setNoteStatus(noteId, message);
+    } catch {
+      setNoteStatus(noteId, "Network error. Try again.");
+    } finally {
+      setPending((current) => ({ ...current, [noteId]: false }));
     }
-    const message = response.status === 404 ? "Note not found." : "Could not delete.";
-    setStatus((current) => ({ ...current, [noteId]: message }));
   }
 
   return (
@@ -102,7 +123,8 @@ export function NotesPanel({ notes }: { notes: NoteRow[] }) {
                 <button
                   type="button"
                   onClick={() => save(note)}
-                  className="inline-flex items-center gap-2 rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+                  disabled={pending[note.id]}
+                  className="inline-flex items-center gap-2 rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Save size={16} />
                   Save
@@ -110,7 +132,8 @@ export function NotesPanel({ notes }: { notes: NoteRow[] }) {
                 <button
                   type="button"
                   onClick={() => remove(note.id)}
-                  className="inline-flex items-center gap-2 rounded-md border border-stone-300 px-3 py-2 text-sm font-medium text-slate-700 hover:border-red-400 hover:text-red-700"
+                  disabled={pending[note.id]}
+                  className="inline-flex items-center gap-2 rounded-md border border-stone-300 px-3 py-2 text-sm font-medium text-slate-700 hover:border-red-400 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Trash2 size={16} />
                   Delete

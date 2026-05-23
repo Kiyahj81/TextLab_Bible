@@ -25,46 +25,67 @@ export function BibleReader({ verses }: { verses: ReaderVerse[] }) {
   const [selectedTokenId, setSelectedTokenId] = useState<string | null>(null);
   const [noteBodies, setNoteBodies] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<Record<string, string>>({});
+  const [savingNote, setSavingNote] = useState<Record<string, boolean>>({});
+  const [highlighting, setHighlighting] = useState<Record<string, boolean>>({});
+
+  function setVerseStatus(verseId: string, message: string) {
+    setStatus((current) => ({ ...current, [verseId]: message }));
+  }
 
   async function addVerseNote(event: SubmitEvent<HTMLFormElement>, verse: ReaderVerse) {
     event.preventDefault();
     const body = noteBodies[verse.id]?.trim();
     if (!body) return;
+    if (savingNote[verse.id]) return;
 
-    const response = await fetch("/api/notes", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        verseId: verse.id,
-        title: verse.reference,
-        body,
-        tags: ["verse"]
-      })
-    });
+    setSavingNote((current) => ({ ...current, [verse.id]: true }));
+    try {
+      const response = await fetch("/api/notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          verseId: verse.id,
+          title: verse.reference,
+          body,
+          tags: ["verse"]
+        })
+      });
 
-    setStatus((current) => ({
-      ...current,
-      [verse.id]: response.ok ? "Note saved." : "Could not save note."
-    }));
-
-    if (response.ok) {
-      setNoteBodies((current) => ({ ...current, [verse.id]: "" }));
+      if (response.ok) {
+        setVerseStatus(verse.id, "Note saved.");
+        setNoteBodies((current) => ({ ...current, [verse.id]: "" }));
+      } else {
+        setVerseStatus(verse.id, "Could not save note.");
+      }
+    } catch {
+      setVerseStatus(verse.id, "Network error. Try again.");
+    } finally {
+      setSavingNote((current) => ({ ...current, [verse.id]: false }));
     }
   }
 
   async function highlightVerse(verse: ReaderVerse) {
-    const response = await fetch("/api/highlights", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ verseId: verse.id, color: "#fde68a" })
-    });
+    if (highlighting[verse.id]) return;
 
-    setStatus((current) => ({
-      ...current,
-      [verse.id]: response.ok ? "Highlight saved." : "Could not save highlight."
-    }));
+    setHighlighting((current) => ({ ...current, [verse.id]: true }));
+    try {
+      const response = await fetch("/api/highlights", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ verseId: verse.id, color: "#fde68a" })
+      });
 
-    if (response.ok) router.refresh();
+      if (response.ok) {
+        setVerseStatus(verse.id, "Highlight saved.");
+        router.refresh();
+      } else {
+        setVerseStatus(verse.id, "Could not save highlight.");
+      }
+    } catch {
+      setVerseStatus(verse.id, "Network error. Try again.");
+    } finally {
+      setHighlighting((current) => ({ ...current, [verse.id]: false }));
+    }
   }
 
   if (verses.length === 0) {
@@ -89,7 +110,8 @@ export function BibleReader({ verses }: { verses: ReaderVerse[] }) {
             <button
               type="button"
               onClick={() => highlightVerse(verse)}
-              className="inline-flex items-center gap-2 rounded-md border border-stone-300 px-3 py-2 text-sm font-medium text-slate-700 hover:border-slate-500"
+              disabled={highlighting[verse.id]}
+              className="inline-flex items-center gap-2 rounded-md border border-stone-300 px-3 py-2 text-sm font-medium text-slate-700 hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Highlighter size={16} />
               Highlight verse
@@ -150,7 +172,8 @@ export function BibleReader({ verses }: { verses: ReaderVerse[] }) {
               />
               <button
                 type="submit"
-                className="rounded-md bg-[#365f7e] px-4 py-2 text-sm font-medium text-white"
+                disabled={savingNote[verse.id] || !(noteBodies[verse.id] ?? "").trim()}
+                className="rounded-md bg-[#365f7e] px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Save note
               </button>

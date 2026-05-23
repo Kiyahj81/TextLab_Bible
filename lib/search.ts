@@ -338,6 +338,11 @@ export async function findLemmaExamples(input: {
   return out;
 }
 
+export const LEMMA_STOP_WORDS: ReadonlySet<string> = new Set([
+  "εἰμί", "πᾶς", "λέγω", "γίνομαι", "ἔχω", "ποιέω"
+]);
+export const CONTENT_PART_OF_SPEECH = ["N-", "V-", "A-"] as const;
+
 export async function getTopLemmas(input: {
   corpus?: "SBLGNT";
   book?: string;
@@ -345,29 +350,25 @@ export async function getTopLemmas(input: {
 }) {
   const book = normalizeBook(input.book);
   const limit = Math.max(1, Math.min(input.limit ?? 10, 25));
-  const stopLemmas = new Set(["εἰμί", "πᾶς", "λέγω", "γίνομαι", "ἔχω", "ποιέω"]);
 
   const rows = await prisma.token.groupBy({
     by: ["lemma", "partOfSpeech"],
     where: {
       corpus: { abbreviation: input.corpus ?? "SBLGNT" },
       book: book ? { osisId: book } : undefined,
-      lemma: { not: null },
-      partOfSpeech: { in: ["N-", "V-", "A-"] }
+      lemma: { not: null, notIn: Array.from(LEMMA_STOP_WORDS) },
+      partOfSpeech: { in: [...CONTENT_PART_OF_SPEECH] }
     },
     _count: { _all: true },
     orderBy: { _count: { lemma: "desc" } },
-    take: limit + stopLemmas.size + 10
+    take: limit
   });
 
-  return rows
-    .filter((row) => Boolean(row.lemma) && !stopLemmas.has(row.lemma ?? ""))
-    .slice(0, limit)
-    .map((row) => ({
-      lemma: row.lemma ?? "",
-      partOfSpeech: row.partOfSpeech ?? "",
-      count: row._count._all
-    }));
+  return rows.map((row) => ({
+    lemma: row.lemma ?? "",
+    partOfSpeech: row.partOfSpeech ?? "",
+    count: row._count._all
+  }));
 }
 
 function normalizePagination(input: PaginationInput) {

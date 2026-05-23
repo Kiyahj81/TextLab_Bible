@@ -44,7 +44,7 @@ export type AssistantAnswer = {
   sessionId?: string;
 };
 
-const lemmaAliases: Array<{ needles: string[]; lemma: string; label: string }> = [
+export const lemmaAliases: Array<{ needles: string[]; lemma: string; label: string }> = [
   { needles: ["λόγος", "λογος", "logos"], lemma: "λόγος", label: "λόγος" },
   { needles: ["δικαιοσύνη", "δικαιοσυνη", "righteousness"], lemma: "δικαιοσύνη", label: "δικαιοσύνη" },
   { needles: ["πιστεύω", "πιστευω", "believe"], lemma: "πιστεύω", label: "πιστεύω" }

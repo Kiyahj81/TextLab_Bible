@@ -1,5 +1,6 @@
 import { BibleReader } from "@/components/BibleReader";
 import { ReaderControls } from "@/components/ReaderControls";
+import { parsePositiveInt } from "@/lib/params";
 import { getAvailablePassages, getAvailableReaderBooks, getReaderPassage } from "@/lib/search";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -9,7 +10,7 @@ export const dynamic = "force-dynamic";
 export default async function ReadPage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
   const book = getParam(params.book) ?? "John";
-  const chapter = Number(getParam(params.chapter) ?? "1");
+  const chapter = parsePositiveInt(getParam(params.chapter)) ?? 1;
   const [books, passages, verses] = await Promise.all([
     getAvailableReaderBooks(),
     getAvailablePassages(),

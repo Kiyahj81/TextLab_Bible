@@ -1,5 +1,6 @@
 import { SearchPanel, SearchPanelResult } from "@/components/SearchPanel";
 import { prisma } from "@/lib/db";
+import { parsePositiveInt } from "@/lib/params";
 import { bookName } from "@/lib/references";
 import { getAvailableReaderBooks, searchKeyword, searchLemma, searchMorphology } from "@/lib/search";
 import { localUserId } from "@/lib/user";
@@ -94,10 +95,4 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
 
 function getParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
-}
-
-function parsePositiveInt(value?: string) {
-  if (!value) return undefined;
-  const number = Number(value);
-  return Number.isInteger(number) && number > 0 ? number : undefined;
 }

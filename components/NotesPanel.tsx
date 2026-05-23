@@ -38,19 +38,19 @@ export function NotesPanel({ notes }: { notes: NoteRow[] }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(note)
     });
-    setStatus((current) => ({
-      ...current,
-      [note.id]: response.ok ? "Saved." : "Could not save."
-    }));
+    const message =
+      response.ok ? "Saved." : response.status === 404 ? "Note not found." : "Could not save.";
+    setStatus((current) => ({ ...current, [note.id]: message }));
   }
 
   async function remove(noteId: string) {
     const response = await fetch(`/api/notes/${noteId}`, { method: "DELETE" });
     if (response.ok) {
       setRows((current) => current.filter((note) => note.id !== noteId));
-    } else {
-      setStatus((current) => ({ ...current, [noteId]: "Could not delete." }));
+      return;
     }
+    const message = response.status === 404 ? "Note not found." : "Could not delete.";
+    setStatus((current) => ({ ...current, [noteId]: message }));
   }
 
   return (

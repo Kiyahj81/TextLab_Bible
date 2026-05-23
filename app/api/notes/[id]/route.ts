@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { parseTags } from "@/lib/references";
-
-const localUserId = "local-user";
+import { localUserId } from "@/lib/user";
 
 type Params = Promise<{ id: string }>;
 
@@ -19,7 +18,7 @@ export async function PATCH(request: Request, { params }: { params: Params }) {
     ? body.tags.filter((tag: unknown) => typeof tag === "string")
     : parseTags(typeof body.tags === "string" ? body.tags : "");
 
-  await prisma.note.updateMany({
+  const result = await prisma.note.updateMany({
     where: { id, userId: localUserId },
     data: {
       title: typeof body.title === "string" ? body.title : undefined,
@@ -27,6 +26,10 @@ export async function PATCH(request: Request, { params }: { params: Params }) {
       tags
     }
   });
+
+  if (result.count === 0) {
+    return NextResponse.json({ error: "Note not found." }, { status: 404 });
+  }
 
   const note = await prisma.note.findFirst({
     where: { id, userId: localUserId }
@@ -37,9 +40,13 @@ export async function PATCH(request: Request, { params }: { params: Params }) {
 
 export async function DELETE(_request: Request, { params }: { params: Params }) {
   const { id } = await params;
-  await prisma.note.deleteMany({
+  const result = await prisma.note.deleteMany({
     where: { id, userId: localUserId }
   });
+
+  if (result.count === 0) {
+    return NextResponse.json({ error: "Note not found." }, { status: 404 });
+  }
 
   return NextResponse.json({ ok: true });
 }

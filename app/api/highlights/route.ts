@@ -1,23 +1,44 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-
-const localUserId = "local-user";
+import { localUserId } from "@/lib/user";
 
 export async function POST(request: Request) {
   const body = await request.json();
 
-  if (!body.verseId && !body.tokenId) {
+  const verseId = typeof body.verseId === "string" ? body.verseId : undefined;
+  const tokenId = typeof body.tokenId === "string" ? body.tokenId : undefined;
+
+  if (!verseId && !tokenId) {
     return NextResponse.json({ error: "A verseId or tokenId is required." }, { status: 400 });
   }
 
-  const highlight = await prisma.highlight.create({
-    data: {
-      userId: localUserId,
-      verseId: typeof body.verseId === "string" ? body.verseId : undefined,
-      tokenId: typeof body.tokenId === "string" ? body.tokenId : undefined,
-      color: typeof body.color === "string" ? body.color : "#fde68a"
+  if (verseId) {
+    const verse = await prisma.verse.findUnique({ where: { id: verseId }, select: { id: true } });
+    if (!verse) {
+      return NextResponse.json({ error: "verseId not found." }, { status: 400 });
     }
-  });
+  }
 
-  return NextResponse.json({ highlight }, { status: 201 });
+  if (tokenId) {
+    const token = await prisma.token.findUnique({ where: { id: tokenId }, select: { id: true } });
+    if (!token) {
+      return NextResponse.json({ error: "tokenId not found." }, { status: 400 });
+    }
+  }
+
+  try {
+    const highlight = await prisma.highlight.create({
+      data: {
+        userId: localUserId,
+        verseId,
+        tokenId,
+        color: typeof body.color === "string" ? body.color : "#fde68a"
+      }
+    });
+
+    return NextResponse.json({ highlight }, { status: 201 });
+  } catch (error) {
+    console.error("highlights POST failed", error);
+    return NextResponse.json({ error: "Could not save highlight." }, { status: 500 });
+  }
 }

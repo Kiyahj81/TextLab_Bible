@@ -24,6 +24,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Query is required." }, { status: 400 });
   }
 
+  const matchMode =
+    mode === "morphology" &&
+    typeof body.matchMode === "string" &&
+    allowedMatchModes.has(body.matchMode)
+      ? body.matchMode
+      : undefined;
+
   const savedSearch = await prisma.savedSearch.create({
     data: {
       userId: localUserId,
@@ -33,8 +40,7 @@ export async function POST(request: Request) {
       corpus: typeof body.corpus === "string" && body.corpus.trim() ? body.corpus.trim() : undefined,
       book: typeof body.book === "string" && body.book.trim() ? body.book.trim() : undefined,
       chapter: Number.isFinite(Number(body.chapter)) && Number(body.chapter) > 0 ? Number(body.chapter) : undefined,
-      matchMode:
-        typeof body.matchMode === "string" && allowedMatchModes.has(body.matchMode) ? body.matchMode : undefined
+      matchMode
     }
   });
 

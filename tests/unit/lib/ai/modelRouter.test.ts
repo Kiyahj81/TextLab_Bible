@@ -13,7 +13,7 @@ const { openaiCtor, responsesCreate } = vi.hoisted(() => ({
   responsesCreate: vi.fn()
 }));
 vi.mock("openai", () => ({
-  default: vi.fn().mockImplementation((opts: unknown) => {
+  default: vi.fn().mockImplementation(function (this: unknown, opts: unknown) {
     openaiCtor(opts);
     return { responses: { create: responsesCreate } };
   })

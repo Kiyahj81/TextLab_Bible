@@ -282,6 +282,21 @@ async function morphologyBranch(ctx: BranchContext): Promise<AssistantAnswer | n
   });
 }
 
+function passageCitations(
+  corpus: "SBLGNT" | "WEB",
+  refs: Array<{ book: string; chapter: number; verse: number; reference: string }>
+): AssistantCitation[] {
+  return refs.map((r) => ({
+    reference: r.reference,
+    corpus,
+    searchQuery: "passage",
+    toolName: "getPassage",
+    book: r.book,
+    chapter: r.chapter,
+    verse: r.verse
+  }));
+}
+
 async function passageBranch(ctx: BranchContext): Promise<AssistantAnswer | null> {
   const { book, normalized, routing, toolTrace } = ctx;
 
@@ -297,24 +312,8 @@ async function passageBranch(ctx: BranchContext): Promise<AssistantAnswer | null
   toolTrace.push({ tool: "getPassage", args: { corpus: "WEB", book: book ?? "John", chapter: 1, verseStart: 1, verseEnd: 5 } });
 
   const citations = [
-    ...greek.references.map((result) => ({
-      reference: result.reference,
-      corpus: "SBLGNT",
-      searchQuery: "passage",
-      toolName: "getPassage",
-      book: result.book,
-      chapter: result.chapter,
-      verse: result.verse
-    })),
-    ...english.references.map((result) => ({
-      reference: result.reference,
-      corpus: "WEB",
-      searchQuery: "passage",
-      toolName: "getPassage",
-      book: result.book,
-      chapter: result.chapter,
-      verse: result.verse
-    }))
+    ...passageCitations("SBLGNT", greek.references),
+    ...passageCitations("WEB", english.references)
   ];
 
   const answer = [

@@ -53,6 +53,34 @@ describe("POST /api/highlights", () => {
     expect(res.status).toBe(201);
     expect(prismaMock.highlight.create).toHaveBeenCalledTimes(1);
   });
+
+  it("rejects englishWordIndex without verseId", async () => {
+    const res = await POST(jsonRequest({ tokenId: "t1", englishWordIndex: 3, color: "#fde68a" }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: "englishWordIndex requires a verseId." });
+  });
+
+  it("replaces existing row when storing an english-word highlight", async () => {
+    prismaMock.verse.findUnique.mockResolvedValue({ id: "v1" });
+    prismaMock.highlight.deleteMany.mockResolvedValue({ count: 1 });
+    prismaMock.highlight.create.mockResolvedValue({ id: "h2" });
+    const res = await POST(
+      jsonRequest({ verseId: "v1", englishWordIndex: 2, color: "#bfdbfe" })
+    );
+    expect(res.status).toBe(201);
+    expect(prismaMock.highlight.deleteMany).toHaveBeenCalledWith({
+      where: { userId: "local-user", verseId: "v1", englishWordIndex: 2 }
+    });
+    expect(prismaMock.highlight.create).toHaveBeenCalledWith({
+      data: {
+        userId: "local-user",
+        verseId: "v1",
+        tokenId: undefined,
+        englishWordIndex: 2,
+        color: "#bfdbfe"
+      }
+    });
+  });
 });
 
 function deleteRequest(body: unknown) {
@@ -70,12 +98,12 @@ describe("DELETE /api/highlights", () => {
     expect(prismaMock.highlight.deleteMany).not.toHaveBeenCalled();
   });
 
-  it("scopes deleteMany to the local user + verseId", async () => {
+  it("scopes deleteMany to the local user + verseId (verse-level highlight)", async () => {
     prismaMock.highlight.deleteMany.mockResolvedValue({ count: 1 });
     const res = await DELETE(deleteRequest({ verseId: "v1" }));
     expect(res.status).toBe(200);
     expect(prismaMock.highlight.deleteMany).toHaveBeenCalledWith({
-      where: { userId: "local-user", verseId: "v1" }
+      where: { userId: "local-user", verseId: "v1", englishWordIndex: null }
     });
     expect(await res.json()).toEqual({ deleted: 1 });
   });
@@ -85,7 +113,16 @@ describe("DELETE /api/highlights", () => {
     const res = await DELETE(deleteRequest({ tokenId: "t1" }));
     expect(res.status).toBe(200);
     expect(prismaMock.highlight.deleteMany).toHaveBeenCalledWith({
-      where: { userId: "local-user", tokenId: "t1" }
+      where: { userId: "local-user", tokenId: "t1", englishWordIndex: null }
+    });
+  });
+
+  it("scopes deleteMany to verseId + englishWordIndex for english-word clear", async () => {
+    prismaMock.highlight.deleteMany.mockResolvedValue({ count: 1 });
+    const res = await DELETE(deleteRequest({ verseId: "v1", englishWordIndex: 4 }));
+    expect(res.status).toBe(200);
+    expect(prismaMock.highlight.deleteMany).toHaveBeenCalledWith({
+      where: { userId: "local-user", verseId: "v1", englishWordIndex: 4 }
     });
   });
 });

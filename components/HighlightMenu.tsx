@@ -1,10 +1,10 @@
 "use client";
 
-import { Ban, ChevronDown, Highlighter } from "lucide-react";
+import { ChevronDown, Highlighter } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { HighlightPalette } from "@/components/HighlightPalette";
 import {
   DEFAULT_HIGHLIGHT_COLOR,
-  HIGHLIGHT_COLORS,
   broadcastHighlightColor,
   getStoredHighlightColor,
   setStoredHighlightColor,
@@ -95,39 +95,8 @@ export function HighlightMenu({
         <ChevronDown size={14} aria-hidden />
       </button>
       {open ? (
-        <div
-          role="menu"
-          className="absolute right-0 top-full z-20 mt-1 flex items-center gap-1 rounded-md border border-stone-300 bg-white p-2 shadow-lg"
-        >
-          {HIGHLIGHT_COLORS.map((option) => {
-            const active = option.value === color;
-            return (
-              <button
-                key={option.value}
-                type="button"
-                role="menuitemradio"
-                aria-checked={active}
-                onClick={() => pick(option.value)}
-                aria-label={option.label}
-                title={option.label}
-                className={`h-6 w-6 rounded-full border ${
-                  active ? "border-slate-900 ring-2 ring-slate-300" : "border-stone-300 hover:border-slate-500"
-                }`}
-                style={{ backgroundColor: option.value }}
-              />
-            );
-          })}
-          <span aria-hidden className="mx-1 h-6 w-px bg-stone-200" />
-          <button
-            type="button"
-            role="menuitem"
-            onClick={clear}
-            aria-label="Remove highlight"
-            title="Remove highlight"
-            className="flex h-6 w-6 items-center justify-center rounded-full border border-stone-300 bg-white text-slate-500 hover:border-slate-500 hover:text-slate-700"
-          >
-            <Ban size={14} aria-hidden />
-          </button>
+        <div className="absolute right-0 top-full z-20 mt-1 rounded-md border border-stone-300 bg-white p-2 shadow-lg">
+          <HighlightPalette activeColor={color} onPick={pick} onClear={clear} />
         </div>
       ) : null}
     </div>

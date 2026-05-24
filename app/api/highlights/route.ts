@@ -7,6 +7,10 @@ export async function DELETE(request: Request) {
 
   const verseId = typeof body?.verseId === "string" ? body.verseId : undefined;
   const tokenId = typeof body?.tokenId === "string" ? body.tokenId : undefined;
+  const englishWordIndex =
+    typeof body?.englishWordIndex === "number" && Number.isInteger(body.englishWordIndex)
+      ? body.englishWordIndex
+      : undefined;
 
   if (!verseId && !tokenId) {
     return NextResponse.json({ error: "A verseId or tokenId is required." }, { status: 400 });
@@ -17,7 +21,8 @@ export async function DELETE(request: Request) {
       where: {
         userId: localUserId,
         ...(verseId ? { verseId } : {}),
-        ...(tokenId ? { tokenId } : {})
+        ...(tokenId ? { tokenId } : {}),
+        ...(englishWordIndex !== undefined ? { englishWordIndex } : { englishWordIndex: null })
       }
     });
     return NextResponse.json({ deleted: result.count }, { status: 200 });
@@ -32,9 +37,20 @@ export async function POST(request: Request) {
 
   const verseId = typeof body.verseId === "string" ? body.verseId : undefined;
   const tokenId = typeof body.tokenId === "string" ? body.tokenId : undefined;
+  const englishWordIndex =
+    typeof body.englishWordIndex === "number" && Number.isInteger(body.englishWordIndex)
+      ? body.englishWordIndex
+      : undefined;
 
   if (!verseId && !tokenId) {
     return NextResponse.json({ error: "A verseId or tokenId is required." }, { status: 400 });
+  }
+
+  if (englishWordIndex !== undefined && !verseId) {
+    return NextResponse.json(
+      { error: "englishWordIndex requires a verseId." },
+      { status: 400 }
+    );
   }
 
   if (verseId) {
@@ -52,11 +68,20 @@ export async function POST(request: Request) {
   }
 
   try {
+    // One highlight per (verseId + englishWordIndex) slot per user — replace
+    // any existing row so picking a new color doesn't accumulate stacked rows.
+    if (verseId && englishWordIndex !== undefined) {
+      await prisma.highlight.deleteMany({
+        where: { userId: localUserId, verseId, englishWordIndex }
+      });
+    }
+
     const highlight = await prisma.highlight.create({
       data: {
         userId: localUserId,
         verseId,
         tokenId,
+        englishWordIndex,
         color: typeof body.color === "string" ? body.color : "#fde68a"
       }
     });

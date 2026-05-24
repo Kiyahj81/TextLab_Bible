@@ -134,15 +134,18 @@ model GeneratedStudyNote {
 }
 
 model Highlight {
-  id        String   @id @default(cuid())
-  userId    String
-  verseId   String?
-  tokenId   String?
-  color     String
-  createdAt DateTime @default(now())
+  id               String   @id @default(cuid())
+  userId           String
+  verseId          String?
+  tokenId          String?
+  englishWordIndex Int?
+  color            String
+  createdAt        DateTime @default(now())
 
   verse Verse? @relation(fields: [verseId], references: [id])
   token Token? @relation(fields: [tokenId], references: [id])
+
+  @@index([userId, verseId, englishWordIndex])
 }
 
 model AiSession {

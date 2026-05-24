@@ -114,7 +114,7 @@ export async function getReaderPassage(bookInput = "John", chapter = 1) {
         book: { osisId: book },
         chapter
       },
-      include: { book: true, corpus: true },
+      include: { book: true, corpus: true, highlights: true },
       orderBy: [{ corpus: { abbreviation: "asc" } }, { verse: "asc" }]
     }),
     prisma.token.findMany({
@@ -139,33 +139,52 @@ export async function getReaderPassage(bookInput = "John", chapter = 1) {
     englishByVerse.set(verse.verse, verse);
   }
 
-  return greekVerses.map((verse) => ({
-    id: verse.id,
-    book: verse.book.osisId,
-    bookName: verse.book.name,
-    chapter: verse.chapter,
-    verse: verse.verse,
-    reference: formatReference(verse.book.osisId, verse.chapter, verse.verse),
-    greekText: verse.text,
-    englishText: englishByVerse.get(verse.verse)?.text ?? "",
-    englishCorpus: englishByVerse.get(verse.verse)?.corpus.abbreviation ?? "WEB",
-    tokens: (tokensByVerse[verse.verse] ?? []).map((token) => ({
-      id: token.id,
-      book: token.book.osisId,
-      chapter: token.chapter,
-      verse: token.verse,
-      wordIndex: token.wordIndex,
-      surface: token.surface,
-      normalized: token.normalized,
-      lemma: token.lemma,
-      morphCode: token.morphCode,
-      partOfSpeech: token.partOfSpeech,
-      gloss: token.gloss,
-      noteCount: token.notes.length,
-      highlightColor: latestHighlightColor(token.highlights)
-    })),
-    highlightColor: latestHighlightColor(verse.highlights)
-  }));
+  return greekVerses.map((verse) => {
+    const englishVerse = englishByVerse.get(verse.verse);
+    return {
+      id: verse.id,
+      book: verse.book.osisId,
+      bookName: verse.book.name,
+      chapter: verse.chapter,
+      verse: verse.verse,
+      reference: formatReference(verse.book.osisId, verse.chapter, verse.verse),
+      greekText: verse.text,
+      englishText: englishVerse?.text ?? "",
+      englishCorpus: englishVerse?.corpus.abbreviation ?? "WEB",
+      englishVerseId: englishVerse?.id ?? null,
+      englishHighlights: collectEnglishHighlights(englishVerse?.highlights ?? []),
+      tokens: (tokensByVerse[verse.verse] ?? []).map((token) => ({
+        id: token.id,
+        book: token.book.osisId,
+        chapter: token.chapter,
+        verse: token.verse,
+        wordIndex: token.wordIndex,
+        surface: token.surface,
+        normalized: token.normalized,
+        lemma: token.lemma,
+        morphCode: token.morphCode,
+        partOfSpeech: token.partOfSpeech,
+        gloss: token.gloss,
+        noteCount: token.notes.length,
+        highlightColor: latestHighlightColor(token.highlights)
+      })),
+      highlightColor: latestHighlightColor(verse.highlights)
+    };
+  });
+}
+
+function collectEnglishHighlights(
+  highlights: { englishWordIndex: number | null; color: string; createdAt: Date }[]
+): Array<{ wordIndex: number; color: string }> {
+  const byWord = new Map<number, { color: string; createdAt: Date }>();
+  for (const entry of highlights) {
+    if (entry.englishWordIndex === null || entry.englishWordIndex === undefined) continue;
+    const existing = byWord.get(entry.englishWordIndex);
+    if (!existing || entry.createdAt > existing.createdAt) {
+      byWord.set(entry.englishWordIndex, { color: entry.color, createdAt: entry.createdAt });
+    }
+  }
+  return Array.from(byWord.entries()).map(([wordIndex, { color }]) => ({ wordIndex, color }));
 }
 
 function latestHighlightColor(

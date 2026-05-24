@@ -3,7 +3,8 @@
 import { NotebookPen } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { SubmitEvent } from "react";
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import { EnglishWordPopover } from "@/components/EnglishWordPopover";
 import { HighlightMenu } from "@/components/HighlightMenu";
 import { MorphologyPopover, ReaderToken } from "@/components/MorphologyPopover";
 import { ReaderModeToggle, type ReaderMode } from "@/components/ReaderModeToggle";
@@ -16,6 +17,8 @@ function isReaderMode(value: string | null): value is ReaderMode {
   return value !== null && READER_MODES.includes(value as ReaderMode);
 }
 
+type EnglishHighlight = { wordIndex: number; color: string };
+
 type ReaderVerse = {
   id: string;
   book: string;
@@ -26,9 +29,30 @@ type ReaderVerse = {
   greekText: string;
   englishText: string;
   englishCorpus: string;
+  englishVerseId: string | null;
+  englishHighlights: EnglishHighlight[];
   tokens: ReaderToken[];
   highlightColor: string | null;
 };
+
+type EnglishToken = { kind: "word"; value: string; wordIndex: number } | { kind: "space"; value: string };
+
+function tokenizeEnglish(text: string): EnglishToken[] {
+  if (!text) return [];
+  const parts = text.split(/(\s+)/);
+  const result: EnglishToken[] = [];
+  let wordIndex = 0;
+  for (const part of parts) {
+    if (!part) continue;
+    if (/^\s+$/.test(part)) {
+      result.push({ kind: "space", value: part });
+    } else {
+      result.push({ kind: "word", value: part, wordIndex });
+      wordIndex += 1;
+    }
+  }
+  return result;
+}
 
 export function BibleReader({
   verses,
@@ -39,6 +63,7 @@ export function BibleReader({
 }) {
   const router = useRouter();
   const [selectedTokenId, setSelectedTokenId] = useState<string | null>(null);
+  const [selectedEnglishWord, setSelectedEnglishWord] = useState<string | null>(null);
   const [noteBodies, setNoteBodies] = useState<Record<string, string>>({});
   const [tokenNoteDrafts, setTokenNoteDrafts] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<Record<string, string>>({});
@@ -106,6 +131,40 @@ export function BibleReader({
     }
   }
 
+  async function highlightEnglishWord(
+    verse: ReaderVerse,
+    wordIndex: number,
+    color: string | null
+  ) {
+    if (!verse.englishVerseId) return;
+    try {
+      const response =
+        color === null
+          ? await fetch("/api/highlights", {
+              method: "DELETE",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ verseId: verse.englishVerseId, englishWordIndex: wordIndex })
+            })
+          : await fetch("/api/highlights", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                verseId: verse.englishVerseId,
+                englishWordIndex: wordIndex,
+                color
+              })
+            });
+
+      if (response.ok) {
+        router.refresh();
+      } else {
+        setVerseStatus(verse.id, "Could not save highlight.");
+      }
+    } catch {
+      setVerseStatus(verse.id, "Network error. Try again.");
+    }
+  }
+
   async function highlightVerse(verse: ReaderVerse, color: string | null) {
     if (highlighting[verse.id]) return;
 
@@ -159,17 +218,10 @@ export function BibleReader({
         <article
           key={verse.id}
           id={`verse-${verse.verse}`}
-          style={
-            verse.highlightColor
-              ? {
-                  borderLeftColor: verse.highlightColor,
-                  backgroundColor: `color-mix(in srgb, ${verse.highlightColor} 40%, transparent)`
-                }
-              : undefined
-          }
-          className={`scroll-mt-24 rounded-r-md border-l-2 py-2 pl-6 pr-3 ${
+          style={verse.highlightColor ? { borderLeftColor: verse.highlightColor } : undefined}
+          className={`scroll-mt-24 border-l-2 pl-6 ${
             verse.highlightColor ? "" : "border-accent-200"
-          } ${targetVerse === verse.verse ? "ring-2 ring-amber-300 ring-offset-4 ring-offset-[var(--background)]" : ""}`}
+          } ${targetVerse === verse.verse ? "rounded-sm ring-2 ring-amber-300 ring-offset-4 ring-offset-[var(--background)]" : ""}`}
         >
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <h2 className="oldstyle-nums font-display text-base font-semibold text-slate-700">{verse.reference}</h2>
@@ -218,7 +270,13 @@ export function BibleReader({
                 <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
                   {verse.englishCorpus}
                 </div>
-                <p className="text-base leading-7 text-slate-800">{verse.englishText}</p>
+                <EnglishVerseText
+                  verse={verse}
+                  selectedKey={selectedEnglishWord}
+                  onSelect={setSelectedEnglishWord}
+                  onPick={(wordIndex, color) => highlightEnglishWord(verse, wordIndex, color)}
+                  onClear={(wordIndex) => highlightEnglishWord(verse, wordIndex, null)}
+                />
               </div>
             ) : null}
           </div>
@@ -250,5 +308,64 @@ export function BibleReader({
         </article>
       ))}
     </div>
+  );
+}
+
+function EnglishVerseText({
+  verse,
+  selectedKey,
+  onSelect,
+  onPick,
+  onClear
+}: {
+  verse: ReaderVerse;
+  selectedKey: string | null;
+  onSelect: (key: string | null) => void;
+  onPick: (wordIndex: number, color: string) => void;
+  onClear: (wordIndex: number) => void;
+}) {
+  const tokens = useMemo(() => tokenizeEnglish(verse.englishText), [verse.englishText]);
+  const highlightByWord = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const entry of verse.englishHighlights) map.set(entry.wordIndex, entry.color);
+    return map;
+  }, [verse.englishHighlights]);
+
+  if (!verse.englishVerseId) {
+    return <p className="text-base leading-7 text-slate-800">{verse.englishText}</p>;
+  }
+
+  return (
+    <p className="text-base leading-7 text-slate-800">
+      {tokens.map((token, index) => {
+        if (token.kind === "space") {
+          return <Fragment key={`s-${index}`}>{token.value}</Fragment>;
+        }
+        const key = `${verse.id}-${token.wordIndex}`;
+        const color = highlightByWord.get(token.wordIndex) ?? null;
+        const open = selectedKey === key;
+        return (
+          <span key={key} className="relative inline-block">
+            <button
+              type="button"
+              onClick={() => onSelect(open ? null : key)}
+              style={color ? { backgroundColor: color } : undefined}
+              className="rounded px-0.5 transition-colors hover:bg-accent-50"
+            >
+              {token.value}
+            </button>
+            {open ? (
+              <EnglishWordPopover
+                word={token.value}
+                activeColor={color}
+                onPick={(nextColor) => onPick(token.wordIndex, nextColor)}
+                onClear={() => onClear(token.wordIndex)}
+                onClose={() => onSelect(null)}
+              />
+            ) : null}
+          </span>
+        );
+      })}
+    </p>
   );
 }

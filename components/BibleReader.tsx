@@ -332,11 +332,11 @@ function EnglishVerseText({
   }, [verse.englishHighlights]);
 
   if (!verse.englishVerseId) {
-    return <p className="text-base leading-7 text-slate-800">{verse.englishText}</p>;
+    return <div className="text-base leading-7 text-slate-800">{verse.englishText}</div>;
   }
 
   return (
-    <p className="text-base leading-7 text-slate-800">
+    <div className="text-base leading-7 text-slate-800">
       {tokens.map((token, index) => {
         if (token.kind === "space") {
           return <Fragment key={`s-${index}`}>{token.value}</Fragment>;
@@ -366,6 +366,6 @@ function EnglishVerseText({
           </span>
         );
       })}
-    </p>
+    </div>
   );
 }

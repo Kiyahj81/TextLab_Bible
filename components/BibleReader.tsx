@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import type { SubmitEvent } from "react";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { EnglishWordPopover } from "@/components/EnglishWordPopover";
-import { HighlightMenu } from "@/components/HighlightMenu";
 import { MorphologyPopover, ReaderToken } from "@/components/MorphologyPopover";
 import { ReaderModeToggle, type ReaderMode } from "@/components/ReaderModeToggle";
 import { useAutoDismissMap } from "@/lib/useAutoDismissStatus";
@@ -32,7 +31,6 @@ type ReaderVerse = {
   englishVerseId: string | null;
   englishHighlights: EnglishHighlight[];
   tokens: ReaderToken[];
-  highlightColor: string | null;
 };
 
 type EnglishToken = { kind: "word"; value: string; wordIndex: number } | { kind: "space"; value: string };
@@ -68,7 +66,6 @@ export function BibleReader({
   const [tokenNoteDrafts, setTokenNoteDrafts] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<Record<string, string>>({});
   const [savingNote, setSavingNote] = useState<Record<string, boolean>>({});
-  const [highlighting, setHighlighting] = useState<Record<string, boolean>>({});
   const [readerMode, setReaderMode] = useState<ReaderMode>("parallel");
 
   useAutoDismissMap(status, setStatus);
@@ -165,37 +162,6 @@ export function BibleReader({
     }
   }
 
-  async function highlightVerse(verse: ReaderVerse, color: string | null) {
-    if (highlighting[verse.id]) return;
-
-    setHighlighting((current) => ({ ...current, [verse.id]: true }));
-    try {
-      const response =
-        color === null
-          ? await fetch("/api/highlights", {
-              method: "DELETE",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ verseId: verse.id })
-            })
-          : await fetch("/api/highlights", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ verseId: verse.id, color })
-            });
-
-      if (response.ok) {
-        setVerseStatus(verse.id, color === null ? "Highlight removed." : "Highlight saved.");
-        router.refresh();
-      } else {
-        setVerseStatus(verse.id, color === null ? "Could not remove highlight." : "Could not save highlight.");
-      }
-    } catch {
-      setVerseStatus(verse.id, "Network error. Try again.");
-    } finally {
-      setHighlighting((current) => ({ ...current, [verse.id]: false }));
-    }
-  }
-
   if (verses.length === 0) {
     return (
       <div className="rounded-md border border-stone-300 bg-white p-6 text-slate-700">
@@ -218,19 +184,11 @@ export function BibleReader({
         <article
           key={verse.id}
           id={`verse-${verse.verse}`}
-          style={verse.highlightColor ? { borderLeftColor: verse.highlightColor } : undefined}
-          className={`scroll-mt-24 border-l-2 pl-6 ${
-            verse.highlightColor ? "" : "border-accent-200"
-          } ${targetVerse === verse.verse ? "rounded-sm ring-2 ring-amber-300 ring-offset-4 ring-offset-[var(--background)]" : ""}`}
+          className={`scroll-mt-24 border-l-2 border-accent-200 pl-6 ${
+            targetVerse === verse.verse ? "rounded-sm ring-2 ring-amber-300 ring-offset-4 ring-offset-[var(--background)]" : ""
+          }`}
         >
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="oldstyle-nums font-display text-base font-semibold text-slate-700">{verse.reference}</h2>
-            <HighlightMenu
-              label="Highlight verse"
-              onPick={(color) => highlightVerse(verse, color)}
-              disabled={highlighting[verse.id]}
-            />
-          </div>
+          <h2 className="oldstyle-nums mb-3 font-display text-base font-semibold text-slate-700">{verse.reference}</h2>
 
           <div className={`grid gap-4 ${showBothColumns ? "md:grid-cols-2" : ""}`}>
             {showGreek ? (

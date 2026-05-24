@@ -105,7 +105,7 @@ export async function getReaderPassage(bookInput = "John", chapter = 1) {
         book: { osisId: book },
         chapter
       },
-      include: { book: true, highlights: true },
+      include: { book: true },
       orderBy: { verse: "asc" }
     }),
     prisma.verse.findMany({
@@ -167,8 +167,7 @@ export async function getReaderPassage(bookInput = "John", chapter = 1) {
         gloss: token.gloss,
         noteCount: token.notes.length,
         highlightColor: latestHighlightColor(token.highlights)
-      })),
-      highlightColor: latestHighlightColor(verse.highlights)
+      }))
     };
   });
 }

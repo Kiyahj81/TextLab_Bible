@@ -1,12 +1,14 @@
 "use client";
 
-import { ChevronDown, Highlighter } from "lucide-react";
+import { Ban, ChevronDown, Highlighter } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
   DEFAULT_HIGHLIGHT_COLOR,
   HIGHLIGHT_COLORS,
+  broadcastHighlightColor,
   getStoredHighlightColor,
-  setStoredHighlightColor
+  setStoredHighlightColor,
+  subscribeHighlightColor
 } from "@/lib/highlight";
 
 export function HighlightMenu({
@@ -14,7 +16,7 @@ export function HighlightMenu({
   disabled,
   label = "Highlight"
 }: {
-  onPick: (color: string) => void;
+  onPick: (color: string | null) => void;
   disabled?: boolean;
   label?: string;
 }) {
@@ -24,6 +26,7 @@ export function HighlightMenu({
 
   useEffect(() => {
     setColor(getStoredHighlightColor());
+    return subscribeHighlightColor(setColor);
   }, []);
 
   useEffect(() => {
@@ -57,9 +60,16 @@ export function HighlightMenu({
   function pick(next: string) {
     setColor(next);
     setStoredHighlightColor(next);
+    broadcastHighlightColor(next);
     setOpen(false);
     if (disabled) return;
     onPick(next);
+  }
+
+  function clear() {
+    setOpen(false);
+    if (disabled) return;
+    onPick(null);
   }
 
   return (
@@ -87,7 +97,7 @@ export function HighlightMenu({
       {open ? (
         <div
           role="menu"
-          className="absolute right-0 top-full z-20 mt-1 flex gap-1 rounded-md border border-stone-300 bg-white p-2 shadow-lg"
+          className="absolute right-0 top-full z-20 mt-1 flex items-center gap-1 rounded-md border border-stone-300 bg-white p-2 shadow-lg"
         >
           {HIGHLIGHT_COLORS.map((option) => {
             const active = option.value === color;
@@ -107,6 +117,17 @@ export function HighlightMenu({
               />
             );
           })}
+          <span aria-hidden className="mx-1 h-6 w-px bg-stone-200" />
+          <button
+            type="button"
+            role="menuitem"
+            onClick={clear}
+            aria-label="Remove highlight"
+            title="Remove highlight"
+            className="flex h-6 w-6 items-center justify-center rounded-full border border-stone-300 bg-white text-slate-500 hover:border-slate-500 hover:text-slate-700"
+          >
+            <Ban size={14} aria-hidden />
+          </button>
         </div>
       ) : null}
     </div>

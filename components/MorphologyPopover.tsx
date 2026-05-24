@@ -113,22 +113,29 @@ export function MorphologyPopover({
     }
   }
 
-  async function highlightToken(color: string) {
+  async function highlightToken(color: string | null) {
     if (saving) return;
 
     setSaving(true);
     try {
-      const response = await fetch("/api/highlights", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tokenId: token.id, color })
-      });
+      const response =
+        color === null
+          ? await fetch("/api/highlights", {
+              method: "DELETE",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ tokenId: token.id })
+            })
+          : await fetch("/api/highlights", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ tokenId: token.id, color })
+            });
 
       if (response.ok) {
-        setStatus("Highlight saved.");
+        setStatus(color === null ? "Highlight removed." : "Highlight saved.");
         router.refresh();
       } else {
-        setStatus("Could not save highlight.");
+        setStatus(color === null ? "Could not remove highlight." : "Could not save highlight.");
       }
     } catch {
       setStatus("Network error. Try again.");

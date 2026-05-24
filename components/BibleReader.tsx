@@ -106,22 +106,29 @@ export function BibleReader({
     }
   }
 
-  async function highlightVerse(verse: ReaderVerse, color: string) {
+  async function highlightVerse(verse: ReaderVerse, color: string | null) {
     if (highlighting[verse.id]) return;
 
     setHighlighting((current) => ({ ...current, [verse.id]: true }));
     try {
-      const response = await fetch("/api/highlights", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ verseId: verse.id, color })
-      });
+      const response =
+        color === null
+          ? await fetch("/api/highlights", {
+              method: "DELETE",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ verseId: verse.id })
+            })
+          : await fetch("/api/highlights", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ verseId: verse.id, color })
+            });
 
       if (response.ok) {
-        setVerseStatus(verse.id, "Highlight saved.");
+        setVerseStatus(verse.id, color === null ? "Highlight removed." : "Highlight saved.");
         router.refresh();
       } else {
-        setVerseStatus(verse.id, "Could not save highlight.");
+        setVerseStatus(verse.id, color === null ? "Could not remove highlight." : "Could not save highlight.");
       }
     } catch {
       setVerseStatus(verse.id, "Network error. Try again.");
@@ -152,10 +159,17 @@ export function BibleReader({
         <article
           key={verse.id}
           id={`verse-${verse.verse}`}
-          style={verse.highlightColor ? { borderLeftColor: verse.highlightColor } : undefined}
-          className={`scroll-mt-24 border-l-2 pl-6 ${
+          style={
+            verse.highlightColor
+              ? {
+                  borderLeftColor: verse.highlightColor,
+                  backgroundColor: `color-mix(in srgb, ${verse.highlightColor} 40%, transparent)`
+                }
+              : undefined
+          }
+          className={`scroll-mt-24 rounded-r-md border-l-2 py-2 pl-6 pr-3 ${
             verse.highlightColor ? "" : "border-accent-200"
-          } ${targetVerse === verse.verse ? "rounded-sm ring-2 ring-amber-300 ring-offset-4 ring-offset-[var(--background)]" : ""}`}
+          } ${targetVerse === verse.verse ? "ring-2 ring-amber-300 ring-offset-4 ring-offset-[var(--background)]" : ""}`}
         >
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <h2 className="oldstyle-nums font-display text-base font-semibold text-slate-700">{verse.reference}</h2>

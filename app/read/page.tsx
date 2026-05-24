@@ -2,6 +2,7 @@ import { BibleReader } from "@/components/BibleReader";
 import { ChapterNav } from "@/components/ChapterNav";
 import { DismissibleIntro } from "@/components/DismissibleIntro";
 import { ReaderControls } from "@/components/ReaderControls";
+import { ReaderLocationMemo } from "@/components/ReaderLocationMemo";
 import { parsePositiveInt } from "@/lib/params";
 import {
   getAvailablePassages,
@@ -28,6 +29,7 @@ export default async function ReadPage({ searchParams }: { searchParams: SearchP
 
   return (
     <div className="space-y-6">
+      <ReaderLocationMemo book={book} chapter={chapter} />
       <section className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
           <p className="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-accent-700">
@@ -44,6 +46,8 @@ export default async function ReadPage({ searchParams }: { searchParams: SearchP
       <ChapterNav prev={neighbors.prev} next={neighbors.next} />
 
       <BibleReader verses={verses} targetVerse={targetVerse} />
+
+      <ChapterNav prev={neighbors.prev} next={neighbors.next} />
     </div>
   );
 }

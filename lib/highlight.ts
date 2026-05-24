@@ -33,3 +33,22 @@ export function setStoredHighlightColor(value: string): void {
   if (!isHighlightColor(value)) return;
   window.localStorage.setItem(STORAGE_KEY, value);
 }
+
+const COLOR_CHANGE_EVENT = "textlab:highlight-color-change";
+
+export function broadcastHighlightColor(value: string): void {
+  if (typeof window === "undefined") return;
+  if (!isHighlightColor(value)) return;
+  window.dispatchEvent(new CustomEvent(COLOR_CHANGE_EVENT, { detail: value }));
+}
+
+export function subscribeHighlightColor(handler: (value: string) => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  function listener(event: Event) {
+    if (event instanceof CustomEvent && isHighlightColor(event.detail)) {
+      handler(event.detail);
+    }
+  }
+  window.addEventListener(COLOR_CHANGE_EVENT, listener);
+  return () => window.removeEventListener(COLOR_CHANGE_EVENT, listener);
+}

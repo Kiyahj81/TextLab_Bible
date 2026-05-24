@@ -15,33 +15,48 @@ export default async function NotesPage({ searchParams }: { searchParams: Search
   const params = await searchParams;
   const tag = getParam(params.tag) ?? "";
   const reference = getParam(params.reference) ?? "";
+  const keyword = getParam(params.keyword) ?? "";
   const sort = parseNotesSort(getParam(params.sort));
   const requestedPage = parsePositiveInt(getParam(params.page)) ?? 1;
   const pageSize = Math.min(parsePositiveInt(getParam(params.pageSize)) ?? 25, 100);
 
-  const where: Prisma.NoteWhereInput = { userId: localUserId };
+  const conditions: Prisma.NoteWhereInput[] = [{ userId: localUserId }];
 
   if (tag.trim()) {
-    where.tags = { has: tag.trim() };
+    conditions.push({ tags: { has: tag.trim() } });
   }
 
   const refFilter = parseReferenceFilter(reference);
   if (refFilter) {
-    where.OR = [
-      {
-        verse: {
-          book: { osisId: { contains: refFilter.book, mode: "insensitive" } },
-          ...(refFilter.chapter ? { chapter: refFilter.chapter } : {})
+    conditions.push({
+      OR: [
+        {
+          verse: {
+            book: { osisId: { contains: refFilter.book, mode: "insensitive" } },
+            ...(refFilter.chapter ? { chapter: refFilter.chapter } : {})
+          }
+        },
+        {
+          token: {
+            book: { osisId: { contains: refFilter.book, mode: "insensitive" } },
+            ...(refFilter.chapter ? { chapter: refFilter.chapter } : {})
+          }
         }
-      },
-      {
-        token: {
-          book: { osisId: { contains: refFilter.book, mode: "insensitive" } },
-          ...(refFilter.chapter ? { chapter: refFilter.chapter } : {})
-        }
-      }
-    ];
+      ]
+    });
   }
+
+  if (keyword.trim()) {
+    const needle = keyword.trim();
+    conditions.push({
+      OR: [
+        { title: { contains: needle, mode: "insensitive" } },
+        { body: { contains: needle, mode: "insensitive" } }
+      ]
+    });
+  }
+
+  const where: Prisma.NoteWhereInput = { AND: conditions };
 
   const orderBy: Prisma.NoteOrderByWithRelationInput[] =
     sort === "title"
@@ -108,6 +123,7 @@ export default async function NotesPage({ searchParams }: { searchParams: Search
         pageCount={pageCount}
         tag={tag}
         reference={reference}
+        keyword={keyword}
         sort={sort}
       />
     </div>

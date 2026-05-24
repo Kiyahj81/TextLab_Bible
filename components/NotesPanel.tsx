@@ -29,6 +29,7 @@ export function NotesPanel({
   pageCount,
   tag,
   reference,
+  keyword,
   sort
 }: {
   notes: NoteRow[];
@@ -38,11 +39,13 @@ export function NotesPanel({
   pageCount: number;
   tag: string;
   reference: string;
+  keyword: string;
   sort: NotesSort;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [rows, setRows] = useState(notes);
+  const [keywordFilter, setKeywordFilter] = useState(keyword);
   const [tagFilter, setTagFilter] = useState(tag);
   const [referenceFilter, setReferenceFilter] = useState(reference);
   const [status, setStatus] = useState<Record<string, string>>({});
@@ -67,6 +70,7 @@ export function NotesPanel({
       const next = new URLSearchParams(searchParams.toString());
       setOrDelete(next, "tag", tagFilter.trim());
       setOrDelete(next, "reference", referenceFilter.trim());
+      setOrDelete(next, "keyword", keywordFilter.trim());
       // Reset to page 1 whenever filters change.
       next.delete("page");
       const qs = next.toString();
@@ -76,7 +80,7 @@ export function NotesPanel({
     return () => window.clearTimeout(timer);
     // searchParams is intentionally omitted: we want the debounce to fire only on filter input changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tagFilter, referenceFilter]);
+  }, [tagFilter, referenceFilter, keywordFilter]);
 
   function onSortChange(value: string) {
     const next = new URLSearchParams(searchParams.toString());
@@ -135,15 +139,27 @@ export function NotesPanel({
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 rounded-md border border-stone-300 bg-white p-4 shadow-sm sm:grid-cols-3">
+      <div className="grid gap-3 rounded-md border border-stone-300 bg-white p-4 shadow-sm sm:grid-cols-2 md:grid-cols-4">
+        <label className="space-y-1">
+          <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Keyword</span>
+          <input
+            value={keywordFilter}
+            onChange={(event) => setKeywordFilter(event.target.value)}
+            className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-accent-600"
+            placeholder="Search note text"
+          />
+        </label>
         <label className="space-y-1">
           <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Filter by tag</span>
-          <input
+          <select
             value={tagFilter}
             onChange={(event) => setTagFilter(event.target.value)}
-            className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-accent-600"
-            placeholder="verse"
-          />
+            className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm"
+          >
+            <option value="">All tags</option>
+            <option value="verse">verse</option>
+            <option value="word">word</option>
+          </select>
         </label>
         <label className="space-y-1">
           <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Filter by reference</span>

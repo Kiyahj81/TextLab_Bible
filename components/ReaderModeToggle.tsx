@@ -32,7 +32,7 @@ export function ReaderModeToggle({
             onClick={() => onChange(option.value)}
             className={`rounded px-3 py-1.5 font-medium transition-colors ${
               active
-                ? "bg-slate-900 text-white"
+                ? "bg-accent-700 text-white"
                 : "text-slate-600 hover:text-slate-900"
             }`}
           >

@@ -160,14 +160,8 @@ export function SearchPanel({
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
       <div className="space-y-6">
-      <form className="rounded-md border border-stone-300 bg-white p-4 shadow-sm" action="/search">
-        <div
-          className={`grid gap-3 ${
-            showMorphMatch
-              ? "md:grid-cols-[150px_1fr_150px_120px_150px_120px_auto]"
-              : "md:grid-cols-[150px_1fr_150px_120px_120px_auto]"
-          }`}
-        >
+      <form className="space-y-3 rounded-md border border-stone-300 bg-white p-4 shadow-sm" action="/search">
+        <div className="grid gap-3 md:grid-cols-[180px_1fr_auto]">
           <label className="space-y-1">
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mode</span>
             <select
@@ -186,10 +180,16 @@ export function SearchPanel({
             <input
               name="q"
               defaultValue={query}
-              className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-slate-600"
+              className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-accent-600"
               placeholder="λόγος, N-NSM, righteousness"
             />
           </label>
+          <button className="inline-flex items-center justify-center gap-2 rounded-md bg-accent-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-800 md:self-end">
+            <Search size={16} />
+            Search
+          </button>
+        </div>
+        <div className="grid gap-3 border-t border-stone-200 pt-3 sm:grid-cols-2 md:grid-cols-4">
           <label className="space-y-1">
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Book</span>
             <select name="book" defaultValue={book} className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm">
@@ -206,8 +206,19 @@ export function SearchPanel({
             <input
               name="chapter"
               defaultValue={chapter}
-              className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-slate-600"
+              className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-accent-600"
               placeholder="Any"
+            />
+          </label>
+          <label className="space-y-1">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Page size</span>
+            <input
+              name="pageSize"
+              type="number"
+              min="1"
+              max="100"
+              defaultValue={pageSize}
+              className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-accent-600"
             />
           </label>
           {showMorphMatch ? (
@@ -223,21 +234,6 @@ export function SearchPanel({
               </select>
             </label>
           ) : null}
-          <label className="space-y-1">
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Page size</span>
-            <input
-              name="pageSize"
-              type="number"
-              min="1"
-              max="100"
-              defaultValue={pageSize}
-              className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-slate-600"
-            />
-          </label>
-          <button className="inline-flex items-center justify-center gap-2 rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white md:self-end">
-            <Search size={16} />
-            Search
-          </button>
         </div>
       </form>
 
@@ -268,7 +264,7 @@ export function SearchPanel({
           {results.map((result, index) => (
             <article key={`${result.reference}-${index}`} className="p-4">
               <div className="flex flex-wrap items-center gap-2 text-sm">
-                <span className="font-semibold text-slate-950">{result.reference}</span>
+                <span className="oldstyle-nums font-display text-base font-semibold text-slate-900">{result.reference}</span>
                 <span className="rounded bg-stone-100 px-2 py-1 text-xs text-slate-600">{result.corpus}</span>
                 {result.kind === "token" ? (
                   <span className="rounded bg-blue-50 px-2 py-1 text-xs text-blue-900">{result.morphCode}</span>
@@ -317,11 +313,11 @@ export function SearchPanel({
       </section>
       </div>
 
-      <aside className="rounded-md border border-stone-300 bg-white p-4 shadow-sm">
-        <h2 className="font-semibold text-slate-950">Saved searches</h2>
-        <div className="mt-3 space-y-2">
+      <aside className="border-l-2 border-accent-200 pl-4">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Saved searches</h2>
+        <div className="mt-3 divide-y divide-stone-200">
           {saved.map((item) => (
-            <div key={item.id} className="rounded-md border border-stone-200 p-3 text-sm">
+            <div key={item.id} className="py-3 text-sm">
               {editingId === item.id ? (
                 <input
                   autoFocus
@@ -336,7 +332,7 @@ export function SearchPanel({
                     }
                   }}
                   disabled={pending[item.id]}
-                  className="w-full rounded-md border border-stone-300 px-2 py-1 text-sm outline-none focus:border-slate-600 disabled:opacity-50"
+                  className="w-full rounded-md border border-stone-300 px-2 py-1 text-sm outline-none focus:border-accent-600 disabled:opacity-50"
                 />
               ) : (
                 <Link

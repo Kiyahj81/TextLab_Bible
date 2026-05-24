@@ -8,9 +8,9 @@ Method: source review of every in-scope component + live HTML inspection at `htt
 ## Summary
 
 - Critical: 1 (1 fixed ✅)
-- Moderate: 6 (5 fixed ✅)
+- Moderate: 6 (6 fixed ✅)
 - Minor: 5 (5 fixed ✅)
-- **Total: 12 (11 fixed: 1 in PR2, 2 in PR5, 5 in PR6, 3 in PR7)**
+- **Total: 12 (12 fixed: 1 in PR2, 2 in PR5, 5 in PR6, 3 in PR7, 1 in PR10) ✅ — Pass 2 fully closed**
 
 ---
 
@@ -26,7 +26,7 @@ Method: source review of every in-scope component + live HTML inspection at `htt
   1. Quick: compute `tokenRect.right > window.innerWidth - 320` and apply `right-0` instead of `left-0` (toggle via local state in `BibleReader`).
   2. Robust: use Floating UI (`@floating-ui/react`) with `flip` + `shift` middleware. Same library Tailwind UI uses.
 
-### F-2.2 — Search filter row packs 7 controls into one md-row, then collapses to 7 stacked rows below md
+### F-2.2 — Search filter row packs 7 controls into one md-row, then collapses to 7 stacked rows below md ✅ Fixed in PR10 (two-row split: primary Mode/Query/Search above, secondary filters below)
 - **View:** Search
 - **File:** `components/SearchPanel.tsx:95`
 - **Severity:** moderate

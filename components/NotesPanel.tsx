@@ -141,7 +141,7 @@ export function NotesPanel({
           <input
             value={tagFilter}
             onChange={(event) => setTagFilter(event.target.value)}
-            className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-slate-600"
+            className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-accent-600"
             placeholder="verse"
           />
         </label>
@@ -150,7 +150,7 @@ export function NotesPanel({
           <input
             value={referenceFilter}
             onChange={(event) => setReferenceFilter(event.target.value)}
-            className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-slate-600"
+            className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-accent-600"
             placeholder="John or John 1"
           />
         </label>
@@ -181,7 +181,7 @@ export function NotesPanel({
               <div>
                 <Link
                   href={`/read?book=${note.book}&chapter=${note.chapter}&verse=${note.verse}`}
-                  className="font-semibold text-slate-950 hover:underline"
+                  className="oldstyle-nums font-display text-base font-semibold text-slate-900 hover:underline"
                 >
                   {note.reference}
                 </Link>
@@ -201,7 +201,7 @@ export function NotesPanel({
                   type="button"
                   onClick={() => save(note)}
                   disabled={pending[note.id]}
-                  className="inline-flex items-center gap-2 rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex items-center gap-2 rounded-md bg-accent-700 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Save size={16} />
                   Save
@@ -224,7 +224,7 @@ export function NotesPanel({
                   current.map((row) => (row.id === note.id ? { ...row, title: event.target.value } : row))
                 )
               }
-              className="mt-4 w-full rounded-md border border-stone-300 px-3 py-2 text-sm font-medium outline-none focus:border-slate-600"
+              className="mt-4 w-full rounded-md border border-stone-300 px-3 py-2 text-sm font-medium outline-none focus:border-accent-600"
               placeholder="Title"
             />
             <textarea
@@ -234,7 +234,7 @@ export function NotesPanel({
                   current.map((row) => (row.id === note.id ? { ...row, body: event.target.value } : row))
                 )
               }
-              className="mt-3 min-h-28 max-h-72 w-full overflow-auto rounded-md border border-stone-300 p-3 text-sm outline-none focus:border-slate-600"
+              className="mt-3 min-h-28 max-h-72 w-full overflow-auto rounded-md border border-stone-300 p-3 text-sm outline-none focus:border-accent-600"
             />
             {status[note.id] ? <p className="mt-2 text-sm text-slate-600">{status[note.id]}</p> : null}
           </article>

@@ -161,13 +161,13 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
             value={prompt}
             onChange={(event) => setPrompt(event.target.value)}
             placeholder={SAMPLE_PROMPT}
-            className="mt-2 min-h-32 w-full rounded-md border border-stone-300 p-3 text-sm outline-none focus:border-slate-600"
+            className="mt-2 min-h-32 w-full rounded-md border border-stone-300 p-3 text-sm outline-none focus:border-accent-600"
           />
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <button
               type="submit"
               disabled={loading || !prompt.trim()}
-              className="inline-flex items-center gap-2 rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-md bg-accent-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {loading ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
               {loading ? "Retrieving..." : "Ask assistant"}
@@ -188,7 +188,7 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
         {loading && !answerVisible ? <AnswerSkeleton /> : null}
 
         {answerVisible ? (
-          <article className="rounded-md border border-stone-300 bg-white p-4 shadow-sm">
+          <article className="animate-answer-in rounded-md border border-accent-200 bg-accent-50/40 p-4 shadow-sm">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -235,7 +235,7 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
                     type="button"
                     onClick={saveGeneratedNote}
                     disabled={savingNote}
-                    className="inline-flex items-center gap-2 rounded-md bg-[#365f7e] px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex items-center gap-2 rounded-md bg-accent-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-700 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <Save size={16} />
                     Save generated note
@@ -267,9 +267,9 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
         ) : null}
       </section>
 
-      <aside className="space-y-4">
-        <section className="rounded-md border border-stone-300 bg-white p-4 shadow-sm">
-          <h2 className="font-semibold text-slate-950">Retrieval trace</h2>
+      <aside className="space-y-6">
+        <section className="border-l-2 border-accent-200 pl-4">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Retrieval trace</h2>
           <div className="mt-3 space-y-2 text-sm text-slate-700">
             {!restoredView && response?.toolTrace.length ? (
               response.toolTrace.map((entry, index) => (
@@ -281,9 +281,9 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
                 </code>
               ))
             ) : restoredView ? (
-              <p>Trace not stored for saved notes.</p>
+              <p className="text-slate-500">Trace not stored for saved notes.</p>
             ) : (
-              <p>No retrieval has run yet.</p>
+              <p className="text-slate-500">No retrieval has run yet.</p>
             )}
           </div>
         </section>

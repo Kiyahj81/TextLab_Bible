@@ -142,7 +142,7 @@ export function MorphologyPopover({
   return (
     <div
       ref={containerRef}
-      className={`absolute top-full z-20 mt-2 w-80 max-w-[calc(100vw-1rem)] rounded-md border border-stone-300 bg-white p-4 text-left shadow-xl ${
+      className={`absolute top-full z-20 mt-2 w-80 max-w-[calc(100vw-1rem)] origin-top animate-popover-in rounded-md border border-stone-300 bg-white p-4 text-left shadow-xl ${
         horizontalAlign === "right" ? "right-0" : "left-0"
       }`}
     >
@@ -174,7 +174,7 @@ export function MorphologyPopover({
       <div className="mt-4 flex flex-wrap gap-2">
         <Link
           href={lemmaSearchHref}
-          className="inline-flex items-center gap-2 rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700"
+          className="inline-flex items-center gap-2 rounded-md bg-accent-700 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-800"
         >
           <Search size={16} />
           Search lemma
@@ -190,13 +190,13 @@ export function MorphologyPopover({
         <textarea
           value={body}
           onChange={(event) => onBodyChange(event.target.value)}
-          className="min-h-20 w-full rounded-md border border-stone-300 p-2 text-sm outline-none focus:border-slate-600"
+          className="min-h-20 w-full rounded-md border border-stone-300 p-2 text-sm outline-none focus:border-accent-600"
           placeholder="Write a note on this token"
         />
         <button
           type="submit"
           disabled={saving || !body.trim()}
-          className="rounded-md bg-[#365f7e] px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-md bg-accent-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           Save note
         </button>

@@ -41,7 +41,7 @@ export function ReaderControls({
           <option key={`${p.book}-${p.chapter}`} value={p.chapter}>{p.label}</option>
         ))}
       </select>
-      <button className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white">Open</button>
+      <button className="rounded-md bg-accent-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-800">Open</button>
     </form>
   );
 }

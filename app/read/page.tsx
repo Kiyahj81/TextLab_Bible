@@ -30,7 +30,7 @@ export default async function ReadPage({ searchParams }: { searchParams: SearchP
     <div className="space-y-6">
       <section className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-3xl font-semibold text-slate-950">Reader</h1>
+          <h1 className="font-display text-4xl font-semibold tracking-tight text-slate-950">Reader</h1>
           <DismissibleIntro id="read">
             Read the Greek New Testament beside English, and click any Greek word for its morphology.
           </DismissibleIntro>

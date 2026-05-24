@@ -92,7 +92,7 @@ export default async function NotesPage({ searchParams }: { searchParams: Search
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-semibold text-slate-950">Notes</h1>
+        <h1 className="font-display text-3xl font-semibold tracking-tight text-slate-950">Notes</h1>
         <DismissibleIntro id="notes">
           Review and edit notes attached to verses or Greek tokens.
         </DismissibleIntro>

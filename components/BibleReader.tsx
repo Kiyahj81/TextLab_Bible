@@ -158,7 +158,7 @@ export function BibleReader({
           } ${targetVerse === verse.verse ? "ring-2 ring-amber-300" : ""}`}
         >
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">{verse.reference}</h2>
+            <h2 className="oldstyle-nums font-display text-base font-semibold text-slate-700">{verse.reference}</h2>
             <HighlightMenu
               label="Highlight verse"
               onPick={(color) => highlightVerse(verse, color)}
@@ -179,7 +179,7 @@ export function BibleReader({
                               type="button"
                               onClick={() => setSelectedTokenId(selectedTokenId === token.id ? null : token.id)}
                               style={token.highlightColor ? { backgroundColor: token.highlightColor } : undefined}
-                              className="mx-0.5 rounded px-1.5 py-1 hover:bg-blue-100"
+                              className="mx-0.5 rounded border-b border-dotted border-stone-400 px-1.5 py-1 transition-colors hover:border-accent-600 hover:bg-accent-50"
                             >
                               {token.surface}
                             </button>
@@ -220,13 +220,13 @@ export function BibleReader({
                 onChange={(event) =>
                   setNoteBodies((current) => ({ ...current, [verse.id]: event.target.value }))
                 }
-                className="min-w-0 flex-1 rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-slate-600"
+                className="min-w-0 flex-1 rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-accent-600"
                 placeholder="Write a brief note"
               />
               <button
                 type="submit"
                 disabled={savingNote[verse.id] || !(noteBodies[verse.id] ?? "").trim()}
-                className="rounded-md bg-[#365f7e] px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-md bg-accent-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Save note
               </button>

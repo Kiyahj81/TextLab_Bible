@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { BookmarkPlus, Pencil, Search, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { BookmarkPlus, Pencil, Search, Trash2, X } from "lucide-react";
+import { Fragment, useState } from "react";
+import { splitWithMatches } from "@/lib/search-highlight";
 import { useAutoDismissMap, useAutoDismissString } from "@/lib/useAutoDismissStatus";
 
 export type SearchPanelResult =
@@ -65,6 +66,7 @@ export function SearchPanel({
   savedSearches: SavedSearchRow[];
 }) {
   const [activeMode, setActiveMode] = useState(mode);
+  const [queryValue, setQueryValue] = useState(query);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(savedSearches);
@@ -161,7 +163,7 @@ export function SearchPanel({
     <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_220px]">
       <div className="space-y-6">
       <form className="space-y-3 rounded-md border border-stone-300 bg-white p-4 shadow-sm" action="/search">
-        <div className="grid gap-3 md:grid-cols-[180px_1fr_auto]">
+        <div className="grid gap-3 md:grid-cols-[180px_1fr]">
           <label className="space-y-1">
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mode</span>
             <select
@@ -177,17 +179,37 @@ export function SearchPanel({
           </label>
           <label className="space-y-1">
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Query</span>
-            <input
-              name="q"
-              defaultValue={query}
-              className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-accent-600"
-              placeholder="λόγος, N-NSM, righteousness"
-            />
+            <div className="relative">
+              <input
+                name="q"
+                value={queryValue}
+                onChange={(event) => setQueryValue(event.target.value)}
+                className="w-full rounded-md border border-stone-300 px-3 py-2 pr-20 text-sm outline-none focus:border-accent-600"
+                placeholder="λόγος, N-NSM, righteousness"
+              />
+              <div className="absolute inset-y-0 right-1 flex items-center gap-0.5">
+                {queryValue ? (
+                  <button
+                    type="button"
+                    onClick={() => setQueryValue("")}
+                    aria-label="Clear query"
+                    title="Clear"
+                    className="flex h-7 w-7 items-center justify-center rounded text-slate-400 transition-colors hover:bg-stone-100 hover:text-slate-700"
+                  >
+                    <X size={16} aria-hidden />
+                  </button>
+                ) : null}
+                <button
+                  type="submit"
+                  aria-label="Search"
+                  title="Search"
+                  className="flex h-7 w-7 items-center justify-center rounded bg-accent-700 text-white transition-colors hover:bg-accent-800"
+                >
+                  <Search size={16} aria-hidden />
+                </button>
+              </div>
+            </div>
           </label>
-          <button className="inline-flex items-center justify-center gap-2 rounded-md bg-accent-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-800 md:self-end">
-            <Search size={16} />
-            Search
-          </button>
         </div>
         <div className="grid gap-3 border-t border-stone-200 pt-3 sm:grid-cols-2 md:grid-cols-4">
           <label className="space-y-1">
@@ -276,10 +298,14 @@ export function SearchPanel({
                     {result.surface}
                     <div className="mt-1 text-sm text-slate-600">lemma: {result.lemma}</div>
                   </div>
-                  <p className="greek-text leading-7 text-slate-800">{result.verseText}</p>
+                  <p className="greek-text leading-7 text-slate-800">
+                    <HighlightedText text={result.verseText} match={result.surface} />
+                  </p>
                 </div>
               ) : (
-                <p className="mt-2 leading-7 text-slate-800">{result.text}</p>
+                <p className="mt-2 leading-7 text-slate-800">
+                  <HighlightedText text={result.text} match={query} />
+                </p>
               )}
             </article>
           ))}
@@ -382,6 +408,26 @@ export function SearchPanel({
         </div>
       </aside>
     </div>
+  );
+}
+
+function HighlightedText({ text, match }: { text: string; match: string }) {
+  const segments = splitWithMatches(text, match);
+  return (
+    <>
+      {segments.map((segment, index) =>
+        segment.kind === "match" ? (
+          <mark
+            key={index}
+            className="rounded-sm bg-amber-200/80 px-0.5 font-semibold text-slate-950"
+          >
+            {segment.value}
+          </mark>
+        ) : (
+          <Fragment key={index}>{segment.value}</Fragment>
+        )
+      )}
+    </>
   );
 }
 

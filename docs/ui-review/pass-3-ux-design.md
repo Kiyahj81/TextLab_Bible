@@ -243,5 +243,34 @@ The following findings come from applying the `frontend-design` skill's audit le
 
 
 - **Empty states across views are unstyled paragraphs** ("No retrieval has run yet.", "No saved searches yet.", "No notes match the current filters."). Each view would benefit from an empty-state illustration or icon + a short "Try X" hint that points to the primary action.
-- **No keyboard shortcuts anywhere.** Power users — the likely audience for a corpus-backed Greek tool — get no `?` help, no `/` to focus search, no `Esc` to close popovers, no `←/→` to navigate chapters. Worth scoping a small shortcut layer separately.
-- **No persistent user preferences** (theme, font size, default search mode, default highlight color). Several findings above reference settings that would naturally belong to a small Settings page.
+- **No keyboard shortcuts anywhere.** Power users — the likely audience for a corpus-backed Greek tool — get no `?` help, no `/` to focus search, no `Esc` to close popovers (✅ Esc now closes popovers, PR 3), no `←/→` to navigate chapters. Worth scoping a small shortcut layer separately.
+- **No persistent user preferences** (theme, font size, default search mode, default highlight color (✅ default highlight color persisted, PR 9), reader mode (✅ persisted, PR 7), last-visited passage (✅ persisted, PR 12)). Several findings above reference settings that would naturally belong to a small Settings page.
+
+---
+
+## Epilogue — Post-review feature work (PRs 12–16)
+
+After the three-pass review closed at 100%, hands-on testing surfaced additional UX gaps that weren't in the original 55 findings. Captured here for traceability; not counted toward the pass totals.
+
+- **PR 12** — Reader navigation & persistence + highlight overhaul
+  - Bottom `ChapterNav` so users don't scroll up to advance a chapter
+  - `ReaderLocationMemo` restores the last-visited passage on bare `/read`
+  - Verse-level highlight tint extended to the whole article body (later reverted in PR 14)
+  - "Clear highlight" swatch in the palette + new `DELETE /api/highlights`
+  - Cross-instance color sync via a custom DOM event
+
+- **PR 13** — Search result match highlighting + in-input Search/Clear controls
+  - Keyword + token match terms wrapped in `<mark>` inside result verses
+  - Search submit becomes a magnifying-glass button on the right edge of the Query input; an X clear button appears when the input is non-empty
+
+- **PR 14** — Per-word English highlighting (the centerpiece of the post-review work)
+  - Replaces the whole-verse tint (which highlighted the entire verse box, not what users intended) with per-word highlighting that mirrors the Greek-token UX
+  - `Highlight.englishWordIndex Int?` schema column; one row per `(verseId, englishWordIndex)` slot
+  - `HighlightPalette` extracted from `HighlightMenu` for reuse in the new `EnglishWordPopover`
+
+- **PR 15** — Removed the vestigial "Highlight verse" button. After PR 14 made highlighting fully per-word, the verse-level affordance only colored a faint left rule, and the dropdown was redundant with the per-word popovers.
+
+- **PR 16** — Final UX polish
+  - `ReaderControls` resyncs dropdowns to URL when the page restores a saved passage (the dropdowns previously kept their initial-mount values)
+  - Notes tag filter became a dropdown (`All tags` / `verse` / `word`)
+  - New keyword search on the Notes filter row — searches title + body case-insensitively, debounced 300 ms, composes with reference and tag filters via an AND-of-conditions where clause

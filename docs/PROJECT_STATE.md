@@ -1,10 +1,28 @@
 # TextLab Bible — Project State
 
-_Snapshot: 2026-05-22 (post Milestone 2.5 close-out)_
+_Snapshot: 2026-05-24 (post UI Review remediation, PR 1–16)_
 
 ## Where the project stands
 
-Milestone 2.5 — the **retrieval-first multi-model assistant foundation** — is shipped to `main`. Two PRs merged in sequence (#1 milestone + #2 vitest 4 audit follow-up). The branch is in a clean, verified state across all five milestone gates (lint, tsc, build, test:unit, test:acceptance).
+Milestone 2.5 (retrieval-first multi-model assistant foundation) is on `main`. On top of that, a three-pass UI review documented **55 findings** which were addressed across PRs 1–11; PRs 12–16 then added follow-up features and UX refinements based on hands-on testing. Sixteen PRs total are on `main`, pushed to `origin/main` on 2026-05-24. All five milestone gates are green (lint, tsc, build, test:unit 84/84, test:acceptance).
+
+### UI review remediation (PRs 1–11) — closed
+
+- **Pass 1: Functional bugs** — 15 findings (4 critical, 6 moderate, 5 minor) — 100% closed
+- **Pass 2: Layout & sizing** — 12 findings (1 critical, 6 moderate, 5 minor) — 100% closed
+- **Pass 3: UX & design quality** — 28 findings (2 critical, 15 moderate, 11 minor) — 100% closed, including a 12-finding design-identity epic (PR 10/11) that adopted an editorial-scholar aesthetic — Spectral display serif + Inter Tight UI sans + Gentium Plus for polytonic Greek, a derived accent palette from `#365f7e`, codex left-rule pattern, paper-grain background.
+
+Review docs at `docs/ui-review/pass-{1,2,3}-*.md`. Every finding carries a `✅ Fixed in PR<N>` annotation.
+
+### Post-review feature work (PRs 12–16)
+
+Surfaced through use after the formal review closed:
+
+- **PR 12** — Reader: bottom ChapterNav, `ReaderLocationMemo` restores last-visited passage from localStorage, `HighlightMenu` "Clear" swatch + DELETE endpoint, cross-instance color sync via custom DOM event.
+- **PR 13** — Search: match highlighting on result verses (keyword query / lemma surface), in-input Search + Clear buttons replacing the external submit.
+- **PR 14** — Reader: **per-word English highlighting** with per-word color popover, mirroring the Greek-token UX. Schema gained `Highlight.englishWordIndex Int?` (4th Prisma migration); `HighlightPalette` extracted from `HighlightMenu` for reuse by `EnglishWordPopover`.
+- **PR 15** — Removed vestigial verse-level "Highlight verse" button after PR 14 made highlighting fully per-word.
+- **PR 16** — Reader: `ReaderControls` resyncs dropdowns to URL after location restore. Notes: tag filter is now a select (`All tags` / `verse` / `word`), new keyword search input on the filter row, where-clause refactored to AND-of-conditions so keyword + reference + tag compose cleanly.
 
 ## What's on main
 
@@ -12,12 +30,12 @@ Milestone 2.5 — the **retrieval-first multi-model assistant foundation** — i
 
 | Route | Purpose |
 |---|---|
-| `/read` | Passage reader; clickable Greek tokens with morphology popover; highlight + note save |
-| `/search` | Three modes: lemma, keyword, morphology — with pagination + saved-search persistence |
-| `/assistant` | AI Study Assistant — retrieval-first with live/fallback mode indicator |
-| `/notes` | Notes index (verse notes + assistant-generated notes) |
+| `/read` | Passage reader; clickable Greek tokens with morphology popover; **per-word English highlighting** with color palette popover; verse-jump input, prev/next chapter (top + bottom), Greek/English/Parallel mode toggle, last-passage restore |
+| `/search` | Three modes (lemma / keyword / morphology) with **match highlighting** on result verses, in-input Search + Clear, pagination, saved-search persistence |
+| `/assistant` | AI Study Assistant — retrieval-first with live/fallback mode indicator, codex-gutter sidebar (trace + citations + generated notes) |
+| `/notes` | Notes index with **keyword search**, tag dropdown filter, reference filter, sort (Most recent / Canonical / Title), server-side pagination |
 | `/api/assistant` | POST endpoint: dispatches local retrieval, optionally synthesizes via OpenAI Responses API |
-| `/api/notes`, `/api/saved-searches`, `/api/highlights`, `/api/import-runs`, `/api/generated-study-notes` | CRUD endpoints |
+| `/api/notes`, `/api/saved-searches`, `/api/saved-searches/[id]`, `/api/highlights` (POST + DELETE), `/api/import-runs`, `/api/generated-study-notes` | CRUD endpoints |
 
 ### Assistant pipeline
 
@@ -30,23 +48,24 @@ The assistant route follows a clear retrieval-first contract:
 
 ### Test surfaces
 
-- **15 unit tests across 7 files** (vitest 4 + jsdom + RTL):
-  - `tests/unit/sanity.test.ts`
-  - `tests/unit/lib/search.test.ts` — bulk verse hydration
-  - `tests/unit/lib/search-findLemmaExamples.test.ts` — bounded findMany
-  - `tests/unit/lib/ai/assistant.test.ts` — important-words branch (3 tests covering retrieval shape + book detection)
-  - `tests/unit/lib/ai/modelRouter.test.ts` — SDK adoption (7 tests covering constructor args, missing key, default timeout, invalid timeout, citations cap, empty output, fallback on rejection)
-  - `tests/unit/api/assistant.test.ts` — session persistence + user-write overlap
-  - `tests/unit/components/ReaderControls.test.tsx` — derived chapter from book + passages
-- **Playwright acceptance suite** (`scripts/acceptance-test.js`) — 10 end-to-end interactions covering the golden path
+- **84 unit tests across 17 files** (vitest 4 + jsdom + RTL). Notable additions since the M2.5 snapshot:
+  - `tests/unit/api/highlights.test.ts` — POST/DELETE shape, `englishWordIndex` requires `verseId`, slot-replace semantics
+  - `tests/unit/api/notes.test.ts`, `tests/unit/api/saved-searches.test.ts`, `tests/unit/api/saved-searches-id.test.ts` — CRUD shape + 404/400 paths
+  - `tests/unit/lib/highlight.test.ts` — color palette + storage round-trip
+  - `tests/unit/lib/notes-filter.test.ts` — `parseReferenceFilter` + `parseNotesSort`
+  - `tests/unit/lib/search-getPassageNeighbors.test.ts` — prev/next chapter computation
+  - `tests/unit/lib/search-highlight.test.ts` — match splitter (case-insensitive, Unicode NFC, regex-metachar escape, polytonic Greek)
+  - `tests/unit/lib/useAutoDismissStatus.test.ts` — status-auto-dismiss hook
+- **Playwright acceptance suite** (`scripts/acceptance-test.js`) — 10 end-to-end interactions covering the golden path; updated for the renamed Assistant h1 and the in-input Search button.
 
 ### Database
 
 - Prisma 6 over PostgreSQL on `localhost:5433`
-- Now using proper migrations (3 on disk):
+- 4 migrations on disk:
   - `0_init` — baseline reflecting pre-rename schema
   - `20260521162527_assistant_message_metadata` — `AiMessage.citations → metadata`
   - `20260522193249_token_lemma_index` — composite `(corpusId, bookId, partOfSpeech, lemma)` for `getTopLemmas`
+  - `20260524083541_add_english_word_index_to_highlight` — `Highlight.englishWordIndex Int?` + index on `(userId, verseId, englishWordIndex)` to support per-word English highlights (PR 14)
 
 ### Tech stack
 
@@ -64,12 +83,11 @@ Both are the same advisory: **postcss <8.5.10** (GHSA-qx2v-qp2m-jg93, XSS via un
 ### Deferred from the 2026-05-21 code review
 
 - **L14: Always-on local retrieval** — flagged-only; no behavior change required at this severity. Revisit if synthesis cost or latency becomes a concern.
-- **L17: URL-driven reader navigation** — explicitly deferred to Step 4 (Reader Navigation milestone).
+- **L17: URL-driven reader navigation** — ✅ closed by PR 2 (prev/next chapter), PR 5 (`?verse=N` anchor), PR 11 (verse-number input), PR 12 (`ReaderLocationMemo` last-passage restore + bottom ChapterNav), PR 16 (`ReaderControls` URL resync).
 - **L18: Per-row AiMessage metadata size** — flagged-only. Today the metadata JSON includes the full citations array and tool trace per assistant message. If this grows pathologically, prune to citation refs only and rehydrate on demand.
 
 ### Documentation gaps
 
-- `README.md` still describes Milestone 2; doesn't reflect the assistant pipeline, mode indicator, or new test commands.
 - No developer onboarding doc for the dispatch table — a new contributor adding a sixth branch has to read the existing four to learn the pattern.
 
 ## Logical next steps
@@ -89,15 +107,15 @@ Concretely:
 
 This builds directly on the dispatch-table shape and the shared OpenAI client. Estimated 3-5 small commits.
 
-### 2. Step 4: Reader Navigation (M-sized)
+### 2. Step 4: Reader Navigation (M-sized) — ✅ substantially complete
 
-Closes the L17 deferred item plus adds the UX polish the milestone plan calls out:
-- Prev/next chapter controls (today the dropdown is the only navigation).
-- Reference jump by book + chapter + verse (URL-driven, `/read?book=John&chapter=3&verse=16`).
-- Verse range support in the URL and in the rendered passage.
-- Mobile wrapping check at full-chapter length (today's seed data is short; a 50-verse chapter is the real stress test).
-
-This is mostly frontend work. The `ReaderControls` derived-state refactor (Task 12) already sets up the right state shape — adding URL sync is a `useSearchParams` / `useRouter` integration.
+Closed across the UI review remediation:
+- ✅ Prev/next chapter controls (top and bottom) — PR 2 + PR 12
+- ✅ Reference jump via verse-number input — PR 11
+- ✅ `?verse=N` URL anchor + scroll-into-view — PR 5
+- ✅ Last-visited passage restored on bare `/read` — PR 12
+- ⏭️ Verse range support in the URL and rendered passage — still deferred
+- ⏭️ Mobile wrapping check at full-chapter length — covered by acceptance test for John 1 (51 verses) but not stress-tested at scale
 
 ### 3. Test coverage gaps (S-sized, can be done in parallel)
 
@@ -106,14 +124,13 @@ Three concrete gaps worth closing:
 - **Empty-retrieval safe response** — the milestone plan calls for "empty retrieval produces a safe no-evidence response" but no unit test exists for the path where every search returns zero results.
 - **Scholarly-recommendation routing test** — the milestone plan calls for "Scholarly prompts can return `recommendedUpgrade`, but no Milestone 2.5 path calls gpt-5.4." Worth a direct test that asserts the upgrade is advisory-only today (and won't be regressed when Step 3 lands).
 
-### 4. README + dev onboarding refresh (S-sized)
+### 4. Dev onboarding doc (S-sized)
 
-The current README still anchors to Milestone 2. Worth updating to reflect:
-- The assistant pipeline (`mode: "live" | "fallback"`, structured citations, `formatToolTrace` rendering)
-- The new test commands (`npm run test:unit`, `npm run test:acceptance`)
-- The `.env` setup (system env vars override `.env` per Next.js precedence)
-- The dispatch-table extension pattern (how to add a new branch)
-- The migrations folder convention (after Task 4 of the code review, we use proper Prisma migrations)
+The README is current as of PR 16. Still worth a short dev-facing doc for:
+- The dispatch-table extension pattern (how to add a new retrieval branch).
+- The `HighlightPalette` component pattern (used by both `HighlightMenu` and `EnglishWordPopover`).
+- The migrations folder convention (proper Prisma migrations since the M2.5 code review).
+- Custom DOM events for cross-instance state (`textlab:highlight-color-change`).
 
 ### 5. Step 5: Import parser tests (S-sized backlog)
 

@@ -4,10 +4,17 @@ Milestone 2.5 of the TextLab Bible MVP: a single full-stack Next.js app deliveri
 
 ## Current Scope
 
-- Reader for the full SBLGNT Greek and WEB English NT
-- Clickable Greek tokens with lemma and morphology popover
-- Keyword, lemma, and morphology search with pagination and saved searches
-- Notes and highlights scoped to a local user id (no auth yet)
+- **Reader** for the full SBLGNT Greek and WEB English NT in a parallel layout
+  - Clickable Greek tokens with lemma and morphology popover
+  - **Per-word English highlighting** with a 6-color palette + clear option, mirroring the Greek-token UX
+  - Verse-jump input, prev/next chapter buttons at top and bottom of every passage
+  - Greek / English / Parallel mode toggle (persisted to localStorage)
+  - Last-visited passage automatically restored on bare `/read` visits
+- **Search** in three modes (keyword / lemma / morphology)
+  - Match terms bolded inside result verses
+  - In-input Search and Clear buttons; pagination; saved-search persistence (rename, delete)
+- **Notes** index with keyword search, tag dropdown, reference filter, sort, and server-side pagination
+- Highlights scoped to a local user id (no auth yet) — verse-level on Greek tokens, word-level on English text
 - **AI Study Assistant** at `/assistant`:
   - Retrieval-first dispatch over local corpus (important-words, lemma, morphology, passage, keyword fallback)
   - Live OpenAI synthesis when `OPENAI_API_KEY` is set; deterministic local fallback otherwise
@@ -15,6 +22,9 @@ Milestone 2.5 of the TextLab Bible MVP: a single full-stack Next.js app deliveri
   - Q&A history persisted to `AiSession` / `AiMessage` with typed JSON `metadata`
   - Markdown export of any generated answer
 - Import tracking for open Bible text sources via the `ImportRun` table
+
+### Design
+The Reader uses an editorial-scholar aesthetic: Spectral display serif, Inter Tight UI sans, Gentium Plus for polytonic Greek (purpose-built diacritic positioning), a derived accent palette (`accent.50`–`900` from `#365f7e`), codex-style left-rule pattern, paper-grain background.
 
 Not included yet: NET import, auth / multi-user, Hebrew Bible, LXX, cloud sync, scholarly-model escalation (Step 3), or PDF/DOCX/PPTX export.
 
@@ -57,7 +67,7 @@ Open `http://localhost:3000/read`.
 ## Testing
 
 ```bash
-# 15 unit tests across 7 files (~3s)
+# 84 unit tests across 17 files (~5s)
 npm run test:unit
 
 # Playwright end-to-end suite — spins up its own dev server (~30s)
@@ -110,4 +120,5 @@ The MorphGNT repository documents its columns and license at `https://github.com
 
 - `docs/archived/MILESTONE_2_PLAN.md`, `docs/archived/MILESTONE_2_5_PLAN.md` — historical milestone planning
 - `docs/PROJECT_STATE.md` — current state snapshot and logical next steps
+- `docs/ui-review/pass-{1,2,3}-*.md` — three-pass UI review (functional bugs / layout / UX & design), 55 findings, 100% closed across PRs 1–11
 - `docs/superpowers/plans/` — execution plans for prior code review remediations

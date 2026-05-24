@@ -158,7 +158,7 @@ export function SearchPanel({
   const showMorphMatch = activeMode === "morphology";
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+    <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_220px]">
       <div className="space-y-6">
       <form className="space-y-3 rounded-md border border-stone-300 bg-white p-4 shadow-sm" action="/search">
         <div className="grid gap-3 md:grid-cols-[180px_1fr_auto]">
@@ -313,8 +313,8 @@ export function SearchPanel({
       </section>
       </div>
 
-      <aside className="border-l-2 border-accent-200 pl-4">
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Saved searches</h2>
+      <aside className="border-l-2 border-accent-200 pl-4 xl:sticky xl:top-6 xl:self-start">
+        <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Saved searches</h2>
         <div className="mt-3 divide-y divide-stone-200">
           {saved.map((item) => (
             <div key={item.id} className="py-3 text-sm">

@@ -153,7 +153,7 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
   const headerLabel = restoredView ? responsePrompt || restoredView.prompt : null;
 
   return (
-    <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_280px] lg:grid-cols-[minmax(0,1fr)_360px]">
+    <div className="grid gap-8 md:grid-cols-[minmax(0,1fr)_220px] lg:grid-cols-[minmax(0,1fr)_240px]">
       <section className="space-y-4">
         <form onSubmit={submit} className="rounded-md border border-stone-300 bg-white p-4 shadow-sm">
           <label className="text-sm font-semibold text-slate-950">Question</label>
@@ -265,11 +265,22 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
             Ask a question about the sample passages. The assistant route retrieves first, then summarizes from returned results.
           </div>
         ) : null}
+
+        {answerVisible ? (
+          <section className="rounded-md border border-stone-300 bg-white p-4 shadow-sm">
+            <h2 className="font-semibold text-slate-950">Markdown</h2>
+            <textarea
+              readOnly
+              value={markdownText}
+              className="mt-3 min-h-72 w-full rounded-md border border-stone-300 p-3 font-mono text-sm text-slate-700"
+            />
+          </section>
+        ) : null}
       </section>
 
-      <aside className="space-y-6">
+      <aside className="space-y-6 lg:sticky lg:top-6 lg:self-start">
         <section className="border-l-2 border-accent-200 pl-4">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Retrieval trace</h2>
+          <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Retrieval trace</h2>
           <div className="mt-3 space-y-2 text-sm text-slate-700">
             {!restoredView && response?.toolTrace.length ? (
               response.toolTrace.map((entry, index) => (
@@ -288,12 +299,12 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
           </div>
         </section>
 
-        <section className="rounded-md border border-stone-300 bg-white p-4 shadow-sm">
-          <h2 className="font-semibold text-slate-950">Citations</h2>
-          <div className="mt-3 space-y-2 text-sm text-slate-700">
+        <section className="border-l-2 border-accent-200 pl-4">
+          <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Citations</h2>
+          <div className="mt-3 divide-y divide-stone-200 text-sm text-slate-700">
             {!restoredView && response?.citations.length ? (
               response.citations.map((citation, index) => (
-                <div key={`${citation.reference}-${index}`} className="rounded border border-stone-200 p-2">
+                <div key={`${citation.reference}-${index}`} className="py-2 first:pt-0 last:pb-0">
                   <div className="font-medium text-slate-950">
                     {citation.reference}, {citation.corpus}
                   </div>
@@ -310,15 +321,15 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
           </div>
         </section>
 
-        <section className="rounded-md border border-stone-300 bg-white p-4 shadow-sm">
-          <h2 className="font-semibold text-slate-950">Generated notes</h2>
-          <div className="mt-3 space-y-3">
+        <section className="border-l-2 border-accent-200 pl-4">
+          <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Generated notes</h2>
+          <div className="mt-3 divide-y divide-stone-200">
             {notes.map((note) => (
               <button
                 key={note.id}
                 type="button"
                 onClick={() => openHistory(note)}
-                className="block w-full rounded border border-stone-200 p-3 text-left text-sm hover:border-slate-400"
+                className="block w-full py-3 text-left text-sm transition-colors hover:bg-accent-50/60 first:pt-0 last:pb-0"
               >
                 <div className="font-medium text-slate-950">{note.prompt}</div>
                 <time className="mt-1 block text-xs text-slate-500">
@@ -327,20 +338,9 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
                 <p className="mt-2 line-clamp-3 whitespace-pre-wrap text-slate-700">{note.answer}</p>
               </button>
             ))}
-            {notes.length === 0 ? <p className="text-sm text-slate-600">No generated notes saved yet.</p> : null}
+            {notes.length === 0 ? <p className="py-3 text-sm text-slate-600">No generated notes saved yet.</p> : null}
           </div>
         </section>
-
-        {answerVisible ? (
-          <section className="rounded-md border border-stone-300 bg-white p-4 shadow-sm">
-            <h2 className="font-semibold text-slate-950">Markdown</h2>
-            <textarea
-              readOnly
-              value={markdownText}
-              className="mt-3 min-h-72 w-full rounded-md border border-stone-300 p-3 font-mono text-sm text-slate-700"
-            />
-          </section>
-        ) : null}
       </aside>
     </div>
   );

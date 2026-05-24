@@ -147,9 +147,18 @@ export function MorphologyPopover({
       }`}
     >
       <div className="flex items-start justify-between gap-4">
-        <div>
-          <div className="greek-text text-2xl font-semibold">{token.surface}</div>
-          <div className="mt-1 text-xs uppercase tracking-wide text-slate-500">{reference}</div>
+        <div className="flex items-baseline gap-3">
+          <span
+            aria-hidden
+            className="greek-text text-3xl font-semibold leading-none text-accent-600"
+            title="Lemma lookup"
+          >
+            λ
+          </span>
+          <div>
+            <div className="greek-text text-2xl font-semibold">{token.surface}</div>
+            <div className="mt-1 text-xs uppercase tracking-wide text-slate-500">{reference}</div>
+          </div>
         </div>
         <button
           type="button"

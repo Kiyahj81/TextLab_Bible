@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Inter_Tight, Spectral } from "next/font/google";
+import { Gentium_Plus, Inter_Tight, Spectral } from "next/font/google";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -22,6 +22,13 @@ const sans = Inter_Tight({
   display: "swap"
 });
 
+const greek = Gentium_Plus({
+  subsets: ["greek", "greek-ext", "latin"],
+  weight: ["400", "700"],
+  variable: "--font-greek",
+  display: "swap"
+});
+
 const nav = [
   { href: "/read", label: "Reader" },
   { href: "/search", label: "Search" },
@@ -31,7 +38,7 @@ const nav = [
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${display.variable} ${sans.variable}`}>
+    <html lang="en" className={`${display.variable} ${sans.variable} ${greek.variable}`}>
       <body className="min-h-screen font-sans">
         <header className="border-b border-stone-300 bg-white/90 backdrop-blur">
           <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">

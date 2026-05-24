@@ -16,7 +16,10 @@ export default async function AssistantPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-display text-3xl font-semibold tracking-tight text-slate-950">AI Study Assistant</h1>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-accent-700">
+          Corpus-Grounded Q&amp;A
+        </p>
+        <h1 className="font-display text-3xl font-semibold tracking-tight text-slate-950">Assistant</h1>
         <DismissibleIntro id="assistant">
           Ask corpus-backed Bible questions. The assistant shows model routing, retrieval trace, and citations before export.
         </DismissibleIntro>

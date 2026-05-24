@@ -124,7 +124,7 @@ async function run() {
     await screenshot("03-search-lemma");
 
     await page.goto(`${appUrl}/assistant`);
-    await page.getByRole("heading", { name: "AI Study Assistant" }).waitFor();
+    await page.getByRole("heading", { name: "Assistant", exact: true }).waitFor();
     await page.locator("textarea").first().fill("Show me every use of λόγος in John 1 and summarize the pattern.");
     await page.getByRole("button", { name: "Ask assistant" }).click();
     await page.locator("pre").filter({ hasText: "Textual observations: I found 40 occurrences" }).waitFor({

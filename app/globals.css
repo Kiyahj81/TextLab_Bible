@@ -38,10 +38,10 @@ textarea {
 }
 
 .greek-text {
-  /* Spectral via next/font doesn't ship Greek glyphs through Google Fonts,
-     so Greek tokens render via the Georgia stack which has solid Greek
-     coverage and pairs well with Spectral's English serifs. */
-  font-family: Georgia, "Times New Roman", "Cardo", serif;
+  /* Gentium Plus (SIL) is purpose-built for accurate combining-diacritic
+     positioning across polytonic Greek — Georgia drifts breathings and
+     accents off their vowels. */
+  font-family: var(--font-greek), "Gentium Plus", "Cardo", Georgia, serif;
   font-feature-settings: "kern", "liga";
 }
 

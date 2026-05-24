@@ -69,6 +69,9 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
   return (
     <div className="space-y-6">
       <div>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-accent-700">
+          Lexical &amp; Morphological
+        </p>
         <h1 className="font-display text-3xl font-semibold tracking-tight text-slate-950">Search</h1>
         <DismissibleIntro id="search">
           Search verses by keyword, Greek tokens by lemma, or morphology codes by exact or prefix match.

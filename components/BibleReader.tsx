@@ -143,7 +143,7 @@ export function BibleReader({
   const showBothColumns = showGreek && showEnglish;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-8">
       <div className="flex justify-end">
         <ReaderModeToggle mode={readerMode} onChange={changeReaderMode} />
       </div>
@@ -152,10 +152,10 @@ export function BibleReader({
         <article
           key={verse.id}
           id={`verse-${verse.verse}`}
-          style={verse.highlightColor ? { borderColor: verse.highlightColor } : undefined}
-          className={`rounded-md border bg-white p-4 shadow-sm scroll-mt-24 ${
-            verse.highlightColor ? "" : "border-stone-300"
-          } ${targetVerse === verse.verse ? "ring-2 ring-amber-300" : ""}`}
+          style={verse.highlightColor ? { borderLeftColor: verse.highlightColor } : undefined}
+          className={`scroll-mt-24 border-l-2 pl-6 ${
+            verse.highlightColor ? "" : "border-accent-200"
+          } ${targetVerse === verse.verse ? "rounded-sm ring-2 ring-amber-300 ring-offset-4 ring-offset-[var(--background)]" : ""}`}
         >
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <h2 className="oldstyle-nums font-display text-base font-semibold text-slate-700">{verse.reference}</h2>
@@ -179,7 +179,7 @@ export function BibleReader({
                               type="button"
                               onClick={() => setSelectedTokenId(selectedTokenId === token.id ? null : token.id)}
                               style={token.highlightColor ? { backgroundColor: token.highlightColor } : undefined}
-                              className="mx-0.5 rounded border-b border-dotted border-stone-400 px-1.5 py-1 transition-colors hover:border-accent-600 hover:bg-accent-50"
+                              className="mx-0.5 rounded px-1.5 py-1 transition-colors hover:bg-accent-50"
                             >
                               {token.surface}
                             </button>

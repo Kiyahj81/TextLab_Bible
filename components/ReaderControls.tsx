@@ -6,10 +6,11 @@ type ReaderBookOption = { osisId: string; label: string };
 type ReaderPassageOption = { book: string; label: string; chapter: number };
 
 export function ReaderControls({
-  books, passages, selectedBook, selectedChapter
+  books, passages, selectedBook, selectedChapter, selectedVerse
 }: {
   books: ReaderBookOption[]; passages: ReaderPassageOption[];
   selectedBook: string; selectedChapter: number;
+  selectedVerse?: number | null;
 }) {
   const [book, setBook] = useState(selectedBook);
   const [chapterOverride, setChapterOverride] = useState<number | null>(selectedChapter);
@@ -41,6 +42,16 @@ export function ReaderControls({
           <option key={`${p.book}-${p.chapter}`} value={p.chapter}>{p.label}</option>
         ))}
       </select>
+      <input
+        aria-label="verse"
+        name="verse"
+        type="number"
+        min={1}
+        inputMode="numeric"
+        defaultValue={selectedVerse ?? ""}
+        placeholder="Verse"
+        className="w-20 rounded-md border border-stone-300 bg-white px-3 py-2 text-sm outline-none focus:border-accent-600"
+      />
       <button className="rounded-md bg-accent-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-800">Open</button>
     </form>
   );

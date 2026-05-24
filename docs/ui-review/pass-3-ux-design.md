@@ -8,9 +8,9 @@ Method: source review of every in-scope component + live HTML inspection at `htt
 ## Summary
 
 - Critical: 2 (2 fixed ✅)
-- Moderate: 15 (12 fixed ✅; 3 partial)
-- Minor: 11 (11 fixed ✅; 1 deferred)
-- **Total: 28 (27 fixed: 2 in PR2, 3 in PR4, 2 in PR5, 4 in PR6, 1 in PR7, 2 in PR8, 2 in PR9, 11 in PR10. F-3.27 deferred — icon-set swap out of scope.)**
+- Moderate: 15 (15 fixed ✅)
+- Minor: 11 (11 fixed ✅)
+- **Total: 28 (28 fixed: 2 in PR2, 3 in PR4, 2 in PR5, 4 in PR6, 1 in PR7, 2 in PR8, 2 in PR9, 11 in PR10, 4 in PR11) ✅ — Pass 3 fully closed**
 
 Note: F-3.1 through F-3.16 are UX findings (interaction, hierarchy, primary-use-case friction). F-3.17 through F-3.28 are **design-identity findings** added via a second pass through the `frontend-design` skill lens — covering visual identity, typography, color system, motion, and distinctive-pattern gaps that the first pass de-prioritized.
 
@@ -25,7 +25,7 @@ Note: F-3.1 through F-3.16 are UX findings (interaction, hierarchy, primary-use-
 - **Problem:** To move from John 1 to John 2 the user must open the chapter dropdown, scroll, select chapter 2, then click "Open". Three deliberate interactions to do the single most-frequent action in any Bible reader. No keyboard arrows, no swipe, no in-flow links.
 - **Suggested fix:** Add prominent `← Previous chapter` / `Next chapter →` link buttons in the Reader header (next to or below `ReaderControls`). They are simple `<Link href="/read?book=X&chapter=N±1">`. Disable at book boundaries; optionally roll over to the next/previous book. Bind ←/→ keys at the page level.
 
-### F-3.2 — Greek tokens are clickable buttons but look identical to inline text ✅ Fixed in PR10
+### F-3.2 — Greek tokens are clickable buttons but look identical to inline text ✅ Fixed in PR10, refined in PR11 (PR10's dotted-underline affordance was too noisy for sustained reading — every word looked underlined. PR11 removed the static border and relies on cursor change + hover background for the affordance, keeping the reading surface clean)
 - **View:** Reader
 - **File:** `components/BibleReader.tsx:103-111`
 - **Severity:** moderate
@@ -166,14 +166,14 @@ The following findings come from applying the `frontend-design` skill's audit le
 - **Problem:** The body has no custom font. It falls back to the system sans stack, which on Windows is Arial, on macOS is San Francisco, on Linux is whatever. This is the single biggest "AI-generated UI" tell. For a product whose primary content is text (Greek + English Bible verses + study notes), the typography should be the design statement.
 - **Suggested fix:** Use `next/font/google` to load a distinctive editorial serif for body (e.g. **Spectral**, **Lora**, **Crimson Pro**, **EB Garamond**) and pair it with a refined sans for UI chrome (e.g. **Inter Tight**, **DM Sans**, **Söhne**-style — avoid generic Inter). Define both via Tailwind's `theme.fontFamily.serif` and `.sans`. The Reader specifically deserves the serif treatment edge-to-edge.
 
-### F-3.20 — Greek serif and English sans look like two different products bolted together ✅ Fixed in PR10 (English is now Spectral serif; Greek stays on Georgia stack since next/font doesn't expose Spectral's Greek subset, but both are now serif and pair visually)
+### F-3.20 — Greek serif and English sans look like two different products bolted together ✅ Fixed in PR10, refined in PR11 (PR10's Georgia fallback drifted polytonic diacritics off their vowels — visible as floating breathings/accents in the screenshot. PR11 swapped Greek to Gentium Plus via next/font/google: SIL-designed for accurate combining-diacritic positioning, pairs cleanly with Spectral English serif)
 - **View:** Reader, Search (token results), Notes (token references)
 - **File:** `app/globals.css:37-39`, `components/BibleReader.tsx:98, 129`, `components/MorphologyPopover.tsx:79, 93`
 - **Severity:** moderate
 - **Problem:** `.greek-text` uses `Georgia, Cambria, "Times New Roman", serif`. The English column uses the inherited sans. Side-by-side, the Greek looks scholarly and the English looks like a settings page. The parallel-reading experience — the product's signature — feels visually fractured.
 - **Suggested fix:** Either pair Greek and English in matched serifs (Greek: a Greek-capable serif like **GFS Didot**, **Cardo**, or **Gentium**; English: a body serif from the same family or a complementary pair), OR treat the English as the more "set" voice and the Greek as the manuscript voice with subtle differentiation in size/weight. Avoid the current "serif vs sans" dichotomy.
 
-### F-3.21 — Card pattern stamped on every surface; no semantic visual differentiation ✅ Partial in PR10 (Retrieval trace and Saved searches now use left-rule gutter style instead of cards; AI answer card uses faint accent tint to distinguish generated content. Reader verse card kept for now)
+### F-3.21 — Card pattern stamped on every surface; no semantic visual differentiation ✅ Fixed in PR11 (Reader verse cards now use thin left-rule on bg-transparent — completing the PR10 work that left them as cards. Combined with PR10's de-carding of trace, citations, saved searches, and generated-notes-history, the four content types — verse, generated answer, retrieval trace, marginalia — now read distinctly)
 - **View:** Reader, Search, Notes, Assistant
 - **File:** Search the repo: `border border-stone-300 bg-white` appears 16+ times across components. Examples: `components/BibleReader.tsx:79`, `components/MorphologyPopover.tsx:76`, `components/SearchPanel.tsx:94, 162, 237`, `components/NotesPanel.tsx:58, 81, 143`, `components/AiAssistant.tsx:109, 128, 167, 174, 189, 209, 226`.
 - **Severity:** moderate
@@ -184,7 +184,7 @@ The following findings come from applying the `frontend-design` skill's audit le
   - Retrieval trace: monospace block with a code-editor aesthetic, no card.
   - Saved searches: list rows with bottom-borders, not a stack of boxed cards.
 
-### F-3.22 — Every route opens with the same h1 + description block; no surface-specific identity ✅ Partial in PR10 (h1s now in display serif; Reader gets larger size; descriptions dismissible via PR8. Per-route distinctive treatment is deferred)
+### F-3.22 — Every route opens with the same h1 + description block; no surface-specific identity ✅ Fixed in PR11 (each route gets a distinctive accent-color kicker label above its h1 — "Greek New Testament" / "Lexical & Morphological" / "Study Annotations" / "Corpus-Grounded Q&A". Reader's 4xl scale retained from PR10. Assistant h1 trimmed to "Assistant")
 - **View:** Reader, Search, Notes, Assistant
 - **File:** `app/read/page.tsx:21-29`, `app/search/page.tsx:62-68`, `app/notes/page.tsx:36-43`, `app/assistant/page.tsx:15-22`
 - **Severity:** moderate
@@ -224,14 +224,14 @@ The following findings come from applying the `frontend-design` skill's audit le
 - **Problem:** The body bg is a warm cream — a thoughtful choice for sustained reading — but it's a flat fill. There is no rule line, no paper texture, no margin grid, no chapter ornament. A reading tool can earn distinction with very subtle atmospheric layers (paper grain, edge vignetting, faint dotted rules in the margin).
 - **Suggested fix:** Add a very subtle SVG-based paper grain to `body` (5–8% opacity noise). Optionally a thin rule line down the center of the reader's parallel grid to anchor the parallel structure. Restraint is key — atmosphere, not decoration.
 
-### F-3.27 — Lucide icons used at face value; no domain-specific glyphs to signal the product category ⏭️ Deferred from PR10 (icon-set swap is out of scope; current Lucide use stays clear and consistent)
+### F-3.27 — Lucide icons used at face value; no domain-specific glyphs to signal the product category ✅ Fixed in PR11 (custom lemma λ glyph added to MorphologyPopover header in accent color — anchors the popover as a domain-specific lookup rather than a generic Lucide card. Full icon-set swap still out of scope; the λ alone is the targeted intervention)
 - **View:** Global
 - **File:** `components/SearchPanel.tsx:4, 156, 177`, `components/AiAssistant.tsx:3, 121, 142, 150`, `components/BibleReader.tsx:3`, `components/MorphologyPopover.tsx:4`, `components/NotesPanel.tsx:4`
 - **Severity:** minor
 - **Problem:** Search, Send, Save, Trash2, Download, BookmarkPlus, Highlighter, NotebookPen — every icon is the Lucide default for that abstract action. There is no glyph that says "lemma", no glyph for "cross-reference," no codex / scroll mark that would anchor the AI Assistant's identity as a *study* tool rather than a generic chat. Generic icons are the third-biggest AI-template tell after Inter and slate-900 buttons.
 - **Suggested fix:** Either commission/build a small set of domain-specific glyphs (lemma λ-mark, morphology dot-grid, cross-reference arrows) and use them in the popover and search-mode dropdown, OR pick a more characterful icon set (Phosphor, Tabler with `stroke-width-1`) and treat icons more sparingly. Lucide everywhere is fine; Lucide as the *only* visual language is the problem.
 
-### F-3.28 — Right-sidebar-for-secondary-info is the universal SaaS pattern, applied without adaptation ✅ Partial in PR10 (Assistant trace and Search saved-searches now use codex-style left-rule gutter instead of bordered cards; full sidebar restructure to narrow gutter deferred)
+### F-3.28 — Right-sidebar-for-secondary-info is the universal SaaS pattern, applied without adaptation ✅ Fixed in PR11 (Assistant gutter narrowed to 220-240px with all three sections — Trace, Citations, Generated notes — converted to left-rule marginalia; Markdown export moved to main column so it isn't squeezed by the narrow gutter. Search saved-searches narrowed to 220px. Both gutters made sticky)
 - **View:** Search, Assistant
 - **File:** `components/SearchPanel.tsx:92` (`xl:grid-cols-[minmax(0,1fr)_320px]`), `components/AiAssistant.tsx:107` (`lg:grid-cols-[minmax(0,1fr)_360px]`)
 - **Severity:** minor

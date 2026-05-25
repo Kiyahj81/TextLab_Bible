@@ -9,6 +9,8 @@ type Args = {
   morphgntDir?: string;
   morphgntUrlBase?: string;
   webUsfmDir?: string;
+  maculaGreekTsv?: string;
+  maculaGreekUrl?: string;
 };
 
 type ParsedMorphToken = {
@@ -22,6 +24,18 @@ type ParsedMorphToken = {
   morphCode: string;
   partOfSpeech: string;
 };
+
+type ParsedMaculaRow = {
+  book: string;
+  chapter: number;
+  verse: number;
+  wordIndex: number;
+  surface: string;
+  gloss: string | null;
+};
+
+const DEFAULT_MACULA_GREEK_URL =
+  "https://raw.githubusercontent.com/Clear-Bible/macula-greek/main/SBLGNT/tsv/macula-greek-SBLGNT.tsv";
 
 type ParsedUsfmVerse = {
   book: string;
@@ -93,9 +107,15 @@ const usfmBookIds: Record<string, string> = {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
 
-  if (!args.morphgntDir && !args.morphgntUrlBase && !args.webUsfmDir) {
+  if (
+    !args.morphgntDir &&
+    !args.morphgntUrlBase &&
+    !args.webUsfmDir &&
+    !args.maculaGreekTsv &&
+    !args.maculaGreekUrl
+  ) {
     throw new Error(
-      "Provide --morphgnt-dir, --morphgnt-url-base, or --web-usfm-dir. Example: npm run import:open-bible -- --morphgnt-url-base https://raw.githubusercontent.com/morphgnt/sblgnt/master"
+      "Provide --morphgnt-dir, --morphgnt-url-base, --web-usfm-dir, --macula-greek-tsv, or --macula-greek-url. Example: npm run import:open-bible -- --morphgnt-url-base https://raw.githubusercontent.com/morphgnt/sblgnt/master"
     );
   }
 
@@ -107,6 +127,10 @@ async function main() {
 
   if (args.webUsfmDir) {
     await importWebUsfm(args.webUsfmDir);
+  }
+
+  if (args.maculaGreekTsv || args.maculaGreekUrl) {
+    await importMaculaGreekGlosses(args);
   }
 }
 
@@ -240,6 +264,100 @@ async function importMorphGnt(args: Args) {
   }
 }
 
+async function importMaculaGreekGlosses(args: Args) {
+  const source = args.maculaGreekTsv ?? args.maculaGreekUrl ?? DEFAULT_MACULA_GREEK_URL;
+  const run = await prisma.importRun.create({
+    data: {
+      source: "MACULA Greek SBLGNT glosses",
+      sourceUrl: source,
+      corpus: "SBLGNT",
+      status: "running"
+    }
+  });
+
+  try {
+    const corpus = await prisma.corpus.findUnique({ where: { abbreviation: "SBLGNT" } });
+    if (!corpus) {
+      throw new Error("SBLGNT corpus not found. Run the MorphGNT import first.");
+    }
+
+    const content = args.maculaGreekTsv
+      ? await readFile(args.maculaGreekTsv, "utf8")
+      : await fetchText(args.maculaGreekUrl ?? DEFAULT_MACULA_GREEK_URL);
+
+    const rows = parseMaculaTsv(content);
+
+    const existingTokens = await prisma.token.findMany({
+      where: { corpusId: corpus.id },
+      select: {
+        id: true,
+        chapter: true,
+        verse: true,
+        wordIndex: true,
+        surface: true,
+        book: { select: { osisId: true } }
+      }
+    });
+    const tokenIndex = new Map<string, { id: string; surface: string }>();
+    for (const token of existingTokens) {
+      const key = `${token.book.osisId}|${token.chapter}|${token.verse}|${token.wordIndex}`;
+      tokenIndex.set(key, { id: token.id, surface: token.surface });
+    }
+
+    const updates: { id: string; gloss: string | null }[] = [];
+    let missing = 0;
+    let surfaceMismatch = 0;
+    for (const row of rows) {
+      const key = `${row.book}|${row.chapter}|${row.verse}|${row.wordIndex}`;
+      const token = tokenIndex.get(key);
+      if (!token) {
+        missing++;
+        continue;
+      }
+      if (row.surface && canonicalSurface(token.surface) !== canonicalSurface(row.surface)) {
+        surfaceMismatch++;
+        continue;
+      }
+      updates.push({ id: token.id, gloss: row.gloss });
+    }
+
+    const batchSize = 500;
+    let applied = 0;
+    for (let i = 0; i < updates.length; i += batchSize) {
+      const batch = updates.slice(i, i + batchSize);
+      await prisma.$transaction(
+        batch.map((u) =>
+          prisma.token.update({ where: { id: u.id }, data: { gloss: u.gloss } })
+        )
+      );
+      applied += batch.length;
+    }
+
+    console.log(
+      `MACULA glosses: applied ${applied}, missing tokens ${missing}, surface mismatches ${surfaceMismatch}`
+    );
+
+    await prisma.importRun.update({
+      where: { id: run.id },
+      data: {
+        status: "completed",
+        tokensImported: applied,
+        completedAt: new Date()
+      }
+    });
+  } catch (error) {
+    await prisma.importRun.update({
+      where: { id: run.id },
+      data: {
+        status: "failed",
+        error: error instanceof Error ? error.message : String(error),
+        completedAt: new Date()
+      }
+    });
+    throw error;
+  }
+}
+
 async function importWebUsfm(dir: string) {
   const run = await prisma.importRun.create({
     data: { source: "World English Bible USFM", sourceUrl: dir, corpus: "WEB", status: "running" }
@@ -342,6 +460,64 @@ function parseMorphGnt(content: string, book: string): ParsedMorphToken[] {
     });
 }
 
+function canonicalSurface(s: string): string {
+  return s
+    .normalize("NFC")
+    .replace(/[⸀-⹿]/g, "")
+    .replace(/;/g, ";")
+    .replace(/·/g, "·");
+}
+
+function parseMaculaTsv(content: string): ParsedMaculaRow[] {
+  const lines = content.split(/\r?\n/);
+  if (lines.length === 0) return [];
+
+  const header = lines[0].split("\t");
+  const col = (name: string) => {
+    const idx = header.indexOf(name);
+    if (idx === -1) throw new Error(`MACULA TSV missing column: ${name}`);
+    return idx;
+  };
+  const refIdx = col("ref");
+  const englishIdx = col("english");
+  const glossIdx = col("gloss");
+  const textIdx = col("text");
+  const afterIdx = col("after");
+
+  const rows: ParsedMaculaRow[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line) continue;
+    const cells = line.split("\t");
+    const ref = cells[refIdx];
+    if (!ref) continue;
+
+    const match = ref.match(/^([A-Z1-3]{3})\s+(\d+):(\d+)!(\d+)$/);
+    if (!match) continue;
+    const [, usfmBook, chapter, verse, wordIndex] = match;
+    const osisId = usfmBookIds[usfmBook];
+    if (!osisId) continue;
+
+    const english = (cells[englishIdx] ?? "").trim();
+    const rawGloss = (cells[glossIdx] ?? "").trim();
+    const fallbackGloss = rawGloss && rawGloss !== "-" ? rawGloss : "";
+    const gloss = english || fallbackGloss || null;
+
+    const text = cells[textIdx] ?? "";
+    const afterPunct = (cells[afterIdx] ?? "").replace(/\s+/g, "");
+
+    rows.push({
+      book: osisId,
+      chapter: Number(chapter),
+      verse: Number(verse),
+      wordIndex: Number(wordIndex),
+      surface: text + afterPunct,
+      gloss
+    });
+  }
+  return rows;
+}
+
 function parseUsfm(content: string): ParsedUsfmVerse[] {
   const verses: ParsedUsfmVerse[] = [];
   let book: string | undefined;
@@ -409,11 +585,18 @@ function parseArgs(args: string[]): Args {
     } else if (arg === "--web-usfm-dir") {
       parsed.webUsfmDir = value;
       index++;
+    } else if (arg === "--macula-greek-tsv") {
+      parsed.maculaGreekTsv = value;
+      index++;
+    } else if (arg === "--macula-greek-url") {
+      parsed.maculaGreekUrl = value;
+      index++;
     }
   }
 
   if (parsed.morphgntDir) parsed.morphgntDir = path.resolve(parsed.morphgntDir);
   if (parsed.webUsfmDir) parsed.webUsfmDir = path.resolve(parsed.webUsfmDir);
+  if (parsed.maculaGreekTsv) parsed.maculaGreekTsv = path.resolve(parsed.maculaGreekTsv);
 
   return parsed;
 }

@@ -57,7 +57,36 @@ describe("POST /api/highlights", () => {
   it("rejects englishWordIndex without verseId", async () => {
     const res = await POST(jsonRequest({ tokenId: "t1", englishWordIndex: 3, color: "#fde68a" }));
     expect(res.status).toBe(400);
-    expect(await res.json()).toMatchObject({ error: "englishWordIndex requires a verseId." });
+    const body = await res.json();
+    expect(body.error).toBe("Invalid request body.");
+    expect(body.details).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ message: "englishWordIndex requires a verseId." })
+      ])
+    );
+  });
+
+  it("rejects a color outside the server-side allowlist", async () => {
+    const res = await POST(jsonRequest({ verseId: "v1", color: "javascript:alert(1)" }));
+    expect(res.status).toBe(400);
+    expect(prismaMock.highlight.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a body larger than the limit", async () => {
+    const huge = "x".repeat(17_000);
+    const res = await POST(jsonRequest({ verseId: "v1", color: "#fde68a", note: huge }));
+    expect(res.status).toBe(413);
+    expect(prismaMock.highlight.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed JSON", async () => {
+    const req = new Request("http://test/api/highlights", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{not json"
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(400);
   });
 
   it("replaces existing row when storing an english-word highlight", async () => {

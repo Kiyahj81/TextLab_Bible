@@ -1,15 +1,52 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { answerBibleQuestion } from "@/lib/ai/assistant";
 import { finishAssistantExchange, startAssistantExchange } from "@/lib/ai/sessions";
+import { requireUserId } from "@/lib/auth";
+import {
+  jsonError,
+  readJsonLimited,
+  validateBody
+} from "@/lib/http/validation";
+import {
+  consume,
+  getClientIp,
+  rateLimitKey,
+  shouldEnforceLocalRateLimit
+} from "@/lib/rate-limit";
+
+const ASSISTANT_MAX_PROMPT_CHARS = 2_000;
+const ASSISTANT_RATE_LIMIT = { burst: 10, refillPerSecond: 10 / 60 };
+
+const assistantSchema = z.object({
+  prompt: z.string().trim().min(1, "Prompt is required.").max(
+    ASSISTANT_MAX_PROMPT_CHARS,
+    `Prompt must be ${ASSISTANT_MAX_PROMPT_CHARS} characters or fewer.`
+  ),
+  sessionId: z.string().trim().max(200).optional()
+});
 
 export async function POST(request: Request) {
-  const body = await request.json();
-  const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
-  const requestedSessionId = typeof body.sessionId === "string" ? body.sessionId.trim() : "";
+  const read = await readJsonLimited(request);
+  if (!read.ok) return read.response;
 
-  if (!prompt) {
-    return NextResponse.json({ error: "Prompt is required." }, { status: 400 });
+  const valid = validateBody(read.data, assistantSchema);
+  if (!valid.ok) return valid.response;
+
+  const userId = await requireUserId();
+
+  if (shouldEnforceLocalRateLimit()) {
+    const ip = getClientIp(request.headers);
+    const key = rateLimitKey({ userId, ip, scope: "assistant" });
+    const limit = consume(key, ASSISTANT_RATE_LIMIT);
+    if (!limit.allowed) {
+      const response = jsonError("Rate limit exceeded.", 429);
+      response.headers.set("Retry-After", String(limit.retryAfterSeconds));
+      return response;
+    }
   }
+
+  const { prompt, sessionId: requestedSessionId = "" } = valid.data;
 
   const { sessionId, userMessagePromise } = await startAssistantExchange({
     requestedSessionId,

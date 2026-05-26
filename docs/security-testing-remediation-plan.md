@@ -94,14 +94,14 @@ Goal: Reduce the easiest abuse paths before full auth lands.
 
 Tasks:
 
-- Add a prompt length cap to `POST /api/assistant`.
-  - Default cap: 2,000 characters.
-  - Return `400` with a stable JSON error if exceeded.
+- Add a prompt length cap and a max-output-tokens cap to `POST /api/assistant`.
+  - Input cap: 2,000 characters; return `400` with a stable JSON error if exceeded.
+  - Output cap: pass `max_tokens` (or model-equivalent) to the OpenAI call to bound response size. `OPENAI_REQUEST_TIMEOUT_MS=25000` exists today and is a partial mitigation only; the token cap closes the other half of the cost-amplification loop.
 - Add an in-memory token-bucket rate limiter for `POST /api/assistant`.
-  - Bucket key: authenticated user id when available, otherwise IP-derived fallback.
+  - Bucket key: authenticated user id when available; otherwise the platform-provided client IP. Trust only the host-specific header (`x-vercel-forwarded-for` on Vercel, `cf-connecting-ip` on Cloudflare). Never trust raw `x-forwarded-for` directly — it is trivially spoofable.
   - Default burst: 10 requests per minute.
   - Return `429` with `Retry-After`.
-  - Document that this is single-process only and should be replaced with Redis/Upstash or platform-native rate limiting for multi-instance deployments.
+  - **Caveat (read carefully):** an in-memory bucket is silently a no-op on serverless platforms where every invocation can be a fresh process. Label the helper as **single-VM / localhost only** and skip it (or short-circuit to "always allow") when the deployment env indicates serverless. Before public exposure on a serverless host, replace it with Upstash / Vercel KV / Cloudflare KV. Do not ship the in-memory limiter as a production control on serverless.
 - Add server-side highlight color validation.
   - Reuse the same palette values from `lib/highlight.ts` or move the allowlist to a server-safe shared module.
   - Reject invalid colors with `400`; do not silently coerce arbitrary values.
@@ -113,11 +113,15 @@ Tasks:
 - Add schema validation.
   - Use `zod` or a similarly explicit schema layer.
   - Validate all mutation route bodies before Prisma writes.
+- Add a stub `requireUserId()` in this sprint (not Sprint 2).
+  - Returns `localUserId` today; Sprint 2 swaps the implementation for a real session lookup.
+  - Lets Sprint 1 validation/limiter code be written against the final contract, so handlers are not rewritten twice.
 
 Acceptance criteria:
 
 - Invalid assistant prompt length returns `400`.
-- Assistant bursts return `429` with `Retry-After`.
+- Assistant responses are bounded by an output token cap.
+- Assistant bursts return `429` with `Retry-After` on a single-VM run.
 - Invalid highlight colors return `400`.
 - Malformed or oversized JSON does not reach Prisma writes.
 
@@ -127,18 +131,21 @@ Goal: Replace the hardcoded local user with real session-based identity.
 
 Tasks:
 
-- Add Auth.js with Prisma adapter.
+- Add Auth.js v5 with Prisma adapter.
+  - Pin **Auth.js v5** explicitly: `@auth/core`, `@auth/prisma-adapter`, and `next-auth@beta` (the v5 wrapper). The v4 → v5 API differs significantly, and the Prisma adapter expects the v5 model shape.
   - Add root `auth.ts`.
   - Add `app/api/auth/[...nextauth]/route.ts`.
   - Use GitHub OAuth for production if credentials are available.
   - Provide a test/dev-only provider only when an explicit env flag is enabled.
   - Require `AUTH_SECRET`.
-- Add Auth.js Prisma models and migration.
-  - Add `User`, `Account`, `Session`, `VerificationToken`, and any fields required by the installed Auth.js Prisma adapter.
-  - Preserve existing data by creating or mapping a placeholder user with id `local-user` before adding foreign keys.
-  - Add relations from user-owned models to `User`.
+- Add Auth.js Prisma models and migration in this strict order (FKs cannot precede the seed row):
+  1. Add a `User` model and run a migration that creates the table.
+  2. Seed one row with `id = "local-user"` so existing rows keep referential integrity.
+  3. Add `Account`, `Session`, `VerificationToken`, and any fields required by the installed Auth.js Prisma adapter.
+  4. Add FK relations from existing user-owned models (`Highlight`, `Note`, `SavedSearch`, `GeneratedStudyNote`, `AiSession`) to `User.id` in a follow-up migration.
+  5. `prisma/schema.prisma` has **no** `User` model today — verified. This is a from-scratch add, not an edit.
 - Replace runtime use of `localUserId`.
-  - Add `requireUserId()` for protected route handlers and pages.
+  - Swap the Sprint 1 stub `requireUserId()` for a real session-based implementation.
   - Add `getOptionalUserId()` only where anonymous reads are intentionally allowed.
   - Remove the hardcoded local identity from runtime paths.
 - Protect API routes and pages.
@@ -176,12 +183,12 @@ Tasks:
   - Prefer strict or lax same-site behavior appropriate for the selected provider flow.
   - Document any provider constraints.
 - Add security headers in `next.config.ts`.
-  - `Content-Security-Policy`
+  - `Content-Security-Policy` — drop `https://api.openai.com` from `connect-src` (OpenAI is called server-side from `lib/ai/assistant.ts`, never from the browser). Drop `unsafe-eval` from the production CSP; Next 14+ App Router does not need it in production builds. Inline-style allowance is the realistic concession; aim for `'strict-dynamic'` + nonces for scripts where feasible.
   - `X-Frame-Options: DENY`
   - `X-Content-Type-Options: nosniff`
   - `Referrer-Policy: strict-origin-when-cross-origin`
-  - `Permissions-Policy`
-  - `Strict-Transport-Security` in production only
+  - `Permissions-Policy` — include `payment=()`, `usb=()`, `interest-cohort=()` in addition to camera/microphone/geolocation.
+  - `Strict-Transport-Security` in production only.
   - Include `frame-ancestors 'none'` in CSP.
 - Add a security register.
   - Record the Next/PostCSS moderate advisory.
@@ -209,6 +216,7 @@ Tasks:
 - Configure coverage.
   - Use Vitest coverage provider `v8`.
   - Enforce at least 80% line coverage after new tests land.
+  - **Enable the coverage gate in the LAST PR of Sprint 4, not the first.** Current baseline is 80% lines / 64% branches, so security code added without tests will push lines below the threshold mid-sprint and block merges. The first PRs should add tests; the gate flips on after.
   - Consider later thresholds for branches and functions after the initial security sprint.
 - Add auth route tests.
   - Missing session returns `401`.
@@ -242,6 +250,11 @@ Tasks:
 - Add security header integration tests.
   - Start a real Next server or use the existing acceptance harness.
   - Verify required headers on a page response and an API response.
+- Add a sign-out + session-revocation test.
+  - After a session is signed out, a request reusing the previous session cookie must return `401`.
+  - Covers the "old session after sign-out" case that the basic "missing session" test does not.
+- Add an assistant-output rendering safety test.
+  - Confirm assistant responses are rendered as text/Markdown, not raw HTML, on whichever page surfaces them. Cheap insurance against prompt-injection of HTML/JS into the UI.
 
 Acceptance criteria:
 

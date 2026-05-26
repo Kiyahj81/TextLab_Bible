@@ -1,38 +1,56 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { parseTags } from "@/lib/references";
-import { localUserId } from "@/lib/user";
+import { requireUserId } from "@/lib/auth";
+import { jsonError, readJsonLimited, validateBody } from "@/lib/http/validation";
 
 type Params = Promise<{ id: string }>;
 
+const MAX_NOTE_BODY = 10_000;
+const MAX_NOTE_TITLE = 200;
+const MAX_TAG_LENGTH = 32;
+const MAX_TAGS = 20;
+
+const tagsField = z
+  .union([
+    z.array(z.string().max(MAX_TAG_LENGTH)).max(MAX_TAGS),
+    z.string().max(MAX_TAGS * (MAX_TAG_LENGTH + 1))
+  ])
+  .optional();
+
+const notePatchSchema = z.object({
+  body: z.string().trim().min(1, "Note body is required.").max(MAX_NOTE_BODY),
+  title: z.string().max(MAX_NOTE_TITLE).optional(),
+  tags: tagsField
+});
+
 export async function PATCH(request: Request, { params }: { params: Params }) {
   const { id } = await params;
-  const body = await request.json();
-  const noteBody = typeof body.body === "string" ? body.body.trim() : "";
 
-  if (!noteBody) {
-    return NextResponse.json({ error: "Note body is required." }, { status: 400 });
-  }
+  const read = await readJsonLimited(request);
+  if (!read.ok) return read.response;
 
-  const tags = Array.isArray(body.tags)
-    ? body.tags.filter((tag: unknown) => typeof tag === "string")
-    : parseTags(typeof body.tags === "string" ? body.tags : "");
+  const valid = validateBody(read.data, notePatchSchema);
+  if (!valid.ok) return valid.response;
+
+  const userId = await requireUserId();
+  const { body, title, tags: rawTags } = valid.data;
+  const tags = Array.isArray(rawTags)
+    ? rawTags.filter((tag) => typeof tag === "string")
+    : parseTags(typeof rawTags === "string" ? rawTags : "");
 
   const result = await prisma.note.updateMany({
-    where: { id, userId: localUserId },
-    data: {
-      title: typeof body.title === "string" ? body.title : undefined,
-      body: noteBody,
-      tags
-    }
+    where: { id, userId },
+    data: { title, body, tags }
   });
 
   if (result.count === 0) {
-    return NextResponse.json({ error: "Note not found." }, { status: 404 });
+    return jsonError("Note not found.", 404);
   }
 
   const note = await prisma.note.findFirst({
-    where: { id, userId: localUserId }
+    where: { id, userId }
   });
 
   return NextResponse.json({ note });
@@ -40,12 +58,13 @@ export async function PATCH(request: Request, { params }: { params: Params }) {
 
 export async function DELETE(_request: Request, { params }: { params: Params }) {
   const { id } = await params;
+  const userId = await requireUserId();
   const result = await prisma.note.deleteMany({
-    where: { id, userId: localUserId }
+    where: { id, userId }
   });
 
   if (result.count === 0) {
-    return NextResponse.json({ error: "Note not found." }, { status: 404 });
+    return jsonError("Note not found.", 404);
   }
 
   return NextResponse.json({ ok: true });

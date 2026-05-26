@@ -1,25 +1,53 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { localUserId } from "@/lib/user";
+import { requireUserId } from "@/lib/auth";
+import { DEFAULT_HIGHLIGHT_COLOR, HIGHLIGHT_COLORS } from "@/lib/highlight";
+import { jsonError, readJsonLimited, validateBody } from "@/lib/http/validation";
+
+const allowedColors = HIGHLIGHT_COLORS.map((c) => c.value) as [string, ...string[]];
+
+const highlightPostSchema = z
+  .object({
+    verseId: z.string().min(1).optional(),
+    tokenId: z.string().min(1).optional(),
+    englishWordIndex: z.number().int().min(0).optional(),
+    color: z.enum(allowedColors).default(DEFAULT_HIGHLIGHT_COLOR)
+  })
+  .refine((v) => v.verseId || v.tokenId, {
+    message: "A verseId or tokenId is required.",
+    path: ["verseId"]
+  })
+  .refine((v) => v.englishWordIndex === undefined || v.verseId, {
+    message: "englishWordIndex requires a verseId.",
+    path: ["englishWordIndex"]
+  });
+
+const highlightDeleteSchema = z
+  .object({
+    verseId: z.string().min(1).optional(),
+    tokenId: z.string().min(1).optional(),
+    englishWordIndex: z.number().int().min(0).optional()
+  })
+  .refine((v) => v.verseId || v.tokenId, {
+    message: "A verseId or tokenId is required.",
+    path: ["verseId"]
+  });
 
 export async function DELETE(request: Request) {
-  const body = await request.json().catch(() => ({}));
+  const read = await readJsonLimited(request);
+  if (!read.ok) return read.response;
 
-  const verseId = typeof body?.verseId === "string" ? body.verseId : undefined;
-  const tokenId = typeof body?.tokenId === "string" ? body.tokenId : undefined;
-  const englishWordIndex =
-    typeof body?.englishWordIndex === "number" && Number.isInteger(body.englishWordIndex)
-      ? body.englishWordIndex
-      : undefined;
+  const valid = validateBody(read.data, highlightDeleteSchema);
+  if (!valid.ok) return valid.response;
 
-  if (!verseId && !tokenId) {
-    return NextResponse.json({ error: "A verseId or tokenId is required." }, { status: 400 });
-  }
+  const userId = await requireUserId();
+  const { verseId, tokenId, englishWordIndex } = valid.data;
 
   try {
     const result = await prisma.highlight.deleteMany({
       where: {
-        userId: localUserId,
+        userId,
         ...(verseId ? { verseId } : {}),
         ...(tokenId ? { tokenId } : {}),
         ...(englishWordIndex !== undefined ? { englishWordIndex } : { englishWordIndex: null })
@@ -28,67 +56,50 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ deleted: result.count }, { status: 200 });
   } catch (error) {
     console.error("highlights DELETE failed", error);
-    return NextResponse.json({ error: "Could not remove highlight." }, { status: 500 });
+    return jsonError("Could not remove highlight.", 500);
   }
 }
 
 export async function POST(request: Request) {
-  const body = await request.json();
+  const read = await readJsonLimited(request);
+  if (!read.ok) return read.response;
 
-  const verseId = typeof body.verseId === "string" ? body.verseId : undefined;
-  const tokenId = typeof body.tokenId === "string" ? body.tokenId : undefined;
-  const englishWordIndex =
-    typeof body.englishWordIndex === "number" && Number.isInteger(body.englishWordIndex)
-      ? body.englishWordIndex
-      : undefined;
+  const valid = validateBody(read.data, highlightPostSchema);
+  if (!valid.ok) return valid.response;
 
-  if (!verseId && !tokenId) {
-    return NextResponse.json({ error: "A verseId or tokenId is required." }, { status: 400 });
-  }
-
-  if (englishWordIndex !== undefined && !verseId) {
-    return NextResponse.json(
-      { error: "englishWordIndex requires a verseId." },
-      { status: 400 }
-    );
-  }
+  const userId = await requireUserId();
+  const { verseId, tokenId, englishWordIndex, color } = valid.data;
 
   if (verseId) {
     const verse = await prisma.verse.findUnique({ where: { id: verseId }, select: { id: true } });
-    if (!verse) {
-      return NextResponse.json({ error: "verseId not found." }, { status: 400 });
-    }
+    if (!verse) return jsonError("verseId not found.", 400);
   }
 
   if (tokenId) {
     const token = await prisma.token.findUnique({ where: { id: tokenId }, select: { id: true } });
-    if (!token) {
-      return NextResponse.json({ error: "tokenId not found." }, { status: 400 });
-    }
+    if (!token) return jsonError("tokenId not found.", 400);
   }
 
   try {
-    // One highlight per (verseId + englishWordIndex) slot per user — replace
-    // any existing row so picking a new color doesn't accumulate stacked rows.
     if (verseId && englishWordIndex !== undefined) {
       await prisma.highlight.deleteMany({
-        where: { userId: localUserId, verseId, englishWordIndex }
+        where: { userId, verseId, englishWordIndex }
       });
     }
 
     const highlight = await prisma.highlight.create({
       data: {
-        userId: localUserId,
+        userId,
         verseId,
         tokenId,
         englishWordIndex,
-        color: typeof body.color === "string" ? body.color : "#fde68a"
+        color
       }
     });
 
     return NextResponse.json({ highlight }, { status: 201 });
   } catch (error) {
     console.error("highlights POST failed", error);
-    return NextResponse.json({ error: "Could not save highlight." }, { status: 500 });
+    return jsonError("Could not save highlight.", 500);
   }
 }

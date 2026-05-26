@@ -22,6 +22,14 @@ export type RoutingDecision = {
 const DEFAULT_MODEL = "gpt-5.3-chat-latest";
 const SCHOLARLY_MODEL = "gpt-5.4";
 
+const DEFAULT_MAX_OUTPUT_TOKENS = 1_200;
+
+export function getMaxOutputTokens(): number {
+  const raw = Number.parseInt(process.env.OPENAI_MAX_OUTPUT_TOKENS?.trim() ?? "", 10);
+  if (Number.isFinite(raw) && raw > 0) return raw;
+  return DEFAULT_MAX_OUTPUT_TOKENS;
+}
+
 const ASSISTANT_INSTRUCTIONS = [
   aiSystemPrompt,
   "Use only the retrieved evidence and deterministic draft supplied by TextLab Bible.",
@@ -75,6 +83,7 @@ export async function synthesizeWithDefaultModel(input: {
   const response = await client.responses.create({
     model: input.routing.modelUsed,
     instructions: ASSISTANT_INSTRUCTIONS,
+    max_output_tokens: getMaxOutputTokens(),
     input: [
       {
         role: "user",

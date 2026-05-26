@@ -1,10 +1,24 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { bookName } from "@/lib/references";
-import { localUserId } from "@/lib/user";
+import { requireUserId } from "@/lib/auth";
+import { readJsonLimited, validateBody } from "@/lib/http/validation";
 
-const allowedModes = new Set(["keyword", "lemma", "morphology"]);
-const allowedMatchModes = new Set(["exact", "prefix"]);
+const MAX_LABEL = 100;
+const MAX_QUERY = 500;
+const MAX_CORPUS = 100;
+const MAX_BOOK = 100;
+
+const savedSearchCreateSchema = z.object({
+  query: z.string().trim().min(1, "Query is required.").max(MAX_QUERY),
+  mode: z.enum(["keyword", "lemma", "morphology"]).default("keyword"),
+  matchMode: z.enum(["exact", "prefix"]).optional(),
+  corpus: z.string().trim().max(MAX_CORPUS).optional(),
+  book: z.string().trim().max(MAX_BOOK).optional(),
+  chapter: z.coerce.number().int().positive().optional(),
+  label: z.string().trim().max(MAX_LABEL).optional()
+});
 
 function autoLabel({
   mode,
@@ -23,8 +37,9 @@ function autoLabel({
 }
 
 export async function GET() {
+  const userId = await requireUserId();
   const savedSearches = await prisma.savedSearch.findMany({
-    where: { userId: localUserId },
+    where: { userId },
     orderBy: { updatedAt: "desc" },
     take: 25
   });
@@ -33,37 +48,25 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const body = await request.json();
-  const query = typeof body.query === "string" ? body.query.trim() : "";
-  const mode = typeof body.mode === "string" && allowedModes.has(body.mode) ? body.mode : "keyword";
+  const read = await readJsonLimited(request);
+  if (!read.ok) return read.response;
 
-  if (!query) {
-    return NextResponse.json({ error: "Query is required." }, { status: 400 });
-  }
+  const valid = validateBody(read.data, savedSearchCreateSchema);
+  if (!valid.ok) return valid.response;
 
-  const matchMode =
-    mode === "morphology" &&
-    typeof body.matchMode === "string" &&
-    allowedMatchModes.has(body.matchMode)
-      ? body.matchMode
-      : undefined;
+  const userId = await requireUserId();
+  const { query, mode, matchMode: rawMatchMode, corpus, book, chapter, label: rawLabel } = valid.data;
 
-  const book =
-    typeof body.book === "string" && body.book.trim() ? body.book.trim() : undefined;
-  const chapter =
-    Number.isFinite(Number(body.chapter)) && Number(body.chapter) > 0 ? Number(body.chapter) : undefined;
-  const label =
-    typeof body.label === "string" && body.label.trim()
-      ? body.label.trim()
-      : autoLabel({ mode, query, book, chapter });
+  const matchMode = mode === "morphology" ? rawMatchMode : undefined;
+  const label = rawLabel || autoLabel({ mode, query, book, chapter });
 
   const savedSearch = await prisma.savedSearch.create({
     data: {
-      userId: localUserId,
+      userId,
       label,
       mode,
       query,
-      corpus: typeof body.corpus === "string" && body.corpus.trim() ? body.corpus.trim() : undefined,
+      corpus,
       book,
       chapter,
       matchMode

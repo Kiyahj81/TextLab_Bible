@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireAuth } from "@/lib/auth";
+import { assertSameOrigin } from "@/lib/http/security";
 import { DEFAULT_HIGHLIGHT_COLOR, HIGHLIGHT_COLORS } from "@/lib/highlight";
 import { jsonError, readJsonLimited, validateBody } from "@/lib/http/validation";
 
@@ -35,6 +36,9 @@ const highlightDeleteSchema = z
   });
 
 export async function DELETE(request: Request) {
+  const origin = assertSameOrigin(request);
+  if (!origin.ok) return origin.response;
+
   const authResult = await requireAuth();
   if (!authResult.ok) return authResult.response;
   const { userId } = authResult;
@@ -64,6 +68,9 @@ export async function DELETE(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const origin = assertSameOrigin(request);
+  if (!origin.ok) return origin.response;
+
   const authResult = await requireAuth();
   if (!authResult.ok) return authResult.response;
   const { userId } = authResult;

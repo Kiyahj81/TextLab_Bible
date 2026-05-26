@@ -3,6 +3,7 @@ import { z } from "zod";
 import { answerBibleQuestion } from "@/lib/ai/assistant";
 import { finishAssistantExchange, startAssistantExchange } from "@/lib/ai/sessions";
 import { requireAuth } from "@/lib/auth";
+import { assertSameOrigin } from "@/lib/http/security";
 import {
   jsonError,
   readJsonLimited,
@@ -27,6 +28,9 @@ const assistantSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  const origin = assertSameOrigin(request);
+  if (!origin.ok) return origin.response;
+
   const authResult = await requireAuth();
   if (!authResult.ok) return authResult.response;
   const { userId } = authResult;

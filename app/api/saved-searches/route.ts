@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { bookName } from "@/lib/references";
 import { requireAuth } from "@/lib/auth";
+import { assertSameOrigin } from "@/lib/http/security";
 import { readJsonLimited, validateBody } from "@/lib/http/validation";
 
 const MAX_LABEL = 100;
@@ -51,6 +52,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const origin = assertSameOrigin(request);
+  if (!origin.ok) return origin.response;
+
   const authResult = await requireAuth();
   if (!authResult.ok) return authResult.response;
   const { userId } = authResult;

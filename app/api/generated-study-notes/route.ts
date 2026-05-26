@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireAuth } from "@/lib/auth";
+import { assertSameOrigin } from "@/lib/http/security";
 import { readJsonLimited, validateBody } from "@/lib/http/validation";
 
 const MAX_PROMPT = 2_000;
@@ -49,6 +50,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const origin = assertSameOrigin(request);
+  if (!origin.ok) return origin.response;
+
   const authResult = await requireAuth();
   if (!authResult.ok) return authResult.response;
   const { userId } = authResult;

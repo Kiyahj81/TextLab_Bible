@@ -48,12 +48,33 @@ function buildProviders(): NextAuthConfig["providers"] {
   return providers;
 }
 
+const isProduction = process.env.NODE_ENV === "production";
+
 export const authConfig: NextAuthConfig = {
   adapter: PrismaAdapter(prisma),
   // JWT strategy: required for the credentials provider; also avoids a DB
   // hit per request for OAuth flows. Sign-out works via cookie clear.
   // True session-revocation lives in Sprint 4 alongside its test.
   session: { strategy: "jwt" },
+  // Cookie hardening. We set these explicitly so the policy is visible in
+  // the repo, not implicit in framework defaults.
+  //   - httpOnly: JS cannot read the session cookie (defense in depth
+  //     against XSS-driven session theft).
+  //   - sameSite "lax": MUST be lax (not strict) so the cookie survives
+  //     the GitHub OAuth callback redirect. Cross-origin POST/PATCH/DELETE
+  //     is separately blocked by lib/http/security.ts.
+  //   - secure: production only; Auth.js applies the __Secure- cookie
+  //     name prefix automatically when this is true.
+  cookies: {
+    sessionToken: {
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: isProduction
+      }
+    }
+  },
   providers: buildProviders(),
   callbacks: {
     async jwt({ token, user }) {

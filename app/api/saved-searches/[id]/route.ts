@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireAuth } from "@/lib/auth";
+import { assertSameOrigin } from "@/lib/http/security";
 import { jsonError, readJsonLimited, validateBody } from "@/lib/http/validation";
 
 type Params = Promise<{ id: string }>;
@@ -13,6 +14,9 @@ const savedSearchPatchSchema = z.object({
 });
 
 export async function PATCH(request: Request, { params }: { params: Params }) {
+  const origin = assertSameOrigin(request);
+  if (!origin.ok) return origin.response;
+
   const authResult = await requireAuth();
   if (!authResult.ok) return authResult.response;
   const { userId } = authResult;
@@ -43,7 +47,10 @@ export async function PATCH(request: Request, { params }: { params: Params }) {
   return NextResponse.json({ savedSearch });
 }
 
-export async function DELETE(_request: Request, { params }: { params: Params }) {
+export async function DELETE(request: Request, { params }: { params: Params }) {
+  const origin = assertSameOrigin(request);
+  if (!origin.ok) return origin.response;
+
   const authResult = await requireAuth();
   if (!authResult.ok) return authResult.response;
   const { userId } = authResult;

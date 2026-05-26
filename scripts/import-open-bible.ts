@@ -1,6 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { ntBooks } from "../lib/references";
 
 const prisma = new PrismaClient();
@@ -31,6 +32,10 @@ type ParsedMaculaRow = {
   verse: number;
   wordIndex: number;
   surface: string;
+  normalized: string | null;
+  lemma: string | null;
+  morph: string | null;
+  partOfSpeech: string | null;
   gloss: string | null;
 };
 
@@ -304,16 +309,108 @@ async function importMaculaGreekGlosses(args: Args) {
       tokenIndex.set(key, { id: token.id, surface: token.surface });
     }
 
+    const bookCache = new Map<string, { id: string }>();
+    const getBook = async (osisId: string) => {
+      let book = bookCache.get(osisId);
+      if (!book) {
+        book = await prisma.book.findUniqueOrThrow({
+          where: { osisId },
+          select: { id: true }
+        });
+        bookCache.set(osisId, book);
+      }
+      return book;
+    };
+
+    // Verses MorphGNT didn't ship (e.g. Pericope Adulterae) — accumulate
+    // surfaces here so we can build verse text after inserting tokens. Verses
+    // covered by MACULA_OVERRIDES are also rebuilt every run so re-imports
+    // pick up override changes against tokens that already exist in the DB.
+    const newVerseChunks = new Map<string, string[]>();
+
+    const overriddenVerses = new Set<string>();
+    for (const refKey of Object.keys(MACULA_OVERRIDES)) {
+      const refMatch = refKey.match(/^([A-Z1-3]{3})\s+(\d+):(\d+)!\d+$/);
+      if (!refMatch) continue;
+      const osisId = usfmBookIds[refMatch[1]];
+      if (osisId) overriddenVerses.add(`${osisId}|${refMatch[2]}|${refMatch[3]}`);
+    }
+
     const updates: { id: string; gloss: string | null }[] = [];
     let missing = 0;
+    let inserted = 0;
+    let refreshed = 0;
     let surfaceMismatch = 0;
     for (const row of rows) {
       const key = `${row.book}|${row.chapter}|${row.verse}|${row.wordIndex}`;
+      const vkey = `${row.book}|${row.chapter}|${row.verse}`;
       const token = tokenIndex.get(key);
+      const inOverriddenVerse = overriddenVerses.has(vkey);
+
       if (!token) {
+        // MorphGNT didn't have this token — insert it from MACULA.
+        const book = await getBook(row.book);
+        await prisma.token.upsert({
+          where: {
+            corpusId_bookId_chapter_verse_wordIndex: {
+              corpusId: corpus.id,
+              bookId: book.id,
+              chapter: row.chapter,
+              verse: row.verse,
+              wordIndex: row.wordIndex
+            }
+          },
+          update: {
+            surface: row.surface,
+            normalized: row.normalized ?? row.surface,
+            lemma: row.lemma,
+            morphCode: row.morph,
+            partOfSpeech: row.partOfSpeech,
+            gloss: row.gloss
+          },
+          create: {
+            corpusId: corpus.id,
+            bookId: book.id,
+            chapter: row.chapter,
+            verse: row.verse,
+            wordIndex: row.wordIndex,
+            surface: row.surface,
+            normalized: row.normalized ?? row.surface,
+            lemma: row.lemma,
+            morphCode: row.morph,
+            partOfSpeech: row.partOfSpeech,
+            gloss: row.gloss
+          }
+        });
+        inserted++;
         missing++;
+        const chunks = newVerseChunks.get(vkey) ?? [];
+        chunks.push(row.surface);
+        newVerseChunks.set(vkey, chunks);
         continue;
       }
+
+      if (inOverriddenVerse) {
+        // Override may have changed text or punctuation since last import.
+        // Refresh the token and queue the verse for text rebuild.
+        await prisma.token.update({
+          where: { id: token.id },
+          data: {
+            surface: row.surface,
+            normalized: row.normalized ?? row.surface,
+            lemma: row.lemma,
+            morphCode: row.morph,
+            partOfSpeech: row.partOfSpeech,
+            gloss: row.gloss
+          }
+        });
+        refreshed++;
+        const chunks = newVerseChunks.get(vkey) ?? [];
+        chunks.push(row.surface);
+        newVerseChunks.set(vkey, chunks);
+        continue;
+      }
+
       if (row.surface && canonicalSurface(token.surface) !== canonicalSurface(row.surface)) {
         surfaceMismatch++;
         continue;
@@ -333,15 +430,42 @@ async function importMaculaGreekGlosses(args: Args) {
       applied += batch.length;
     }
 
+    // For verses we just populated from MACULA, write the verse text too.
+    let versesCreated = 0;
+    for (const [vkey, words] of newVerseChunks) {
+      const [bookOsis, chapterStr, verseStr] = vkey.split("|");
+      const book = await getBook(bookOsis);
+      await prisma.verse.upsert({
+        where: {
+          corpusId_bookId_chapter_verse: {
+            corpusId: corpus.id,
+            bookId: book.id,
+            chapter: Number(chapterStr),
+            verse: Number(verseStr)
+          }
+        },
+        update: { text: joinGreekVerse(words) },
+        create: {
+          corpusId: corpus.id,
+          bookId: book.id,
+          chapter: Number(chapterStr),
+          verse: Number(verseStr),
+          text: joinGreekVerse(words)
+        }
+      });
+      versesCreated++;
+    }
+
     console.log(
-      `MACULA glosses: applied ${applied}, missing tokens ${missing}, surface mismatches ${surfaceMismatch}`
+      `MACULA glosses: applied ${applied}, missing tokens ${missing} (inserted ${inserted}, refreshed ${refreshed}, across ${versesCreated} verses), surface mismatches ${surfaceMismatch}`
     );
 
     await prisma.importRun.update({
       where: { id: run.id },
       data: {
         status: "completed",
-        tokensImported: applied,
+        versesImported: versesCreated,
+        tokensImported: applied + inserted + refreshed,
         completedAt: new Date()
       }
     });
@@ -468,7 +592,48 @@ function canonicalSurface(s: string): string {
     .replace(/·/g, "·");
 }
 
-function parseMaculaTsv(content: string): ParsedMaculaRow[] {
+// MACULA's coverage of the Pericope Adulterae (John 7:53–8:11) was added
+// later than the core SBLGNT and is poorly punctuated: most clause-final
+// stops are missing, a few are wrong, one token (8:10!14) carries a "εἰσιν;;"
+// data-corruption artifact in its `text` column, and two clause-initial words
+// after a high stop are lowercase where SBL prints them capitalized.
+// Overrides below patch each position against Michael Holmes' SBL GNT (2010).
+// If MACULA ever ships a curated PA, drop the matching entries.
+const MACULA_OVERRIDES: Record<string, { text?: string; after?: string }> = {
+  "JHN 7:53!7":  { after: "·" },
+  "JHN 8:2!12":  { after: "·" },
+  "JHN 8:3!13":  { after: "·" },
+  "JHN 8:3!18":  { after: "," },
+  "JHN 8:4!3":   { after: "·" },
+  "JHN 8:4!11":  { after: "." },
+  "JHN 8:5!10":  { after: "·" },
+  "JHN 8:6!14":  { after: "," },
+  "JHN 8:6!20":  { after: "," },
+  "JHN 8:6!22":  { after: "." },
+  "JHN 8:7!9":   { after: "·" },
+  "JHN 8:7!12":  { after: "," },
+  "JHN 8:7!18":  { after: "." },
+  "JHN 8:9!2":   { after: "," },
+  "JHN 8:9!3":   { after: "," },
+  "JHN 8:9!8":   { after: "," },
+  "JHN 8:9!12":  { after: "," },
+  "JHN 8:9!16":  { after: "·" },
+  "JHN 8:9!19":  { after: "" },
+  "JHN 8:9!21":  { after: "," },
+  "JHN 8:10!4":  { after: "," },
+  "JHN 8:10!10": { after: "," },
+  "JHN 8:10!12": { after: "·" },
+  "JHN 8:10!13": { text: "Ποῦ" },
+  "JHN 8:10!14": { text: "εἰσιν", after: " " },
+  "JHN 8:10!18": { after: ";" },
+  "JHN 8:10!19": { text: "Οὐδείς" },
+  "JHN 8:11!3":  { after: "·" },
+  "JHN 8:11!9":  { after: "·" },
+  "JHN 8:11!13": { after: "·" },
+  "JHN 8:11!14": { after: "" }
+};
+
+export function parseMaculaTsv(content: string): ParsedMaculaRow[] {
   const lines = content.split(/\r?\n/);
   if (lines.length === 0) return [];
 
@@ -483,6 +648,9 @@ function parseMaculaTsv(content: string): ParsedMaculaRow[] {
   const glossIdx = col("gloss");
   const textIdx = col("text");
   const afterIdx = col("after");
+  const lemmaIdx = col("lemma");
+  const normalizedIdx = col("normalized");
+  const morphIdx = col("morph");
 
   const rows: ParsedMaculaRow[] = [];
   for (let i = 1; i < lines.length; i++) {
@@ -503,8 +671,13 @@ function parseMaculaTsv(content: string): ParsedMaculaRow[] {
     const fallbackGloss = rawGloss && rawGloss !== "-" ? rawGloss : "";
     const gloss = english || fallbackGloss || null;
 
-    const text = cells[textIdx] ?? "";
-    const afterPunct = (cells[afterIdx] ?? "").replace(/\s+/g, "");
+    const override = MACULA_OVERRIDES[ref];
+    const text = override?.text ?? cells[textIdx] ?? "";
+    const rawAfter = override?.after ?? cells[afterIdx] ?? "";
+    const afterPunct = rawAfter.replace(/\s+/g, "");
+    const morph = (cells[morphIdx] ?? "").trim() || null;
+    const normalized = (cells[normalizedIdx] ?? "").trim() || null;
+    const lemma = (cells[lemmaIdx] ?? "").trim() || null;
 
     rows.push({
       book: osisId,
@@ -512,38 +685,81 @@ function parseMaculaTsv(content: string): ParsedMaculaRow[] {
       verse: Number(verse),
       wordIndex: Number(wordIndex),
       surface: text + afterPunct,
+      normalized,
+      lemma,
+      morph,
+      partOfSpeech: maculaPartOfSpeech(morph),
       gloss
     });
   }
   return rows;
 }
 
-function parseUsfm(content: string): ParsedUsfmVerse[] {
+// Mirror MorphGNT's partOfSpeech format so values are filterable alongside
+// existing SBLGNT tokens (e.g. CONTENT_PART_OF_SPEECH = ["N-","V-","A-"]).
+// "N-NSF" → "N-"; "V-AOI-3S" → "V-"; "CONJ" → "CONJ".
+function maculaPartOfSpeech(morph: string | null): string | null {
+  if (!morph) return null;
+  return morph.includes("-") ? `${morph.split("-")[0]}-` : morph;
+}
+
+export function parseUsfm(content: string): ParsedUsfmVerse[] {
   const verses: ParsedUsfmVerse[] = [];
   let book: string | undefined;
   let chapter: number | undefined;
+  let active: { verse: number; chunks: string[] } | null = null;
 
-  for (const line of content.split(/\r?\n/)) {
+  const flush = () => {
+    if (active && book && chapter !== undefined) {
+      verses.push({
+        book,
+        chapter,
+        verse: active.verse,
+        text: cleanUsfmText(active.chunks.join(" "))
+      });
+    }
+    active = null;
+  };
+
+  for (const raw of content.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+
     if (line.startsWith("\\id ")) {
+      flush();
       const id = line.split(/\s+/)[1]?.toUpperCase();
       book = id ? usfmBookIds[id] : undefined;
+      chapter = undefined;
+      continue;
     }
+
     if (line.startsWith("\\c ")) {
+      flush();
       chapter = Number(line.split(/\s+/)[1]);
+      continue;
     }
-    if (line.startsWith("\\v ") && book && chapter) {
-      const match = line.match(/^\\v\s+(\d+)\s+(.+)$/);
-      if (match) {
-        verses.push({
-          book,
-          chapter,
+
+    if (line.startsWith("\\v ")) {
+      flush();
+      const match = line.match(/^\\v\s+(\d+)\s*(.*)$/);
+      if (match && book && chapter !== undefined) {
+        active = {
           verse: Number(match[1]),
-          text: cleanUsfmText(match[2])
-        });
+          chunks: match[2] ? [match[2]] : []
+        };
       }
+      continue;
+    }
+
+    // Continuation line — paragraph/poetry markers (\p, \q1, \q2, \m, \b, \nb,
+    // \li…) that carry mid-verse text, or a plain wrap of verse text.
+    // cleanUsfmText already strips the leading marker, so append verbatim.
+    if (active) {
+      active.chunks.push(line);
     }
   }
 
+  flush();
   return verses;
 }
 
@@ -552,7 +768,10 @@ function cleanUsfmText(text: string) {
     .replace(/\\f\s+.*?\\f\*/gi, "")
     .replace(/\\x\s+.*?\\x\*/gi, "")
     .replace(/\\\+?w\s+([^|\\]+)(?:\|[^\\]*)?\\\+?w\*/gi, "$1")
-    .replace(/\\[a-z0-9+*]+\s?/gi, "")
+    // Replace remaining markers with a space (not empty) so that sequences
+    // like `write:\wj* \p \wj "He` don't collapse to `write:"He`. The final
+    // whitespace-collapse below squashes any resulting doubles.
+    .replace(/\\[a-z0-9+*]+\s?/gi, " ")
     .replace(/\s+([,.;:!?])/g, "$1")
     .replace(/\s+/g, " ")
     .trim();
@@ -601,11 +820,16 @@ function parseArgs(args: string[]): Args {
   return parsed;
 }
 
-main()
-  .catch((error) => {
-    console.error(error);
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+// Only run main() when invoked directly (not when imported by tests).
+const invokedDirectly =
+  process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (invokedDirectly) {
+  main()
+    .catch((error) => {
+      console.error(error);
+      process.exitCode = 1;
+    })
+    .finally(async () => {
+      await prisma.$disconnect();
+    });
+}

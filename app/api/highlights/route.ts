@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { requireUserId } from "@/lib/auth";
+import { requireAuth } from "@/lib/auth";
 import { DEFAULT_HIGHLIGHT_COLOR, HIGHLIGHT_COLORS } from "@/lib/highlight";
 import { jsonError, readJsonLimited, validateBody } from "@/lib/http/validation";
 
@@ -35,13 +35,16 @@ const highlightDeleteSchema = z
   });
 
 export async function DELETE(request: Request) {
+  const authResult = await requireAuth();
+  if (!authResult.ok) return authResult.response;
+  const { userId } = authResult;
+
   const read = await readJsonLimited(request);
   if (!read.ok) return read.response;
 
   const valid = validateBody(read.data, highlightDeleteSchema);
   if (!valid.ok) return valid.response;
 
-  const userId = await requireUserId();
   const { verseId, tokenId, englishWordIndex } = valid.data;
 
   try {
@@ -61,13 +64,16 @@ export async function DELETE(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const authResult = await requireAuth();
+  if (!authResult.ok) return authResult.response;
+  const { userId } = authResult;
+
   const read = await readJsonLimited(request);
   if (!read.ok) return read.response;
 
   const valid = validateBody(read.data, highlightPostSchema);
   if (!valid.ok) return valid.response;
 
-  const userId = await requireUserId();
   const { verseId, tokenId, englishWordIndex, color } = valid.data;
 
   if (verseId) {

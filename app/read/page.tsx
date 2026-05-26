@@ -3,6 +3,7 @@ import { ChapterNav } from "@/components/ChapterNav";
 import { DismissibleIntro } from "@/components/DismissibleIntro";
 import { ReaderControls } from "@/components/ReaderControls";
 import { ReaderLocationMemo } from "@/components/ReaderLocationMemo";
+import { requirePageAuth } from "@/lib/auth";
 import { parsePositiveInt } from "@/lib/params";
 import {
   getAvailablePassages,
@@ -16,6 +17,7 @@ type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 export const dynamic = "force-dynamic";
 
 export default async function ReadPage({ searchParams }: { searchParams: SearchParams }) {
+  const userId = await requirePageAuth();
   const params = await searchParams;
   const book = getParam(params.book) ?? "John";
   const chapter = parsePositiveInt(getParam(params.chapter)) ?? 1;
@@ -23,7 +25,7 @@ export default async function ReadPage({ searchParams }: { searchParams: SearchP
   const [books, passages, verses, neighbors] = await Promise.all([
     getAvailableReaderBooks(),
     getAvailablePassages(),
-    getReaderPassage(book, chapter),
+    getReaderPassage(book, chapter, userId),
     getPassageNeighbors(book, chapter)
   ]);
 

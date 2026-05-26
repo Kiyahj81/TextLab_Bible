@@ -7,7 +7,6 @@ const { prismaMock } = vi.hoisted(() => ({
   }
 }));
 vi.mock("@/lib/db", () => ({ prisma: prismaMock }));
-vi.mock("@/lib/user", () => ({ localUserId: "local-user" }));
 
 import { Prisma } from "@prisma/client";
 import { finishAssistantExchange, startAssistantExchange } from "@/lib/ai/sessions";
@@ -33,6 +32,7 @@ const answer: AssistantAnswer = {
 describe("assistant exchange persistence", () => {
   it("writes the user message before finishAssistantExchange and assistant message with structured metadata", async () => {
     const { sessionId, userMessagePromise } = await startAssistantExchange({
+      userId: "local-user",
       requestedSessionId: "",
       prompt: "What is logos?"
     });

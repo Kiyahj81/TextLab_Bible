@@ -1,17 +1,18 @@
 import type { Prisma } from "@prisma/client";
 import { DismissibleIntro } from "@/components/DismissibleIntro";
 import { NotesPanel, NoteRow } from "@/components/NotesPanel";
+import { requirePageAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { parseNotesSort, parseReferenceFilter } from "@/lib/notes-filter";
 import { parsePositiveInt } from "@/lib/params";
 import { formatReference } from "@/lib/references";
-import { localUserId } from "@/lib/user";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 export const dynamic = "force-dynamic";
 
 export default async function NotesPage({ searchParams }: { searchParams: SearchParams }) {
+  const userId = await requirePageAuth();
   const params = await searchParams;
   const tag = getParam(params.tag) ?? "";
   const reference = getParam(params.reference) ?? "";
@@ -20,7 +21,7 @@ export default async function NotesPage({ searchParams }: { searchParams: Search
   const requestedPage = parsePositiveInt(getParam(params.page)) ?? 1;
   const pageSize = Math.min(parsePositiveInt(getParam(params.pageSize)) ?? 25, 100);
 
-  const conditions: Prisma.NoteWhereInput[] = [{ userId: localUserId }];
+  const conditions: Prisma.NoteWhereInput[] = [{ userId }];
 
   if (tag.trim()) {
     conditions.push({ tags: { has: tag.trim() } });

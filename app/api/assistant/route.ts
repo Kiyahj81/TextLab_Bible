@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { answerBibleQuestion } from "@/lib/ai/assistant";
 import { finishAssistantExchange, startAssistantExchange } from "@/lib/ai/sessions";
-import { requireUserId } from "@/lib/auth";
+import { requireAuth } from "@/lib/auth";
 import {
   jsonError,
   readJsonLimited,
@@ -27,13 +27,15 @@ const assistantSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  const authResult = await requireAuth();
+  if (!authResult.ok) return authResult.response;
+  const { userId } = authResult;
+
   const read = await readJsonLimited(request);
   if (!read.ok) return read.response;
 
   const valid = validateBody(read.data, assistantSchema);
   if (!valid.ok) return valid.response;
-
-  const userId = await requireUserId();
 
   if (shouldEnforceLocalRateLimit()) {
     const ip = getClientIp(request.headers);
@@ -49,6 +51,7 @@ export async function POST(request: Request) {
   const { prompt, sessionId: requestedSessionId = "" } = valid.data;
 
   const { sessionId, userMessagePromise } = await startAssistantExchange({
+    userId,
     requestedSessionId,
     prompt
   });

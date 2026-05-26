@@ -1,19 +1,25 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { prismaMock, assistantMock } = vi.hoisted(() => ({
+const { prismaMock, assistantMock, requireAuthMock } = vi.hoisted(() => ({
   prismaMock: {
     aiSession: { findFirst: vi.fn(), create: vi.fn() },
     aiMessage: { create: vi.fn() }
   },
-  assistantMock: vi.fn()
+  assistantMock: vi.fn(),
+  requireAuthMock: vi.fn()
 }));
 
 vi.mock("@/lib/db", () => ({ prisma: prismaMock }));
-vi.mock("@/lib/user", () => ({ localUserId: "local-user" }));
+vi.mock("@/lib/auth", () => ({
+  requireAuth: requireAuthMock,
+  getOptionalUserId: vi.fn().mockResolvedValue("local-user"),
+  requirePageAuth: vi.fn().mockResolvedValue("local-user")
+}));
 vi.mock("@/lib/ai/assistant", () => ({
   answerBibleQuestion: assistantMock
 }));
 
+import { NextResponse } from "next/server";
 import { POST } from "@/app/api/assistant/route";
 import { resetRateLimits } from "@/lib/rate-limit";
 
@@ -28,6 +34,7 @@ function jsonRequest(body: unknown) {
 beforeEach(() => {
   vi.clearAllMocks();
   resetRateLimits();
+  requireAuthMock.mockResolvedValue({ ok: true, userId: "local-user" });
   prismaMock.aiSession.create.mockResolvedValue({ id: "sess-1" });
   prismaMock.aiSession.findFirst.mockResolvedValue(null);
   prismaMock.aiMessage.create.mockResolvedValue({ id: "msg-1" });
@@ -104,5 +111,25 @@ describe("POST /api/assistant", () => {
     expect(denied.headers.get("Retry-After")).toBeTruthy();
     const retry = Number.parseInt(denied.headers.get("Retry-After") ?? "0", 10);
     expect(retry).toBeGreaterThanOrEqual(1);
+  });
+
+  it("returns 401 when unauthenticated, before any rate-limit or OpenAI call", async () => {
+    requireAuthMock.mockResolvedValue({
+      ok: false,
+      response: NextResponse.json({ error: "Unauthenticated." }, { status: 401 })
+    });
+    const res = await POST(jsonRequest({ prompt: "What is logos?" }));
+    expect(res.status).toBe(401);
+    expect(assistantMock).not.toHaveBeenCalled();
+    expect(prismaMock.aiSession.create).not.toHaveBeenCalled();
+  });
+
+  it("scopes AiSession lookup to the authenticated user", async () => {
+    requireAuthMock.mockResolvedValue({ ok: true, userId: "alice" });
+    prismaMock.aiSession.findFirst.mockResolvedValue(null);
+    await POST(jsonRequest({ prompt: "x", sessionId: "sess-of-bob" }));
+    expect(prismaMock.aiSession.findFirst).toHaveBeenCalledWith({
+      where: { id: "sess-of-bob", userId: "alice" }
+    });
   });
 });

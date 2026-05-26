@@ -95,8 +95,13 @@ export async function getPassageNeighbors(
   };
 }
 
-export async function getReaderPassage(bookInput = "John", chapter = 1) {
+export async function getReaderPassage(bookInput = "John", chapter = 1, userId: string | null = null) {
   const book = normalizeBook(bookInput) ?? "John";
+
+  // When userId is null (anonymous reader pre-auth or test paths) we
+  // include no notes/highlights. Filtering with a userId that matches no
+  // rows yields the same result without leaking another user's data.
+  const userScope = userId ? { userId } : { userId: "__none__" };
 
   const [greekVerses, englishVerses, tokens] = await Promise.all([
     prisma.verse.findMany({
@@ -114,7 +119,11 @@ export async function getReaderPassage(bookInput = "John", chapter = 1) {
         book: { osisId: book },
         chapter
       },
-      include: { book: true, corpus: true, highlights: true },
+      include: {
+        book: true,
+        corpus: true,
+        highlights: { where: userScope }
+      },
       orderBy: [{ corpus: { abbreviation: "asc" } }, { verse: "asc" }]
     }),
     prisma.token.findMany({
@@ -123,7 +132,11 @@ export async function getReaderPassage(bookInput = "John", chapter = 1) {
         book: { osisId: book },
         chapter
       },
-      include: { book: true, notes: true, highlights: true },
+      include: {
+        book: true,
+        notes: { where: userScope },
+        highlights: { where: userScope }
+      },
       orderBy: [{ verse: "asc" }, { wordIndex: "asc" }]
     })
   ]);

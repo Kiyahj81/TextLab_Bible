@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { parseTags } from "@/lib/references";
-import { requireUserId } from "@/lib/auth";
+import { requireAuth } from "@/lib/auth";
 import { jsonError, readJsonLimited, validateBody } from "@/lib/http/validation";
 
 const MAX_NOTE_BODY = 10_000;
@@ -31,7 +31,10 @@ const noteCreateSchema = z
   });
 
 export async function GET() {
-  const userId = await requireUserId();
+  const authResult = await requireAuth();
+  if (!authResult.ok) return authResult.response;
+  const { userId } = authResult;
+
   const notes = await prisma.note.findMany({
     where: { userId },
     include: {
@@ -45,13 +48,16 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const authResult = await requireAuth();
+  if (!authResult.ok) return authResult.response;
+  const { userId } = authResult;
+
   const read = await readJsonLimited(request);
   if (!read.ok) return read.response;
 
   const valid = validateBody(read.data, noteCreateSchema);
   if (!valid.ok) return valid.response;
 
-  const userId = await requireUserId();
   const { body, title, verseId, tokenId, tags: rawTags } = valid.data;
 
   if (verseId) {

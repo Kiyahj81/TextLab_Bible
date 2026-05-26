@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { bookName } from "@/lib/references";
-import { requireUserId } from "@/lib/auth";
+import { requireAuth } from "@/lib/auth";
 import { readJsonLimited, validateBody } from "@/lib/http/validation";
 
 const MAX_LABEL = 100;
@@ -37,7 +37,10 @@ function autoLabel({
 }
 
 export async function GET() {
-  const userId = await requireUserId();
+  const authResult = await requireAuth();
+  if (!authResult.ok) return authResult.response;
+  const { userId } = authResult;
+
   const savedSearches = await prisma.savedSearch.findMany({
     where: { userId },
     orderBy: { updatedAt: "desc" },
@@ -48,13 +51,16 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const authResult = await requireAuth();
+  if (!authResult.ok) return authResult.response;
+  const { userId } = authResult;
+
   const read = await readJsonLimited(request);
   if (!read.ok) return read.response;
 
   const valid = validateBody(read.data, savedSearchCreateSchema);
   if (!valid.ok) return valid.response;
 
-  const userId = await requireUserId();
   const { query, mode, matchMode: rawMatchMode, corpus, book, chapter, label: rawLabel } = valid.data;
 
   const matchMode = mode === "morphology" ? rawMatchMode : undefined;

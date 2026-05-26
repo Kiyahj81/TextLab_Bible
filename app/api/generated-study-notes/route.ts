@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { requireUserId } from "@/lib/auth";
+import { requireAuth } from "@/lib/auth";
 import { readJsonLimited, validateBody } from "@/lib/http/validation";
 
 const MAX_PROMPT = 2_000;
@@ -35,7 +35,10 @@ const generatedStudyNoteSchema = z.object({
 const NOTE_BODY_LIMIT = 64 * 1024;
 
 export async function GET() {
-  const userId = await requireUserId();
+  const authResult = await requireAuth();
+  if (!authResult.ok) return authResult.response;
+  const { userId } = authResult;
+
   const notes = await prisma.generatedStudyNote.findMany({
     where: { userId },
     orderBy: { createdAt: "desc" },
@@ -46,13 +49,16 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const authResult = await requireAuth();
+  if (!authResult.ok) return authResult.response;
+  const { userId } = authResult;
+
   const read = await readJsonLimited(request, { maxBytes: NOTE_BODY_LIMIT });
   if (!read.ok) return read.response;
 
   const valid = validateBody(read.data, generatedStudyNoteSchema);
   if (!valid.ok) return valid.response;
 
-  const userId = await requireUserId();
   const { prompt, answer, markdown, citations } = valid.data;
 
   const note = await prisma.generatedStudyNote.create({

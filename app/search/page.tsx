@@ -1,16 +1,17 @@
 import { DismissibleIntro } from "@/components/DismissibleIntro";
 import { SearchPanel, SearchPanelResult } from "@/components/SearchPanel";
+import { requirePageAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { parsePositiveInt } from "@/lib/params";
 import { bookName } from "@/lib/references";
 import { getAvailableReaderBooks, searchKeyword, searchLemma, searchMorphology } from "@/lib/search";
-import { localUserId } from "@/lib/user";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 export const dynamic = "force-dynamic";
 
 export default async function SearchPage({ searchParams }: { searchParams: SearchParams }) {
+  const userId = await requirePageAuth();
   const params = await searchParams;
   const mode = getParam(params.mode) ?? "keyword";
   const query = getParam(params.q) ?? "";
@@ -60,7 +61,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
   const [books, savedSearches] = await Promise.all([
     getAvailableReaderBooks(),
     prisma.savedSearch.findMany({
-      where: { userId: localUserId },
+      where: { userId },
       orderBy: { updatedAt: "desc" },
       take: 25
     })

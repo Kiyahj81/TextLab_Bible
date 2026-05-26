@@ -1,14 +1,15 @@
 import { AiAssistant } from "@/components/AiAssistant";
 import { DismissibleIntro } from "@/components/DismissibleIntro";
 import { aiSystemPrompt } from "@/lib/ai/systemPrompt";
+import { requirePageAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { localUserId } from "@/lib/user";
 
 export const dynamic = "force-dynamic";
 
 export default async function AssistantPage() {
+  const userId = await requirePageAuth();
   const generatedNotes = await prisma.generatedStudyNote.findMany({
-    where: { userId: localUserId },
+    where: { userId },
     orderBy: { createdAt: "desc" },
     take: 25
   });

@@ -1,15 +1,67 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 
-vi.mock("@/lib/user", () => ({ localUserId: "local-user" }));
+const { authMock } = vi.hoisted(() => ({ authMock: vi.fn() }));
+const { redirectMock } = vi.hoisted(() => ({ redirectMock: vi.fn() }));
 
-import { getOptionalUserId, requireUserId } from "@/lib/auth";
+vi.mock("@/auth", () => ({ auth: authMock }));
+vi.mock("next/navigation", () => ({ redirect: redirectMock }));
 
-describe("Sprint 1 auth stub", () => {
-  it("requireUserId returns the local user id", async () => {
-    await expect(requireUserId()).resolves.toBe("local-user");
+import { getOptionalUserId, requireAuth, requirePageAuth } from "@/lib/auth";
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+describe("requireAuth", () => {
+  it("returns 401 when no session", async () => {
+    authMock.mockResolvedValue(null);
+    const result = await requireAuth();
+    if (result.ok) throw new Error("expected failure");
+    expect(result.response.status).toBe(401);
+    expect(await result.response.json()).toEqual({ error: "Unauthenticated." });
   });
 
-  it("getOptionalUserId returns the local user id", async () => {
-    await expect(getOptionalUserId()).resolves.toBe("local-user");
+  it("returns 401 when session has no user id", async () => {
+    authMock.mockResolvedValue({ user: {} });
+    const result = await requireAuth();
+    if (result.ok) throw new Error("expected failure");
+    expect(result.response.status).toBe(401);
+  });
+
+  it("returns userId on success", async () => {
+    authMock.mockResolvedValue({ user: { id: "u1", email: "u@x" } });
+    const result = await requireAuth();
+    if (!result.ok) throw new Error("expected success");
+    expect(result.userId).toBe("u1");
+  });
+});
+
+describe("requirePageAuth", () => {
+  it("redirects when no session", async () => {
+    authMock.mockResolvedValue(null);
+    redirectMock.mockImplementation(() => {
+      throw new Error("REDIRECT");
+    });
+    await expect(requirePageAuth()).rejects.toThrow("REDIRECT");
+    expect(redirectMock).toHaveBeenCalledWith("/api/auth/signin");
+  });
+
+  it("returns userId when authenticated", async () => {
+    authMock.mockResolvedValue({ user: { id: "u1" } });
+    const userId = await requirePageAuth();
+    expect(userId).toBe("u1");
+    expect(redirectMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("getOptionalUserId", () => {
+  it("returns null when no session", async () => {
+    authMock.mockResolvedValue(null);
+    await expect(getOptionalUserId()).resolves.toBeNull();
+  });
+
+  it("returns userId when session present", async () => {
+    authMock.mockResolvedValue({ user: { id: "u1" } });
+    await expect(getOptionalUserId()).resolves.toBe("u1");
   });
 });

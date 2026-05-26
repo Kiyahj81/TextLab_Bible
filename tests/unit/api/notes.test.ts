@@ -1,20 +1,27 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-const { prismaMock } = vi.hoisted(() => ({
+const { prismaMock, requireAuthMock } = vi.hoisted(() => ({
   prismaMock: {
     verse: { findUnique: vi.fn() },
     token: { findUnique: vi.fn() },
     note: { create: vi.fn(), updateMany: vi.fn(), deleteMany: vi.fn(), findFirst: vi.fn() }
-  }
+  },
+  requireAuthMock: vi.fn()
 }));
 vi.mock("@/lib/db", () => ({ prisma: prismaMock }));
-vi.mock("@/lib/user", () => ({ localUserId: "local-user" }));
+vi.mock("@/lib/auth", () => ({
+  requireAuth: requireAuthMock,
+  getOptionalUserId: vi.fn().mockResolvedValue("local-user"),
+  requirePageAuth: vi.fn().mockResolvedValue("local-user")
+}));
 
+import { NextResponse } from "next/server";
 import { POST } from "@/app/api/notes/route";
 import { PATCH, DELETE } from "@/app/api/notes/[id]/route";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  requireAuthMock.mockResolvedValue({ ok: true, userId: "local-user" });
 });
 
 function jsonRequest(url: string, method: string, body: unknown) {
@@ -117,5 +124,52 @@ describe("DELETE /api/notes/[id]", () => {
     });
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ ok: true });
+  });
+});
+
+describe("auth gating", () => {
+  it("GET notes returns 401 when unauthenticated", async () => {
+    requireAuthMock.mockResolvedValue({
+      ok: false,
+      response: NextResponse.json({ error: "Unauthenticated." }, { status: 401 })
+    });
+    const { GET } = await import("@/app/api/notes/route");
+    const res = await GET();
+    expect(res.status).toBe(401);
+  });
+
+  it("POST note returns 401 when unauthenticated", async () => {
+    requireAuthMock.mockResolvedValue({
+      ok: false,
+      response: NextResponse.json({ error: "Unauthenticated." }, { status: 401 })
+    });
+    const res = await POST(jsonRequest("http://test/api/notes", "POST", { verseId: "v1", body: "x" }));
+    expect(res.status).toBe(401);
+  });
+
+  it("PATCH cannot reach another user's note (scoped updateMany returns 0 → 404)", async () => {
+    requireAuthMock.mockResolvedValue({ ok: true, userId: "alice" });
+    prismaMock.note.updateMany.mockResolvedValue({ count: 0 });
+    const res = await PATCH(
+      jsonRequest("http://test/api/notes/n-of-bob", "PATCH", { body: "hijack" }),
+      { params: Promise.resolve({ id: "n-of-bob" }) }
+    );
+    expect(res.status).toBe(404);
+    expect(prismaMock.note.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ userId: "alice" }) })
+    );
+  });
+
+  it("DELETE cannot reach another user's note", async () => {
+    requireAuthMock.mockResolvedValue({ ok: true, userId: "alice" });
+    prismaMock.note.deleteMany.mockResolvedValue({ count: 0 });
+    const res = await DELETE(
+      new Request("http://test/api/notes/n-of-bob", { method: "DELETE" }),
+      { params: Promise.resolve({ id: "n-of-bob" }) }
+    );
+    expect(res.status).toBe(404);
+    expect(prismaMock.note.deleteMany).toHaveBeenCalledWith({
+      where: { id: "n-of-bob", userId: "alice" }
+    });
   });
 });

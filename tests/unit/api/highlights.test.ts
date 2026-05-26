@@ -1,19 +1,26 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-const { prismaMock } = vi.hoisted(() => ({
+const { prismaMock, requireAuthMock } = vi.hoisted(() => ({
   prismaMock: {
     verse: { findUnique: vi.fn() },
     token: { findUnique: vi.fn() },
     highlight: { create: vi.fn(), deleteMany: vi.fn() }
-  }
+  },
+  requireAuthMock: vi.fn()
 }));
 vi.mock("@/lib/db", () => ({ prisma: prismaMock }));
-vi.mock("@/lib/user", () => ({ localUserId: "local-user" }));
+vi.mock("@/lib/auth", () => ({
+  requireAuth: requireAuthMock,
+  getOptionalUserId: vi.fn().mockResolvedValue("local-user"),
+  requirePageAuth: vi.fn().mockResolvedValue("local-user")
+}));
 
+import { NextResponse } from "next/server";
 import { DELETE, POST } from "@/app/api/highlights/route";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  requireAuthMock.mockResolvedValue({ ok: true, userId: "local-user" });
 });
 
 function jsonRequest(body: unknown) {
@@ -153,5 +160,38 @@ describe("DELETE /api/highlights", () => {
     expect(prismaMock.highlight.deleteMany).toHaveBeenCalledWith({
       where: { userId: "local-user", verseId: "v1", englishWordIndex: 4 }
     });
+  });
+});
+
+describe("auth gating", () => {
+  it("POST returns 401 when unauthenticated", async () => {
+    requireAuthMock.mockResolvedValue({
+      ok: false,
+      response: NextResponse.json({ error: "Unauthenticated." }, { status: 401 })
+    });
+    const res = await POST(jsonRequest({ verseId: "v1", color: "#fde68a" }));
+    expect(res.status).toBe(401);
+    expect(prismaMock.highlight.create).not.toHaveBeenCalled();
+  });
+
+  it("DELETE returns 401 when unauthenticated", async () => {
+    requireAuthMock.mockResolvedValue({
+      ok: false,
+      response: NextResponse.json({ error: "Unauthenticated." }, { status: 401 })
+    });
+    const res = await DELETE(deleteRequest({ verseId: "v1" }));
+    expect(res.status).toBe(401);
+    expect(prismaMock.highlight.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it("POST scopes writes to the active user, not the requested userId", async () => {
+    requireAuthMock.mockResolvedValue({ ok: true, userId: "alice" });
+    prismaMock.verse.findUnique.mockResolvedValue({ id: "v1" });
+    prismaMock.highlight.create.mockResolvedValue({ id: "h1" });
+    // Client supplies a userId hint — should be ignored; only the session userId is trusted.
+    await POST(jsonRequest({ verseId: "v1", color: "#fde68a", userId: "bob" }));
+    expect(prismaMock.highlight.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ userId: "alice" }) })
+    );
   });
 });

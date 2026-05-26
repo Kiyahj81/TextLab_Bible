@@ -1,16 +1,38 @@
-import { localUserId } from "@/lib/user";
+import { redirect } from "next/navigation";
+import { NextResponse } from "next/server";
+import { auth } from "@/auth";
+import { jsonError } from "@/lib/http/validation";
 
-export type AuthContext = {
-  userId: string;
-};
+export type AuthSuccess = { ok: true; userId: string };
+export type AuthFailure = { ok: false; response: NextResponse };
+export type AuthResult = AuthSuccess | AuthFailure;
 
-// Stub for Sprint 1. Sprint 2 replaces this with a real session lookup
-// (Auth.js v5). All handler code is written against this contract so the
-// swap is a single-file change.
-export async function requireUserId(): Promise<string> {
-  return localUserId;
+// For API route handlers. Discriminated result mirrors readJsonLimited /
+// validateBody so handlers compose cleanly.
+export async function requireAuth(): Promise<AuthResult> {
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) {
+    return { ok: false, response: jsonError("Unauthenticated.", 401) };
+  }
+  return { ok: true, userId };
 }
 
+// For server components / pages. Redirects to sign-in when no session;
+// never returns in that case.
+export async function requirePageAuth(): Promise<string> {
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) {
+    redirect("/api/auth/signin");
+  }
+  return userId;
+}
+
+// Read-only accessor. Returns null when there is no session; never
+// throws and never redirects. Use for code paths where anonymous access
+// is intentionally allowed.
 export async function getOptionalUserId(): Promise<string | null> {
-  return localUserId;
+  const session = await auth();
+  return session?.user?.id ?? null;
 }

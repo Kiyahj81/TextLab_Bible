@@ -101,8 +101,11 @@ model Note {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   verse Verse? @relation(fields: [verseId], references: [id])
   token Token? @relation(fields: [tokenId], references: [id])
+
+  @@index([userId, updatedAt])
 }
 
 model SavedSearch {
@@ -118,6 +121,8 @@ model SavedSearch {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId, updatedAt])
 }
 
@@ -129,6 +134,8 @@ model GeneratedStudyNote {
   markdown  String
   citations Json?
   createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
 }
@@ -142,6 +149,7 @@ model Highlight {
   color            String
   createdAt        DateTime @default(now())
 
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   verse Verse? @relation(fields: [verseId], references: [id])
   token Token? @relation(fields: [tokenId], references: [id])
 
@@ -153,7 +161,11 @@ model AiSession {
   userId    String
   title     String?
   createdAt DateTime    @default(now())
-  messages  AiMessage[]
+
+  user     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages AiMessage[]
+
+  @@index([userId, createdAt])
 }
 
 model AiMessage {
@@ -165,4 +177,66 @@ model AiMessage {
   createdAt DateTime @default(now())
 
   session AiSession @relation(fields: [sessionId], references: [id])
+}
+
+// Auth.js v5 Prisma adapter models. The Sprint 2 migration also seeds a
+// User row with id="local-user" before adding FKs from the existing
+// user-owned tables so referential integrity holds.
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+
+  accounts            Account[]
+  sessions            Session[]
+  notes               Note[]
+  savedSearches       SavedSearch[]
+  generatedStudyNotes GeneratedStudyNote[]
+  highlights          Highlight[]
+  aiSessions          AiSession[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Account {
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([provider, providerAccountId])
+}
+
+model Session {
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@id([identifier, token])
 }

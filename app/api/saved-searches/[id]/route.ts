@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { requireUserId } from "@/lib/auth";
+import { requireAuth } from "@/lib/auth";
 import { jsonError, readJsonLimited, validateBody } from "@/lib/http/validation";
 
 type Params = Promise<{ id: string }>;
@@ -13,6 +13,10 @@ const savedSearchPatchSchema = z.object({
 });
 
 export async function PATCH(request: Request, { params }: { params: Params }) {
+  const authResult = await requireAuth();
+  if (!authResult.ok) return authResult.response;
+  const { userId } = authResult;
+
   const { id } = await params;
 
   const read = await readJsonLimited(request);
@@ -21,7 +25,6 @@ export async function PATCH(request: Request, { params }: { params: Params }) {
   const valid = validateBody(read.data, savedSearchPatchSchema);
   if (!valid.ok) return valid.response;
 
-  const userId = await requireUserId();
   const { label } = valid.data;
 
   const result = await prisma.savedSearch.updateMany({
@@ -41,8 +44,11 @@ export async function PATCH(request: Request, { params }: { params: Params }) {
 }
 
 export async function DELETE(_request: Request, { params }: { params: Params }) {
+  const authResult = await requireAuth();
+  if (!authResult.ok) return authResult.response;
+  const { userId } = authResult;
+
   const { id } = await params;
-  const userId = await requireUserId();
 
   const result = await prisma.savedSearch.deleteMany({
     where: { id, userId }

@@ -1,6 +1,5 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { localUserId } from "@/lib/user";
 import type { AssistantAnswer } from "@/lib/ai/assistant";
 
 export type AssistantMessageMetadata = {
@@ -14,19 +13,20 @@ export type AssistantMessageMetadata = {
 };
 
 export async function startAssistantExchange(input: {
+  userId: string;
   requestedSessionId: string;
   prompt: string;
 }): Promise<{ sessionId: string; userMessagePromise: Promise<unknown> }> {
   const existing = input.requestedSessionId
     ? await prisma.aiSession.findFirst({
-        where: { id: input.requestedSessionId, userId: localUserId }
+        where: { id: input.requestedSessionId, userId: input.userId }
       })
     : null;
 
   const session =
     existing ??
     (await prisma.aiSession.create({
-      data: { userId: localUserId, title: input.prompt.slice(0, 80) }
+      data: { userId: input.userId, title: input.prompt.slice(0, 80) }
     }));
 
   const userMessagePromise = prisma.aiMessage.create({

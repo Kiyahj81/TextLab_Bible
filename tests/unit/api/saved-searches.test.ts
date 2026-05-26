@@ -1,17 +1,24 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-const { prismaMock } = vi.hoisted(() => ({
+const { prismaMock, requireAuthMock } = vi.hoisted(() => ({
   prismaMock: {
     savedSearch: { create: vi.fn(), findMany: vi.fn() }
-  }
+  },
+  requireAuthMock: vi.fn()
 }));
 vi.mock("@/lib/db", () => ({ prisma: prismaMock }));
-vi.mock("@/lib/user", () => ({ localUserId: "local-user" }));
+vi.mock("@/lib/auth", () => ({
+  requireAuth: requireAuthMock,
+  getOptionalUserId: vi.fn().mockResolvedValue("local-user"),
+  requirePageAuth: vi.fn().mockResolvedValue("local-user")
+}));
 
+import { NextResponse } from "next/server";
 import { POST } from "@/app/api/saved-searches/route";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  requireAuthMock.mockResolvedValue({ ok: true, userId: "local-user" });
   prismaMock.savedSearch.create.mockImplementation(({ data }: { data: unknown }) =>
     Promise.resolve({ id: "ss-1", ...(data as Record<string, unknown>) })
   );
@@ -80,5 +87,15 @@ describe("POST /api/saved-searches", () => {
     }));
     const args = prismaMock.savedSearch.create.mock.calls[0][0];
     expect(args.data.label).toBe("My favorite verses");
+  });
+
+  it("returns 401 when unauthenticated", async () => {
+    requireAuthMock.mockResolvedValue({
+      ok: false,
+      response: NextResponse.json({ error: "Unauthenticated." }, { status: 401 })
+    });
+    const res = await POST(jsonRequest({ mode: "keyword", query: "logos" }));
+    expect(res.status).toBe(401);
+    expect(prismaMock.savedSearch.create).not.toHaveBeenCalled();
   });
 });

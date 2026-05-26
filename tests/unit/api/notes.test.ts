@@ -127,6 +127,56 @@ describe("DELETE /api/notes/[id]", () => {
   });
 });
 
+describe("POST /api/notes validation limits", () => {
+  it("rejects an overlong note body (>10,000 chars)", async () => {
+    const res = await POST(jsonRequest("http://test/api/notes", "POST", {
+      verseId: "v1",
+      body: "x".repeat(10_001)
+    }));
+    expect(res.status).toBe(400);
+    expect(prismaMock.note.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects an overlong note title (>200 chars)", async () => {
+    const res = await POST(jsonRequest("http://test/api/notes", "POST", {
+      verseId: "v1",
+      body: "ok",
+      title: "x".repeat(201)
+    }));
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects more than 20 tags in the array form", async () => {
+    const tags = Array.from({ length: 21 }, (_, i) => `tag${i}`);
+    const res = await POST(jsonRequest("http://test/api/notes", "POST", {
+      verseId: "v1",
+      body: "ok",
+      tags
+    }));
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects a single tag longer than 32 chars", async () => {
+    const res = await POST(jsonRequest("http://test/api/notes", "POST", {
+      verseId: "v1",
+      body: "ok",
+      tags: ["x".repeat(33)]
+    }));
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("PATCH /api/notes/[id] validation limits", () => {
+  it("rejects an overlong body on update", async () => {
+    const res = await PATCH(
+      jsonRequest("http://test/api/notes/n1", "PATCH", { body: "x".repeat(10_001) }),
+      { params: Promise.resolve({ id: "n1" }) }
+    );
+    expect(res.status).toBe(400);
+    expect(prismaMock.note.updateMany).not.toHaveBeenCalled();
+  });
+});
+
 describe("auth gating", () => {
   it("GET notes returns 401 when unauthenticated", async () => {
     requireAuthMock.mockResolvedValue({

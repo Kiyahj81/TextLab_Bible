@@ -49,6 +49,15 @@ describe("PATCH /api/saved-searches/[id]", () => {
     expect(prismaMock.savedSearch.findFirst).not.toHaveBeenCalled();
   });
 
+  it("rejects an overlong label (>100 chars)", async () => {
+    const res = await PATCH(
+      jsonRequest("http://test/api/saved-searches/ss-1", "PATCH", { label: "x".repeat(101) }),
+      { params: Promise.resolve({ id: "ss-1" }) }
+    );
+    expect(res.status).toBe(400);
+    expect(prismaMock.savedSearch.updateMany).not.toHaveBeenCalled();
+  });
+
   it("returns 200 with the updated savedSearch on success", async () => {
     prismaMock.savedSearch.updateMany.mockResolvedValue({ count: 1 });
     prismaMock.savedSearch.findFirst.mockResolvedValue({ id: "ss-1", label: "renamed" });

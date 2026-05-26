@@ -61,6 +61,12 @@ describe("POST /api/highlights", () => {
     expect(prismaMock.highlight.create).toHaveBeenCalledTimes(1);
   });
 
+  it("rejects a negative englishWordIndex with 400", async () => {
+    const res = await POST(jsonRequest({ verseId: "v1", englishWordIndex: -1, color: "#fde68a" }));
+    expect(res.status).toBe(400);
+    expect(prismaMock.highlight.create).not.toHaveBeenCalled();
+  });
+
   it("rejects englishWordIndex without verseId", async () => {
     const res = await POST(jsonRequest({ tokenId: "t1", englishWordIndex: 3, color: "#fde68a" }));
     expect(res.status).toBe(400);

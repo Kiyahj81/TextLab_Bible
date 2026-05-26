@@ -89,6 +89,25 @@ describe("POST /api/saved-searches", () => {
     expect(args.data.label).toBe("My favorite verses");
   });
 
+  it("rejects an overlong label (>100 chars)", async () => {
+    const res = await POST(jsonRequest({
+      mode: "keyword",
+      query: "logos",
+      label: "x".repeat(101)
+    }));
+    expect(res.status).toBe(400);
+    expect(prismaMock.savedSearch.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects an overlong query (>500 chars)", async () => {
+    const res = await POST(jsonRequest({
+      mode: "keyword",
+      query: "x".repeat(501)
+    }));
+    expect(res.status).toBe(400);
+    expect(prismaMock.savedSearch.create).not.toHaveBeenCalled();
+  });
+
   it("returns 401 when unauthenticated", async () => {
     requireAuthMock.mockResolvedValue({
       ok: false,

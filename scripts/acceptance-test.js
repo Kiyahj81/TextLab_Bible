@@ -1,5 +1,6 @@
 const { chromium } = require("playwright");
 const { spawn } = require("node:child_process");
+const net = require("node:net");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const os = require("node:os");
@@ -11,6 +12,39 @@ const edgePath = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
+}
+
+// Fail fast if PostgreSQL is not reachable. Without this, the acceptance
+// test starts Next, then hits a generic readiness timeout in waitForServer
+// because Prisma queries hang — the developer has to dig through logs to
+// realize Docker isn't running. Failing early surfaces the real cause.
+async function preflightDatabase() {
+  const raw = process.env.DATABASE_URL;
+  if (!raw) {
+    throw new Error("DATABASE_URL is not set. Configure it in .env before running the acceptance test.");
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw new Error(`DATABASE_URL is not a valid URL: ${raw}`);
+  }
+
+  const host = parsed.hostname || "localhost";
+  const port = Number(parsed.port) || 5432;
+
+  await new Promise((resolve, reject) => {
+    const socket = net.connect({ host, port, timeout: 3000 });
+    socket.once("connect", () => { socket.end(); resolve(); });
+    socket.once("timeout", () => {
+      socket.destroy();
+      reject(new Error(`PostgreSQL preflight failed: timed out connecting to ${host}:${port} after 3000ms. Is Docker running?`));
+    });
+    socket.once("error", (err) => {
+      reject(new Error(`PostgreSQL preflight failed: cannot reach ${host}:${port} (${err.code ?? err.message}). Is Docker running?`));
+    });
+  });
 }
 
 async function waitForServer(timeoutMs = 60000) {
@@ -30,6 +64,7 @@ async function waitForServer(timeoutMs = 60000) {
 }
 
 async function run() {
+  await preflightDatabase();
   await fs.mkdir(screenshotsDir, { recursive: true });
 
   const result = {

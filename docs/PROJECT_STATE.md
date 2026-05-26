@@ -1,10 +1,10 @@
 # TextLab Bible — Project State
 
-_Snapshot: 2026-05-25 (post UI Review remediation + import accuracy fixes, PR 1–16 + d754ffe)_
+_Snapshot: 2026-05-26 (post Phase 3.0 security/testing remediation — Sprints 1–4)_
 
 ## Where the project stands
 
-Milestone 2.5 (retrieval-first multi-model assistant foundation) is on `main`. On top of that, a three-pass UI review documented **55 findings** which were addressed across PRs 1–11; PRs 12–16 then added follow-up features and UX refinements based on hands-on testing. After PR 16, a single follow-up commit (`d754ffe`) closed three import-accuracy bugs surfaced during hands-on reading (see [Post-PR 16 import accuracy fixes](#post-pr-16-import-accuracy-fixes) below). All five milestone gates are green (lint, tsc, build, test:unit 98/98, test:acceptance).
+Milestone 2.5 (retrieval-first multi-model assistant foundation) is on `main`. On top of that, a three-pass UI review documented **55 findings** which were addressed across PRs 1–11; PRs 12–16 then added follow-up features and UX refinements based on hands-on testing. After PR 16, a single follow-up commit (`d754ffe`) closed three import-accuracy bugs surfaced during hands-on reading. Most recently, a four-sprint **Phase 3.0 security and testing remediation** landed real authentication, request hardening, browser-security headers, and a coverage gate — see [Phase 3.0 remediation](#phase-30-security-and-testing-remediation-sprints-14) below. All gates green: `npm run verify` (lint + tsc + build + coverage) and `npm run test:acceptance` exit 0.
 
 ### UI review remediation (PRs 1–11) — closed
 
@@ -35,6 +35,17 @@ Single commit `d754ffe` ("Fix WEB/SBL import accuracy for multi-line verses, mar
 
 Adds 14 unit tests covering both parsers (9 `parseUsfm` cases including the Rom 16:20 / Rev 2:1 / Acts 15:23 / John 7:53→`\c 8`→8:1 shapes; 5 `parseMaculaTsv` override cases).
 
+### Phase 3.0 security and testing remediation (Sprints 1–4)
+
+A four-sprint hardening effort, executed against `docs/security-testing-remediation-plan.md`, took the app from "single hardcoded local user, no validation gate, no security headers" to "real auth, validated mutations, browser-hardening headers, and a coverage gate."
+
+- **Sprint 1 (`e126f44`) — Stop the bleeding.** Assistant prompt cap (2,000 chars) + output-token cap (`OPENAI_MAX_OUTPUT_TOKENS`) + in-memory token-bucket rate limiter (10/min, 429 with `Retry-After`, serverless-aware no-op). Server-side highlight color allowlist. Shared `readJsonLimited` (16 KB default) + `validateBody` (zod) + `jsonError` request helpers. Stub `requireAuth()` so Sprint 2 could swap the implementation without rewriting handlers.
+- **Sprint 2 (`436036d`) — Authentication and authorization.** Auth.js v5 with the Prisma adapter, GitHub OAuth provider, and a dev-only Credentials provider gated on `AUTH_DEV_ENABLED=1`. New `User` / `Account` / `Session` / `VerificationToken` models with FK chains to existing user-owned tables. `lib/auth.ts` exports `requireAuth` (401), `requirePageAuth` (redirect), `getOptionalUserId`. Every API route and protected page now enforces ownership. `getReaderPassage(book, chapter, userId)` scopes the included `notes`/`highlights` so reader data cannot leak across users.
+- **Sprint 3 (`5775bae`) — HTTP and deployment hardening.** `lib/http/security.ts` adds `assertSameOrigin(request)` wired into every POST/PATCH/DELETE — 403 on cross-origin writes, allow-through for non-browser clients (no Origin). `next.config.ts` headers block: CSP (no `api.openai.com`, no prod `unsafe-eval`, `frame-ancestors 'none'`), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy` (camera/microphone/geolocation/payment/usb/interest-cohort), HSTS prod-only. Explicit Auth.js cookie config (httpOnly, sameSite=lax, secure in prod). `docs/security-register.md` documents the upstream-blocked PostCSS advisory.
+- **Sprint 4 (`08b9639`, `ec037e6`, `c181b97`) — Test coverage and CI gates.** Route tests for `generated-study-notes` and `import-runs`. Validation-depth tests (length caps, negative `englishWordIndex`). Assistant XSS-rendering safety test. `next.config.ts` headers config test. PostgreSQL preflight in `scripts/acceptance-test.js`. **Real JWT session revocation** via `User.sessionsValidFrom` watermark — bumped on every signOut, checked in the session callback, so a replayed cookie captured before signout now returns 401 (verified end-to-end with curl). Acceptance test signs in via dev credentials before exercising protected pages. **DB integration suite** (`tests/integration/db-ownership.test.ts`) running real Prisma — per-user scoping for notes/highlights/saved-searches/generated-notes/ai-sessions + `onDelete: Cascade` FK behavior. **Coverage gate** via v8 over `app/api/**` + `lib/**`: lines 84.73% / statements 81.53% / functions 77.48% / branches 66.53% — all above thresholds (80/80/75/65).
+
+Two latent client bugs surfaced during the acceptance-test wiring: `SearchPanel` was sending `chapter: ""` and `AiAssistant` was sending `sessionId: null` — both rejected by the Sprint 1 Zod schemas. Both now omit the empty field instead.
+
 ## What's on main
 
 ### Runtime surfaces
@@ -45,8 +56,9 @@ Adds 14 unit tests covering both parsers (9 `parseUsfm` cases including the Rom 
 | `/search` | Three modes (lemma / keyword / morphology) with **match highlighting** on result verses, in-input Search + Clear, pagination, saved-search persistence |
 | `/assistant` | AI Study Assistant — retrieval-first with live/fallback mode indicator, codex-gutter sidebar (trace + citations + generated notes) |
 | `/notes` | Notes index with **keyword search**, tag dropdown filter, reference filter, sort (Most recent / Canonical / Title), server-side pagination |
-| `/api/assistant` | POST endpoint: dispatches local retrieval, optionally synthesizes via OpenAI Responses API |
-| `/api/notes`, `/api/saved-searches`, `/api/saved-searches/[id]`, `/api/highlights` (POST + DELETE), `/api/import-runs`, `/api/generated-study-notes` | CRUD endpoints |
+| `/api/assistant` | POST endpoint: auth-gated, prompt cap, rate-limited (10/min, `Retry-After`); dispatches local retrieval and optionally synthesizes via OpenAI Responses API |
+| `/api/notes`, `/api/saved-searches`, `/api/saved-searches/[id]`, `/api/highlights` (POST + DELETE), `/api/import-runs`, `/api/generated-study-notes` | CRUD endpoints — all auth-gated (401), validated (zod), same-origin (403 cross-origin), 16 KB body cap |
+| `/api/auth/[...nextauth]` | Auth.js v5 catch-all — sign-in (GitHub OAuth in prod, dev Credentials behind `AUTH_DEV_ENABLED=1`), sign-out, session, callbacks |
 
 ### Assistant pipeline
 
@@ -59,38 +71,54 @@ The assistant route follows a clear retrieval-first contract:
 
 ### Test surfaces
 
-- **98 unit tests across 18 files** (vitest 4 + jsdom + RTL). Notable additions since the M2.5 snapshot:
-  - `tests/unit/api/highlights.test.ts` — POST/DELETE shape, `englishWordIndex` requires `verseId`, slot-replace semantics
-  - `tests/unit/api/notes.test.ts`, `tests/unit/api/saved-searches.test.ts`, `tests/unit/api/saved-searches-id.test.ts` — CRUD shape + 404/400 paths
-  - `tests/unit/lib/highlight.test.ts` — color palette + storage round-trip
-  - `tests/unit/lib/notes-filter.test.ts` — `parseReferenceFilter` + `parseNotesSort`
-  - `tests/unit/lib/search-getPassageNeighbors.test.ts` — prev/next chapter computation
-  - `tests/unit/lib/search-highlight.test.ts` — match splitter (case-insensitive, Unicode NFC, regex-metachar escape, polytonic Greek)
-  - `tests/unit/lib/useAutoDismissStatus.test.ts` — status-auto-dismiss hook
-  - `tests/unit/scripts/import-open-bible.test.ts` — 14 tests across `parseUsfm` (continuation lines, chapter boundaries, marker-spacing across `\wj*`/`\p`/`\wj` sequences) and `parseMaculaTsv` (Pericope Adulterae override application)
-- **Playwright acceptance suite** (`scripts/acceptance-test.js`) — 10 end-to-end interactions covering the golden path; updated for the renamed Assistant h1 and the in-input Search button.
+- **200 unit tests across 28 files** (vitest 4 + jsdom + RTL). Coverage gate via v8 over `app/api/**` + `lib/**`: lines 84.73%, statements 81.53%, functions 77.48%, branches 66.53%. Major additions over the Phase 3.0 sprints:
+  - `tests/unit/api/assistant-route.test.ts` — prompt cap, oversize 413, malformed 400, rate-limit 429 with `Retry-After`, 401 unauthenticated, AiSession user-scoping
+  - `tests/unit/api/generated-study-notes.test.ts`, `tests/unit/api/import-runs.test.ts` — full route coverage (auth + validation + scoping)
+  - `tests/unit/lib/auth.test.ts` — `requireAuth`/`requirePageAuth`/`getOptionalUserId`
+  - `tests/unit/lib/auth-session-revocation.test.ts` — JWT revocation watermark (iat vs `sessionsValidFrom`)
+  - `tests/unit/lib/http-validation.test.ts` — `readJsonLimited` + `validateBody` + `jsonError`
+  - `tests/unit/lib/http-security.test.ts` — `assertSameOrigin` cross-origin gate
+  - `tests/unit/lib/rate-limit.test.ts` — token bucket, IP-header trust, serverless detection
+  - `tests/unit/config/next-headers.test.ts` — CSP / X-Frame / X-Content / Referrer / Permissions / HSTS config asserted per environment
+  - `tests/unit/components/AiAssistant-output-safety.test.tsx` — XSS payloads in assistant response render as text, not parsed HTML
+  - Plus all earlier suites still in place: highlights, notes, saved-searches, search helpers, import parser, etc.
+- **DB integration suite** (`tests/integration/db-ownership.test.ts`, 7 tests) — real Prisma against the configured PostgreSQL. Covers per-user scoping for notes/highlights/saved-searches/generated-notes/ai-sessions plus the `onDelete: Cascade` FK chain from `User`. Runs via `npm run test:integration` through a separate `vitest.integration.config.ts`; skips itself when `DATABASE_URL` is unset.
+- **Playwright acceptance suite** (`scripts/acceptance-test.js`) — 11 end-to-end interactions including dev-credentials sign-in. Includes a PostgreSQL preflight that fails fast with a clear message when Docker isn't running.
 
 ### Database
 
 - Prisma 6 over PostgreSQL on `localhost:5433`
-- 4 migrations on disk:
+- 6 migrations on disk:
   - `0_init` — baseline reflecting pre-rename schema
   - `20260521162527_assistant_message_metadata` — `AiMessage.citations → metadata`
   - `20260522193249_token_lemma_index` — composite `(corpusId, bookId, partOfSpeech, lemma)` for `getTopLemmas`
-  - `20260524083541_add_english_word_index_to_highlight` — `Highlight.englishWordIndex Int?` + index on `(userId, verseId, englishWordIndex)` to support per-word English highlights (PR 14)
+  - `20260524083541_add_english_word_index_to_highlight` — `Highlight.englishWordIndex Int?` + index on `(userId, verseId, englishWordIndex)` (PR 14)
+  - `20260526022206_auth_user_models` — Sprint 2: `User` / `Account` / `Session` / `VerificationToken` + FK relations from `Note` / `Highlight` / `SavedSearch` / `GeneratedStudyNote` / `AiSession` to `User.id` (`onDelete: Cascade`)
+  - `20260526200447_session_revocation` — Sprint 4: `User.sessionsValidFrom DateTime?` watermark that rejects replayed JWTs after sign-out
 
 ### Tech stack
 
 - Next 15.5 / React 19 / TypeScript 5.8
+- Auth.js v5 (`next-auth@beta`) + `@auth/prisma-adapter`, JWT session strategy with DB-backed revocation watermark
+- zod 3 for request body validation
 - OpenAI Node SDK v4 (shared client in `lib/ai/openaiClient.ts`, env-driven timeout, `maxRetries: 1`)
-- Vitest 4 / Vite 6 / oxc JSX transform
+- Vitest 4 / Vite 6 / oxc JSX transform, v8 coverage provider
 - @testing-library/react 16 + jsdom 29
+- Playwright for acceptance tests
 
 ## Known outstanding items
 
-### Security: 2 moderate dev-tooling vulnerabilities (upstream-blocked)
+### Security: PostCSS moderate advisory (upstream-blocked)
 
-Both are the same advisory: **postcss <8.5.10** (GHSA-qx2v-qp2m-jg93, XSS via unescaped `</style>` in CSS stringify), bundled inside Next 15.3. Even `next@latest` (16.x) still ships postcss 8.4.31. **No action available** until Next bumps its bundled postcss. Re-run `npm audit` after each Next release.
+**postcss <8.5.10** (GHSA-qx2v-qp2m-jg93, XSS via unescaped `</style>` in CSS stringify), bundled inside Next 15. Tracked in `docs/security-register.md` with mitigation rationale: PostCSS only runs at build time over our own CSS, never on untrusted input. **No action available** until Next bumps its bundled postcss. Re-run `npm run security:audit` after each Next release.
+
+### `npm audit` cannot run on the current dev machine
+
+The npm registry call fails with `unable to verify the first certificate` — a local TLS trust-store issue (corporate root CA / MITM proxy), not an advisory. To formally run the audit gate, set `NODE_EXTRA_CA_CERTS=<path-to-corporate-root>` before `npm run security:audit`, or run it on CI / a clean machine.
+
+### Branch coverage at 66.53% (gate at 65%)
+
+The lines/statements/functions thresholds are at 80/80/75 with comfortable headroom. Branches are tighter and will need targeted tests in `lib/ai/assistant.ts` and `lib/search.ts` before raising the branch gate above 70.
 
 ### Deferred from the 2026-05-21 code review
 
@@ -165,15 +193,22 @@ Once Step 3 (Scholarly Mode) and Step 4 (Reader Nav) land, the notes flow become
 
 An admin/settings page that surfaces: which corpora are imported, verse/token counts per corpus, last import time. Useful for local development and for catching incomplete imports.
 
-### 8. Production-readiness work (L-sized, deferred milestone)
+### 8. Production-readiness work — ✅ substantially complete (Phase 3.0)
 
-Today the app uses a hardcoded `localUserId` (`lib/user.ts`). All notes, highlights, saved searches, and assistant sessions are scoped to that single user. Multi-user support means:
-- Auth integration (NextAuth.js or similar)
-- Migration to add `userId` to all user-scoped tables (already there in most cases — just need real values)
-- Authorization checks in every API route
-- Session management across reader and assistant
+Phase 3.0 (Sprints 1–4) closed the production-readiness blockers that this section originally tracked:
+- ✅ Auth integration — Auth.js v5 with the Prisma adapter; GitHub OAuth in prod, dev Credentials behind `AUTH_DEV_ENABLED=1`
+- ✅ User-scoped tables and migrations — `User` / `Account` / `Session` / `VerificationToken` with FK chains and `onDelete: Cascade` from every user-owned table
+- ✅ Authorization checks in every API route — `requireAuth` (401) + ownership filters scoped to `session.user.id`
+- ✅ Session management — JWT with revocation watermark (`sessionsValidFrom`) so replayed cookies after sign-out are rejected
+- ✅ Browser hardening — CSP, X-Frame, X-Content, Referrer, Permissions, HSTS, same-origin gate on mutations
+- ✅ Validation, rate limiting, body-size caps on all mutation routes
+- ✅ Coverage gate at 80/80/75/65 over server-side runtime
 
-Worth treating as its own milestone, not folded into 2.5 follow-up work.
+What's still outside Phase 3.0 scope for a real public launch:
+- A hosted PostgreSQL (not Docker on `localhost:5433`)
+- Production OAuth credentials and a stable `AUTH_URL`
+- Move the in-memory rate limiter to Upstash / Vercel KV / Cloudflare KV before deploying to a serverless host (the current limiter no-ops on serverless by design)
+- Run `npm run security:audit` on a machine with clean registry access
 
 ## Decision points
 
@@ -189,14 +224,12 @@ A few open questions that aren't blockers but will need a call before the next v
 
 ```powershell
 $env:NODE_OPTIONS="--use-system-ca"
-npm run lint
-npx tsc --noEmit
-npm run build
-npm run test:unit
-npm run test:acceptance
+npm run verify          # lint + tsc + build + coverage gate
+npm run test:integration # real-Prisma ownership + FK suite (needs Docker)
+npm run test:acceptance  # Playwright end-to-end (needs Docker)
 ```
 
-All five should exit 0.
+All three should exit 0.
 
 ### Start the dev server
 
@@ -209,7 +242,7 @@ App at http://localhost:3000. With `OPENAI_API_KEY` set (system env or `.env`), 
 ### Re-audit dependencies
 
 ```powershell
-$env:NODE_OPTIONS="--use-system-ca"; npm audit
+$env:NODE_OPTIONS="--use-system-ca"; npm run security:audit
 ```
 
-Expected residual until Next bumps bundled postcss: 2 moderate (GHSA-qx2v-qp2m-jg93).
+Expected residual until Next bumps bundled postcss: 1 moderate (GHSA-qx2v-qp2m-jg93). See `docs/security-register.md` for the mitigation rationale and `NODE_EXTRA_CA_CERTS` workaround if registry TLS fails locally.

@@ -14,7 +14,7 @@ Milestone 2.5 of the TextLab Bible MVP: a single full-stack Next.js app deliveri
   - Match terms bolded inside result verses
   - In-input Search and Clear buttons; pagination; saved-search persistence (rename, delete)
 - **Notes** index with keyword search, tag dropdown, reference filter, sort, and server-side pagination
-- Highlights scoped to a local user id (no auth yet) — verse-level on Greek tokens, word-level on English text
+- Highlights, notes, saved searches, and assistant sessions scoped to the signed-in user — verse-level on Greek tokens, word-level on English text
 - **AI Study Assistant** at `/assistant`:
   - Retrieval-first dispatch over local corpus (important-words, lemma, morphology, passage, keyword fallback)
   - Live OpenAI synthesis when `OPENAI_API_KEY` is set; deterministic local fallback otherwise
@@ -26,7 +26,7 @@ Milestone 2.5 of the TextLab Bible MVP: a single full-stack Next.js app deliveri
 ### Design
 The Reader uses an editorial-scholar aesthetic: Spectral display serif, Inter Tight UI sans, Gentium Plus for polytonic Greek (purpose-built diacritic positioning), a derived accent palette (`accent.50`–`900` from `#365f7e`), codex-style left-rule pattern, paper-grain background.
 
-Not included yet: NET import, auth / multi-user, Hebrew Bible, LXX, cloud sync, scholarly-model escalation (Step 3), or PDF/DOCX/PPTX export.
+Not included yet: NET import, Hebrew Bible, LXX, cloud sync, scholarly-model escalation (Step 3), or PDF/DOCX/PPTX export.
 
 ## Setup
 
@@ -71,24 +71,27 @@ Open `http://localhost:3000/read`.
 ## Testing
 
 ```bash
-# 98 unit tests across 18 files (~4s)
+# 200 unit tests across 28 files (~5s)
 npm run test:unit
 
-# Playwright end-to-end suite — spins up its own dev server (~30s)
+# Same suite with the v8 coverage gate (80% lines/statements over app/api + lib)
+npm run test:coverage
+
+# 7 real-Prisma integration tests for ownership + FK cascade (needs Docker / Postgres)
+npm run test:integration
+
+# Playwright end-to-end suite — signs in via dev credentials provider,
+# then exercises reader/search/assistant/notes (~30s, needs Docker / Postgres)
 npm run test:acceptance
 ```
 
-Full verification gate sequence (mirrors what's run before each milestone close):
+Verification gate (matches the `verify` npm script, runs lint + tsc + build + coverage):
 
 ```bash
-npm run lint
-npx tsc --noEmit
-npm run build
-npm run test:unit
-npm run test:acceptance
+npm run verify
 ```
 
-All five gates exit 0 on the current `main`.
+`npm run verify` exits 0 on the current `main`. The full Phase 3.0 release gate adds `npm run test:integration`, `npm run test:acceptance`, and `npm run security:audit`.
 
 ## Open Text Imports
 
@@ -145,4 +148,6 @@ MACULA's coverage of John 7:53–8:11 was added later than the core SBLGNT and i
 - `docs/archived/MILESTONE_2_PLAN.md`, `docs/archived/MILESTONE_2_5_PLAN.md` — historical milestone planning
 - `docs/PROJECT_STATE.md` — current state snapshot and logical next steps
 - `docs/ui-review/pass-{1,2,3}-*.md` — three-pass UI review (functional bugs / layout / UX & design), 55 findings, 100% closed across PRs 1–11
+- `docs/security-testing-remediation-plan.md` — Phase 3.0 hardening plan (auth, validation, headers, coverage) — all four sprints landed
+- `docs/security-register.md` — known security advisories with mitigations
 - `docs/superpowers/plans/` — execution plans for prior code review remediations

@@ -40,7 +40,7 @@ function expectedOrigins(request: Request): URL[] {
     }
   }
 
-  const configured = process.env.AUTH_URL ?? process.env.APP_URL;
+  const configured = process.env.AUTH_URL || process.env.APP_URL;
   if (configured) {
     try {
       out.push(new URL(configured));

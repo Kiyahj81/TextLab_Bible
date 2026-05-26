@@ -1,0 +1,2 @@
+Check the following files: Project_State.md and ReadMe.md to ensure that they are up to date after major changes to this project.
+Check security-register.md for known security advisories, exceptions, and outstanding hardening debt. Update whenever an advisory is accepted, mitigated, or closed.

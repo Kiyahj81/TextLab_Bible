@@ -3,6 +3,7 @@ import Credentials from "next-auth/providers/credentials";
 import GitHub from "next-auth/providers/github";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/lib/db";
+import { jwtCallback, sessionCallback, signOutEvent } from "@/lib/auth-callbacks";
 
 function buildProviders(): NextAuthConfig["providers"] {
   const providers: NextAuthConfig["providers"] = [];
@@ -53,8 +54,10 @@ const isProduction = process.env.NODE_ENV === "production";
 export const authConfig: NextAuthConfig = {
   adapter: PrismaAdapter(prisma),
   // JWT strategy: required for the credentials provider; also avoids a DB
-  // hit per request for OAuth flows. Sign-out works via cookie clear.
-  // True session-revocation lives in Sprint 4 alongside its test.
+  // hit per request for OAuth flows. Sign-out revokes the JWT by bumping
+  // user.sessionsValidFrom; the session callback then rejects any token
+  // whose iat falls at or before that watermark, so a replayed cookie
+  // captured before sign-out cannot survive it.
   session: { strategy: "jwt" },
   // Cookie hardening. We set these explicitly so the policy is visible in
   // the repo, not implicit in framework defaults.
@@ -77,20 +80,11 @@ export const authConfig: NextAuthConfig = {
   },
   providers: buildProviders(),
   callbacks: {
-    async jwt({ token, user }) {
-      // On initial sign-in the `user` is present; otherwise we keep the
-      // existing token. The id is what every downstream handler needs.
-      if (user && user.id) {
-        token.userId = user.id;
-      }
-      return token;
-    },
-    async session({ session, token }) {
-      if (token.userId && session.user) {
-        session.user.id = String(token.userId);
-      }
-      return session;
-    }
+    jwt: jwtCallback,
+    session: sessionCallback
+  },
+  events: {
+    signOut: signOutEvent
   }
 };
 

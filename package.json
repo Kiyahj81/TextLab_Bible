@@ -7,7 +7,7 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint . --max-warnings=0",
-    "test:acceptance": "node scripts/acceptance-test.js",
+    "test:acceptance": "node --env-file=.env scripts/acceptance-test.js",
     "test:unit": "vitest run",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev --name init",

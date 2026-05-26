@@ -91,7 +91,15 @@ export function SearchPanel({
       const response = await fetch("/api/saved-searches", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: activeMode, query, book, chapter, matchMode, pageSize })
+        body: JSON.stringify({
+          mode: activeMode,
+          query,
+          // Omit empty optional fields — the server schema rejects empty
+          // strings on coerced-number / enum fields (chapter, matchMode).
+          ...(book ? { book } : {}),
+          ...(chapter ? { chapter: Number(chapter) } : {}),
+          ...(matchMode ? { matchMode } : {})
+        })
       });
 
       if (!response.ok) {

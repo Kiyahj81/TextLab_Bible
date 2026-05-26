@@ -67,7 +67,12 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
       const result = await fetch("/api/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, sessionId: response?.sessionId ?? null })
+        body: JSON.stringify({
+          prompt,
+          // Server schema rejects null on optional string fields — only
+          // attach sessionId when we actually have one.
+          ...(response?.sessionId ? { sessionId: response.sessionId } : {})
+        })
       });
 
       if (!result.ok) {

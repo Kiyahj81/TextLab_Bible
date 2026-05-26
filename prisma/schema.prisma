@@ -189,6 +189,11 @@ model User {
   emailVerified DateTime?
   image         String?
 
+  // Session-revocation watermark. JWTs issued at or before this timestamp
+  // are rejected by auth.ts. Bumped on every signOut so a leaked or
+  // replayed cookie cannot survive sign-out. Null = no signouts yet.
+  sessionsValidFrom DateTime?
+
   accounts            Account[]
   sessions            Session[]
   notes               Note[]

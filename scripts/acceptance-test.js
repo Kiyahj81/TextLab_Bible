@@ -6,7 +6,10 @@ const path = require("node:path");
 const os = require("node:os");
 
 const project = process.cwd();
-const appUrl = process.env.TEXTLAB_ACCEPTANCE_URL ?? "http://127.0.0.1:3000";
+// Use `localhost` (not 127.0.0.1) so the page origin matches the host
+// Auth.js puts into the sign-in form's `action` attribute — otherwise
+// the CSP `form-action 'self'` directive blocks the submit.
+const appUrl = process.env.TEXTLAB_ACCEPTANCE_URL ?? "http://localhost:3000";
 const screenshotsDir = path.join(os.tmpdir(), "textlab-browser-qa");
 const edgePath = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
 
@@ -63,6 +66,24 @@ async function waitForServer(timeoutMs = 60000) {
   throw new Error("Next server did not become ready");
 }
 
+// Drives the auto-generated Auth.js sign-in page to authenticate as a
+// test user via the dev Credentials provider. The provider is only
+// available when AUTH_DEV_ENABLED=1 is set in the Next process env (we
+// set this in the spawn() block below). After this returns, the page
+// context holds a valid session cookie, so subsequent goto() calls land
+// on the real page instead of redirecting to sign-in.
+async function signInAsTestUser(page) {
+  await page.goto(`${appUrl}/api/auth/signin`);
+  await page.locator('input[name="email"]').fill("acceptance@textlab.test");
+  await page.locator('input[name="name"]').fill("Acceptance Tester");
+  // Auth.js v5 renders one submit button per provider, labeled
+  // "Sign in with {provider name}" — our provider name is "Dev login".
+  await Promise.all([
+    page.waitForURL((url) => !url.pathname.startsWith("/api/auth")),
+    page.getByRole("button", { name: /Sign in with Dev login/i }).click()
+  ]);
+}
+
 async function run() {
   await preflightDatabase();
   await fs.mkdir(screenshotsDir, { recursive: true });
@@ -83,12 +104,20 @@ async function run() {
     path.join(project, "node_modules", "next", "dist", "bin", "next"),
     "dev",
     "--hostname",
-    "127.0.0.1",
+    "localhost",
     "--port",
     "3000"
   ], {
     cwd: project,
-    env: { ...process.env, NODE_OPTIONS: "--use-system-ca", TEXTLAB_ASSISTANT_DISABLE_LIVE: "1" },
+    env: {
+      ...process.env,
+      NODE_OPTIONS: "--use-system-ca",
+      TEXTLAB_ASSISTANT_DISABLE_LIVE: "1",
+      // Enables the dev-only Credentials provider so the acceptance test
+      // can sign in without a real OAuth integration. NEVER set this in
+      // production.
+      AUTH_DEV_ENABLED: "1"
+    },
     stdio: ["ignore", "pipe", "pipe"]
   });
 
@@ -122,6 +151,12 @@ async function run() {
       await page.screenshot({ path: file, fullPage: false });
       result.screenshots.push(file);
     }
+
+    // Sign in via the dev Credentials provider before exercising any
+    // protected page. /read, /search, /notes, and /assistant all require
+    // auth since Sprint 2.
+    await signInAsTestUser(page);
+    result.interactions.push("Signed in via dev credentials provider.");
 
     await page.goto(`${appUrl}/read`);
     assert((await page.title()).includes("TextLab Bible"), "page title did not match");
@@ -203,6 +238,8 @@ async function run() {
 
     const mobileContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
     const mobilePage = await mobileContext.newPage();
+    // Mobile context is fresh — needs its own session.
+    await signInAsTestUser(mobilePage);
     await mobilePage.goto(`${appUrl}/read`);
     await mobilePage.getByRole("heading", { name: "Reader" }).waitFor();
     await mobilePage.getByRole("heading", { name: "John 1:1", exact: true }).waitFor();
@@ -236,6 +273,7 @@ async function run() {
     result.error = error.stack || String(error);
     result.nextLogTail = logs.join("").split(/\r?\n/).slice(-30);
     await fs.writeFile(path.join(screenshotsDir, "result.json"), JSON.stringify(result, null, 2));
+    await fs.writeFile(path.join(screenshotsDir, "next-full.log"), logs.join(""));
     console.log(JSON.stringify(result, null, 2));
     process.exitCode = 1;
   } finally {

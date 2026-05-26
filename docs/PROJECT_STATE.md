@@ -1,10 +1,10 @@
 # TextLab Bible — Project State
 
-_Snapshot: 2026-05-24 (post UI Review remediation, PR 1–16)_
+_Snapshot: 2026-05-25 (post UI Review remediation + import accuracy fixes, PR 1–16 + d754ffe)_
 
 ## Where the project stands
 
-Milestone 2.5 (retrieval-first multi-model assistant foundation) is on `main`. On top of that, a three-pass UI review documented **55 findings** which were addressed across PRs 1–11; PRs 12–16 then added follow-up features and UX refinements based on hands-on testing. Sixteen PRs total are on `main`, pushed to `origin/main` on 2026-05-24. All five milestone gates are green (lint, tsc, build, test:unit 84/84, test:acceptance).
+Milestone 2.5 (retrieval-first multi-model assistant foundation) is on `main`. On top of that, a three-pass UI review documented **55 findings** which were addressed across PRs 1–11; PRs 12–16 then added follow-up features and UX refinements based on hands-on testing. After PR 16, a single follow-up commit (`d754ffe`) closed three import-accuracy bugs surfaced during hands-on reading (see [Post-PR 16 import accuracy fixes](#post-pr-16-import-accuracy-fixes) below). All five milestone gates are green (lint, tsc, build, test:unit 98/98, test:acceptance).
 
 ### UI review remediation (PRs 1–11) — closed
 
@@ -23,6 +23,17 @@ Surfaced through use after the formal review closed:
 - **PR 14** — Reader: **per-word English highlighting** with per-word color popover, mirroring the Greek-token UX. Schema gained `Highlight.englishWordIndex Int?` (4th Prisma migration); `HighlightPalette` extracted from `HighlightMenu` for reuse by `EnglishWordPopover`.
 - **PR 15** — Removed vestigial verse-level "Highlight verse" button after PR 14 made highlighting fully per-word.
 - **PR 16** — Reader: `ReaderControls` resyncs dropdowns to URL after location restore. Notes: tag filter is now a select (`All tags` / `verse` / `word`), new keyword search input on the filter row, where-clause refactored to AND-of-conditions so keyword + reference + tag compose cleanly.
+
+### Post-PR 16 import accuracy fixes
+
+Single commit `d754ffe` ("Fix WEB/SBL import accuracy for multi-line verses, marker spacing, and Pericope Adulterae") addressing three import-pipeline bugs the user surfaced while reading:
+
+1. **`parseUsfm` dropped continuation lines.** USFM verses whose text continues past a mid-verse `\p`/`\q*`/`\m`/`\nb` marker (Rom 16:20's grace doxology, Pauline benedictions, Psalms/prophets poetry blocks) lost everything after the first source line. Now accumulates chunks until the next `\v`, `\c`, `\id`, or EOF.
+2. **`cleanUsfmText` collapsed whitespace across consecutive markers.** Each stripped marker also consumed one trailing whitespace, so sequences like `write:\wj* \p \wj "He` (Rev letters to the seven churches) rendered as `write:"He` with no separator. Fix: replace stripped markers with `" "` instead of `""`; the existing whitespace-collapse cleans up doubles.
+3. **Pericope Adulterae (John 7:53–8:11) missing from SBL.** MorphGNT omits PA per SBLGNT bracketed-text convention, and `getReaderPassage` anchors on Greek verses. MACULA has PA tokens but the importer only updated glosses on existing rows. Now inserts missing tokens and builds verse text via the existing `joinGreekVerse` helper.
+4. **MACULA PA punctuation overrides.** MACULA's PA data has 29 missing/wrong clause-final stops and one `;;` text-corruption artifact (8:10!14). A `MACULA_OVERRIDES` table in `scripts/import-open-bible.ts` patches each position against Holmes 2010 SBL GNT before parsing; verses listed in the override table are force-refreshed every import so changes land on tokens that already exist in the DB. If Clear-Bible publishes a curated PA upstream, drop the matching entries.
+
+Adds 14 unit tests covering both parsers (9 `parseUsfm` cases including the Rom 16:20 / Rev 2:1 / Acts 15:23 / John 7:53→`\c 8`→8:1 shapes; 5 `parseMaculaTsv` override cases).
 
 ## What's on main
 
@@ -48,7 +59,7 @@ The assistant route follows a clear retrieval-first contract:
 
 ### Test surfaces
 
-- **84 unit tests across 17 files** (vitest 4 + jsdom + RTL). Notable additions since the M2.5 snapshot:
+- **98 unit tests across 18 files** (vitest 4 + jsdom + RTL). Notable additions since the M2.5 snapshot:
   - `tests/unit/api/highlights.test.ts` — POST/DELETE shape, `englishWordIndex` requires `verseId`, slot-replace semantics
   - `tests/unit/api/notes.test.ts`, `tests/unit/api/saved-searches.test.ts`, `tests/unit/api/saved-searches-id.test.ts` — CRUD shape + 404/400 paths
   - `tests/unit/lib/highlight.test.ts` — color palette + storage round-trip
@@ -56,6 +67,7 @@ The assistant route follows a clear retrieval-first contract:
   - `tests/unit/lib/search-getPassageNeighbors.test.ts` — prev/next chapter computation
   - `tests/unit/lib/search-highlight.test.ts` — match splitter (case-insensitive, Unicode NFC, regex-metachar escape, polytonic Greek)
   - `tests/unit/lib/useAutoDismissStatus.test.ts` — status-auto-dismiss hook
+  - `tests/unit/scripts/import-open-bible.test.ts` — 14 tests across `parseUsfm` (continuation lines, chapter boundaries, marker-spacing across `\wj*`/`\p`/`\wj` sequences) and `parseMaculaTsv` (Pericope Adulterae override application)
 - **Playwright acceptance suite** (`scripts/acceptance-test.js`) — 10 end-to-end interactions covering the golden path; updated for the renamed Assistant h1 and the in-input Search button.
 
 ### Database
@@ -132,14 +144,15 @@ The README is current as of PR 16. Still worth a short dev-facing doc for:
 - The migrations folder convention (proper Prisma migrations since the M2.5 code review).
 - Custom DOM events for cross-instance state (`textlab:highlight-color-change`).
 
-### 5. Step 5: Import parser tests (S-sized backlog)
+### 5. Step 5: Import parser tests (S-sized backlog) — partially complete
 
 The milestone plan calls for:
-- WEB USFM cleaning tests (footnotes, cross-references, `\w` / `\+w` / Strong's residue)
-- MorphGNT morphology normalization tests
-- Importer failure paths (missing WEB dir, failed MorphGNT fetch, partial rollback)
+- ✅ WEB USFM cleaning tests (footnotes via `\f...\f*`, cross-references via `\x...\x*`, `\w` / `\+w` / Strong's residue) — covered by the 9 `parseUsfm` tests in `tests/unit/scripts/import-open-bible.test.ts` (PR `d754ffe`)
+- ✅ MACULA Pericope Adulterae override application — 5 dedicated `parseMaculaTsv` tests
+- ⏭️ MorphGNT morphology normalization tests — still backlog
+- ⏭️ Importer failure paths (missing WEB dir, failed MorphGNT fetch, partial rollback) — still backlog
 
-These are pure unit tests against `scripts/import-open-bible.ts`. Sound investment before any future corpus expansion.
+The first two are closed by post-PR-16 work. Remaining items are sound investment before any future corpus expansion (OT/LXX/Hebrew Bible).
 
 ### 6. Step 6: Notes workflow polish (M-sized)
 

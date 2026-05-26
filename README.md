@@ -67,7 +67,7 @@ Open `http://localhost:3000/read`.
 ## Testing
 
 ```bash
-# 84 unit tests across 17 files (~5s)
+# 98 unit tests across 18 files (~4s)
 npm run test:unit
 
 # Playwright end-to-end suite — spins up its own dev server (~30s)
@@ -88,21 +88,41 @@ All five gates exit 0 on the current `main`.
 
 ## Open Text Imports
 
-The project includes an import script for MorphGNT/SBLGNT-style Greek files and WEB USFM files. Imported runs are tracked in the `ImportRun` table.
+The project includes an import script for three Greek/English NT data sources. Each run is tracked in the `ImportRun` table.
 
-Import MorphGNT directly from GitHub raw files:
+| Source | Purpose | Provides |
+|---|---|---|
+| MorphGNT SBLGNT | Per-word Greek tokens + morphology | `Token` rows + `Verse.text` for the SBLGNT corpus |
+| WEB USFM | English text | `Verse.text` for the WEB corpus |
+| MACULA Greek (SBLGNT) | English glosses + lexical/morph augmentation | Updates `Token.gloss` on existing rows; **inserts tokens and verses for the Pericope Adulterae** (John 7:53–8:11), which MorphGNT omits per the SBL bracketed-text convention |
+
+Full import (all three sources, from local files):
 
 ```bash
+npm run import:open-bible -- \
+  --morphgnt-url-base https://raw.githubusercontent.com/morphgnt/sblgnt/master \
+  --web-usfm-dir ./data/web-usfm \
+  --macula-greek-tsv ./data/macula-greek/macula-greek-SBLGNT.tsv
+```
+
+Individual sources:
+
+```bash
+# MorphGNT direct from GitHub
 npm run import:open-bible -- --morphgnt-url-base https://raw.githubusercontent.com/morphgnt/sblgnt/master
+
+# WEB only, from a local USFM directory
+npm run import:open-bible -- --web-usfm-dir ./data/web-usfm
+
+# MACULA Greek glosses only (default URL points at Clear-Bible main)
+npm run import:macula-glosses
 ```
 
-Import from local extracted folders:
+Source repositories: MorphGNT at `https://github.com/morphgnt/sblgnt`, WEB USFM at `https://ebible.org/Scriptures/engwebp_usfm.zip` (the downloaded zip is checked in at the project root as `engwebp_usfm.zip`; unzipped contents live in `data/web-usfm/`), MACULA Greek at `https://github.com/Clear-Bible/macula-greek`.
 
-```bash
-npm run import:open-bible -- --morphgnt-dir ./data/sblgnt --web-usfm-dir ./data/web-usfm
-```
+### MACULA Pericope Adulterae overrides
 
-The MorphGNT repository documents its columns and license at `https://github.com/morphgnt/sblgnt`. WEB USFM downloads are available from eBible at `https://ebible.org/details.php?id=engwebp`.
+MACULA's coverage of John 7:53–8:11 was added later than the core SBLGNT and is poorly punctuated upstream — many clause-final stops are missing, a few are wrong, and one row has `;;` embedded in the actual word column. `scripts/import-open-bible.ts` carries a `MACULA_OVERRIDES` table that patches each affected token's `text` and/or `after` field against Holmes 2010 SBL GNT before parsing. Overridden verses are force-refreshed on every import so override edits land on tokens that already exist in the DB. If Clear-Bible ever publishes a curated PA, drop the matching entries from the override table.
 
 ## Sample Acceptance Path
 

@@ -112,10 +112,6 @@ The assistant route follows a clear retrieval-first contract:
 
 **postcss <8.5.10** (GHSA-qx2v-qp2m-jg93, XSS via unescaped `</style>` in CSS stringify), bundled inside Next 15. Tracked in `docs/security-register.md` with mitigation rationale: PostCSS only runs at build time over our own CSS, never on untrusted input. **No action available** until Next bumps its bundled postcss. Re-run `npm run security:audit` after each Next release.
 
-### `npm audit` cannot run on the current dev machine
-
-The npm registry call fails with `unable to verify the first certificate` — a local TLS trust-store issue (corporate root CA / MITM proxy), not an advisory. To formally run the audit gate, set `NODE_EXTRA_CA_CERTS=<path-to-corporate-root>` before `npm run security:audit`, or run it on CI / a clean machine.
-
 ### Branch coverage at 66.53% (gate at 65%)
 
 The lines/statements/functions thresholds are at 80/80/75 with comfortable headroom. Branches are tighter and will need targeted tests in `lib/ai/assistant.ts` and `lib/search.ts` before raising the branch gate above 70.
@@ -208,7 +204,6 @@ What's still outside Phase 3.0 scope for a real public launch:
 - A hosted PostgreSQL (not Docker on `localhost:5433`)
 - Production OAuth credentials and a stable `AUTH_URL`
 - Move the in-memory rate limiter to Upstash / Vercel KV / Cloudflare KV before deploying to a serverless host (the current limiter no-ops on serverless by design)
-- Run `npm run security:audit` on a machine with clean registry access
 
 ## Decision points
 
@@ -245,4 +240,4 @@ App at http://localhost:3000. With `OPENAI_API_KEY` set (system env or `.env`), 
 $env:NODE_OPTIONS="--use-system-ca"; npm run security:audit
 ```
 
-Expected residual until Next bumps bundled postcss: 1 moderate (GHSA-qx2v-qp2m-jg93). See `docs/security-register.md` for the mitigation rationale and `NODE_EXTRA_CA_CERTS` workaround if registry TLS fails locally.
+Expected residual until Next bumps bundled postcss: 1 moderate (GHSA-qx2v-qp2m-jg93). See `docs/security-register.md` for the mitigation rationale. The `NODE_OPTIONS=--use-system-ca` env var is persisted at user scope on the maintainer's Windows machine so the registry TLS chain validates against the Windows root store; see `docs/security-register.md` for background on why and for the `NODE_EXTRA_CA_CERTS` alternative.

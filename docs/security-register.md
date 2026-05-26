@@ -26,13 +26,23 @@ sprint and at every Next.js minor upgrade. Cross-check each open row.
 
 ## Tooling notes
 
-- `npm audit` requires network access to the npm registry. On this
-  machine the registry call currently fails with `unable to verify the
-  first certificate`, which is a local TLS trust-store issue (corporate
-  root CA, MITM proxy, or similar), not an advisory. Run audits from a
-  machine with clean registry access, or set
-  `NODE_EXTRA_CA_CERTS=<path-to-corporate-root>` before running
-  `npm audit`.
+- `npm audit` requires network access to the npm registry. If the
+  registry call fails with `unable to verify the first certificate`,
+  that is a local TLS trust-store issue (corporate root CA, MITM
+  proxy, AV HTTPS scanning, or similar), not an advisory.
+- **Resolved on the maintainer's Windows machine (2026-05-26):** Norton
+  AV's "Web/Mail Shield" intercepts the registry TLS and re-signs with
+  a root that lives in the Windows certificate store. Node 22+ does
+  not consult the Windows store by default. Fix: set the user-level
+  env var `NODE_OPTIONS=--use-system-ca` (e.g. via
+  `setx NODE_OPTIONS "--use-system-ca"`), then re-open the shell.
+  Node will then trust the Windows store in addition to its bundled
+  CAs and `npm audit` succeeds.
+- Alternative if `--use-system-ca` is unavailable or undesired: export
+  the intercepting root to a `.pem` file and set
+  `NODE_EXTRA_CA_CERTS=<path-to-that-pem>`.
+- Fallback: run audits from CI or any machine with clean registry
+  access before declaring the gate met.
 
 ## Closed
 

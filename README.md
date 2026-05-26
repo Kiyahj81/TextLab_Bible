@@ -36,7 +36,7 @@ Not included yet: NET import, Hebrew Bible, LXX, cloud sync, scholarly-model esc
 npm install
 ```
 
-On Windows, if `npm install` fails with `UNABLE_TO_VERIFY_LEAF_SIGNATURE`, prefix with `NODE_OPTIONS=--use-system-ca` (Bash) or `$env:NODE_OPTIONS="--use-system-ca"; ...` (PowerShell).
+On Windows, if `npm install`, `npm audit`, or any other Node tool fails with `unable to verify the first certificate` / `UNABLE_TO_VERIFY_LEAF_SIGNATURE`, the cause is usually a local TLS-intercepting root (corporate proxy, AV HTTPS scanning such as Norton Web/Mail Shield) that lives in the Windows certificate store but isn't in Node's bundled CA list. Persist the fix at user scope with `setx NODE_OPTIONS "--use-system-ca"` (run once, then open a new shell), or set it ad-hoc per invocation via `NODE_OPTIONS=--use-system-ca` (Bash) / `$env:NODE_OPTIONS="--use-system-ca"; ...` (PowerShell). See `docs/security-register.md` for the `NODE_EXTRA_CA_CERTS` alternative.
 
 2. **Create an `.env` file:**
 

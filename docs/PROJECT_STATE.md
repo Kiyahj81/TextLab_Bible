@@ -37,7 +37,7 @@ Adds 14 unit tests covering both parsers (9 `parseUsfm` cases including the Rom 
 
 ### Phase 3.0 security and testing remediation (Sprints 1–4)
 
-A four-sprint hardening effort, executed against `docs/security-testing-remediation-plan.md`, took the app from "single hardcoded local user, no validation gate, no security headers" to "real auth, validated mutations, browser-hardening headers, and a coverage gate."
+A four-sprint hardening effort, executed against `docs/archived/security-testing-remediation-plan.md`, took the app from "single hardcoded local user, no validation gate, no security headers" to "real auth, validated mutations, browser-hardening headers, and a coverage gate."
 
 - **Sprint 1 (`e126f44`) — Stop the bleeding.** Assistant prompt cap (2,000 chars) + output-token cap (`OPENAI_MAX_OUTPUT_TOKENS`) + in-memory token-bucket rate limiter (10/min, 429 with `Retry-After`, serverless-aware no-op). Server-side highlight color allowlist. Shared `readJsonLimited` (16 KB default) + `validateBody` (zod) + `jsonError` request helpers. Stub `requireAuth()` so Sprint 2 could swap the implementation without rewriting handlers.
 - **Sprint 2 (`436036d`) — Authentication and authorization.** Auth.js v5 with the Prisma adapter, GitHub OAuth provider, and a dev-only Credentials provider gated on `AUTH_DEV_ENABLED=1`. New `User` / `Account` / `Session` / `VerificationToken` models with FK chains to existing user-owned tables. `lib/auth.ts` exports `requireAuth` (401), `requirePageAuth` (redirect), `getOptionalUserId`. Every API route and protected page now enforces ownership. `getReaderPassage(book, chapter, userId)` scopes the included `notes`/`highlights` so reader data cannot leak across users.

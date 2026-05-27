@@ -24,7 +24,7 @@ export async function requirePageAuth(): Promise<string> {
   const session = await auth();
   const userId = session?.user?.id;
   if (!userId) {
-    redirect("/api/auth/signin");
+    redirect("/signin");
   }
   return userId;
 }

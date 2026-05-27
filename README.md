@@ -48,7 +48,8 @@ cp .env.example .env
 - Set `OPENAI_API_KEY` to enable live assistant mode. Without it, the assistant gracefully falls back to local-only retrieval. `OPENAI_MAX_OUTPUT_TOKENS` (default `1200`) caps any single response. Next.js reads system environment variables with higher precedence than `.env`, so a user/system-level `OPENAI_API_KEY` is also picked up automatically.
 - Set `AUTH_SECRET` to a long random string. Required by Auth.js v5 in every environment — generate one with `openssl rand -base64 32`.
 - Set `AUTH_URL` to the public URL of the app (`http://localhost:3000` in dev).
-- For local sign-in without a real OAuth provider, set `AUTH_DEV_ENABLED=1` to expose the dev credentials login. **Never set this in production.**
+- For local sign-in without a real OAuth provider, set `AUTH_DEV_ENABLED=1`. The sign-in page lives at `/signin` and the global header carries a "Sign out" button once authenticated. **Never set `AUTH_DEV_ENABLED=1` in production.**
+- Protected pages (`/read`, `/search`, `/notes`, `/assistant`) redirect unauthenticated visitors to `/signin`. Sign-out triggers the Sprint 4 JWT revocation watermark (`User.sessionsValidFrom`), so a replayed session cookie captured before sign-out is rejected with `401` on the next request.
 - For GitHub OAuth in production, set both `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`.
 
 3. **Apply migrations and seed the corpus:**

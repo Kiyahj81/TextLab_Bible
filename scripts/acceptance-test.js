@@ -66,21 +66,24 @@ async function waitForServer(timeoutMs = 60000) {
   throw new Error("Next server did not become ready");
 }
 
-// Drives the auto-generated Auth.js sign-in page to authenticate as a
-// test user via the dev Credentials provider. The provider is only
-// available when AUTH_DEV_ENABLED=1 is set in the Next process env (we
-// set this in the spawn() block below). After this returns, the page
-// context holds a valid session cookie, so subsequent goto() calls land
-// on the real page instead of redirecting to sign-in.
+// Drives the custom /signin page to authenticate as a test user via the
+// dev Credentials provider. The provider is only available when
+// AUTH_DEV_ENABLED=1 is set in the Next process env (we set this in the
+// spawn() block below). The /signin page is a server component that
+// renders the SignInForm client component; it submits to a Server Action
+// (POST to the same page URL) that wraps Auth.js signIn() and redirects
+// on success. After this returns, the page context holds a valid session
+// cookie, so subsequent goto() calls land on the real page instead of
+// redirecting to /signin.
 async function signInAsTestUser(page) {
-  await page.goto(`${appUrl}/api/auth/signin`);
+  await page.goto(`${appUrl}/signin`);
   await page.locator('input[name="email"]').fill("acceptance@textlab.test");
   await page.locator('input[name="name"]').fill("Acceptance Tester");
-  // Auth.js v5 renders one submit button per provider, labeled
-  // "Sign in with {provider name}" — our provider name is "Dev login".
+  // Custom page renders a single "Sign in" submit button (vs the Auth.js
+  // default page's "Sign in with Dev login" per-provider label).
   await Promise.all([
-    page.waitForURL((url) => !url.pathname.startsWith("/api/auth")),
-    page.getByRole("button", { name: /Sign in with Dev login/i }).click()
+    page.waitForURL((url) => !url.pathname.startsWith("/signin")),
+    page.getByRole("button", { name: /^Sign in$/ }).click()
   ]);
 }
 

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Gentium_Plus, Inter_Tight, Spectral } from "next/font/google";
+import { UserMenu } from "@/components/UserMenu";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -45,17 +46,20 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <Link href="/read" className="font-display text-xl font-semibold tracking-tight text-slate-900">
               TextLab Bible
             </Link>
-            <nav className="flex flex-wrap gap-2 text-sm">
-              {nav.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className="rounded-md border border-stone-300 px-3 py-2 text-slate-700 transition-colors hover:border-accent-600 hover:bg-accent-50 hover:text-accent-800"
-                >
-                  {item.label}
-                </Link>
-              ))}
-            </nav>
+            <div className="flex flex-wrap items-center gap-2">
+              <nav className="flex flex-wrap gap-2 text-sm">
+                {nav.map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className="rounded-md border border-stone-300 px-3 py-2 text-slate-700 transition-colors hover:border-accent-600 hover:bg-accent-50 hover:text-accent-800"
+                  >
+                    {item.label}
+                  </Link>
+                ))}
+              </nav>
+              <UserMenu />
+            </div>
           </div>
         </header>
         <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>

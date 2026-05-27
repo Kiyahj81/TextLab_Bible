@@ -59,6 +59,14 @@ export const authConfig: NextAuthConfig = {
   // whose iat falls at or before that watermark, so a replayed cookie
   // captured before sign-out cannot survive it.
   session: { strategy: "jwt" },
+  // Custom sign-in surface. Without this, Auth.js serves its own page at
+  // /api/auth/signin which renders one button per configured provider — and
+  // produces a blank page when no providers are configured. Routing here
+  // also lets us style the page and add a sign-out control in the header.
+  pages: {
+    signIn: "/signin",
+    error: "/signin"
+  },
   // Cookie hardening. We set these explicitly so the policy is visible in
   // the repo, not implicit in framework defaults.
   //   - httpOnly: JS cannot read the session cookie (defense in depth

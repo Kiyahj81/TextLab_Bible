@@ -149,6 +149,6 @@ MACULA's coverage of John 7:53–8:11 was added later than the core SBLGNT and i
 - `docs/archived/MILESTONE_2_PLAN.md`, `docs/archived/MILESTONE_2_5_PLAN.md` — historical milestone planning
 - `docs/PROJECT_STATE.md` — current state snapshot and logical next steps
 - `docs/ui-review/pass-{1,2,3}-*.md` — three-pass UI review (functional bugs / layout / UX & design), 55 findings, 100% closed across PRs 1–11
-- `docs/security-testing-remediation-plan.md` — Phase 3.0 hardening plan (auth, validation, headers, coverage) — all four sprints landed
+- `docs/archived/security-testing-remediation-plan.md` — Phase 3.0 hardening plan (auth, validation, headers, coverage) — all four sprints landed
 - `docs/security-register.md` — known security advisories with mitigations
 - `docs/superpowers/plans/` — execution plans for prior code review remediations

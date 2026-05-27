@@ -1,6 +1,6 @@
 # TextLab Bible — Project State
 
-_Snapshot: 2026-05-26 (post Phase 3.0 security/testing remediation — Sprints 1–4)_
+*Snapshot: 2026-05-26 (post Phase 3.0 security/testing remediation — Sprints 1–4)*
 
 ## Where the project stands
 
@@ -28,8 +28,8 @@ Surfaced through use after the formal review closed:
 
 Single commit `d754ffe` ("Fix WEB/SBL import accuracy for multi-line verses, marker spacing, and Pericope Adulterae") addressing three import-pipeline bugs the user surfaced while reading:
 
-1. **`parseUsfm` dropped continuation lines.** USFM verses whose text continues past a mid-verse `\p`/`\q*`/`\m`/`\nb` marker (Rom 16:20's grace doxology, Pauline benedictions, Psalms/prophets poetry blocks) lost everything after the first source line. Now accumulates chunks until the next `\v`, `\c`, `\id`, or EOF.
-2. **`cleanUsfmText` collapsed whitespace across consecutive markers.** Each stripped marker also consumed one trailing whitespace, so sequences like `write:\wj* \p \wj "He` (Rev letters to the seven churches) rendered as `write:"He` with no separator. Fix: replace stripped markers with `" "` instead of `""`; the existing whitespace-collapse cleans up doubles.
+1. `**parseUsfm` dropped continuation lines.** USFM verses whose text continues past a mid-verse `\p`/`\q`*/`\m`/`\nb` marker (Rom 16:20's grace doxology, Pauline benedictions, Psalms/prophets poetry blocks) lost everything after the first source line. Now accumulates chunks until the next `\v`, `\c`, `\id`, or EOF.
+2. `**cleanUsfmText` collapsed whitespace across consecutive markers.** Each stripped marker also consumed one trailing whitespace, so sequences like `write:\wj* \p \wj "He` (Rev letters to the seven churches) rendered as `write:"He` with no separator. Fix: replace stripped markers with `" "` instead of `""`; the existing whitespace-collapse cleans up doubles.
 3. **Pericope Adulterae (John 7:53–8:11) missing from SBL.** MorphGNT omits PA per SBLGNT bracketed-text convention, and `getReaderPassage` anchors on Greek verses. MACULA has PA tokens but the importer only updated glosses on existing rows. Now inserts missing tokens and builds verse text via the existing `joinGreekVerse` helper.
 4. **MACULA PA punctuation overrides.** MACULA's PA data has 29 missing/wrong clause-final stops and one `;;` text-corruption artifact (8:10!14). A `MACULA_OVERRIDES` table in `scripts/import-open-bible.ts` patches each position against Holmes 2010 SBL GNT before parsing; verses listed in the override table are force-refreshed every import so changes land on tokens that already exist in the DB. If Clear-Bible publishes a curated PA upstream, drop the matching entries.
 
@@ -37,12 +37,12 @@ Adds 14 unit tests covering both parsers (9 `parseUsfm` cases including the Rom 
 
 ### Phase 3.0 security and testing remediation (Sprints 1–4)
 
-A four-sprint hardening effort, executed against `docs/security-testing-remediation-plan.md`, took the app from "single hardcoded local user, no validation gate, no security headers" to "real auth, validated mutations, browser-hardening headers, and a coverage gate."
+A four-sprint hardening effort, executed against `docs/archived/security-testing-remediation-plan.md`, took the app from "single hardcoded local user, no validation gate, no security headers" to "real auth, validated mutations, browser-hardening headers, and a coverage gate."
 
 - **Sprint 1 (`e126f44`) — Stop the bleeding.** Assistant prompt cap (2,000 chars) + output-token cap (`OPENAI_MAX_OUTPUT_TOKENS`) + in-memory token-bucket rate limiter (10/min, 429 with `Retry-After`, serverless-aware no-op). Server-side highlight color allowlist. Shared `readJsonLimited` (16 KB default) + `validateBody` (zod) + `jsonError` request helpers. Stub `requireAuth()` so Sprint 2 could swap the implementation without rewriting handlers.
 - **Sprint 2 (`436036d`) — Authentication and authorization.** Auth.js v5 with the Prisma adapter, GitHub OAuth provider, and a dev-only Credentials provider gated on `AUTH_DEV_ENABLED=1`. New `User` / `Account` / `Session` / `VerificationToken` models with FK chains to existing user-owned tables. `lib/auth.ts` exports `requireAuth` (401), `requirePageAuth` (redirect), `getOptionalUserId`. Every API route and protected page now enforces ownership. `getReaderPassage(book, chapter, userId)` scopes the included `notes`/`highlights` so reader data cannot leak across users.
 - **Sprint 3 (`5775bae`) — HTTP and deployment hardening.** `lib/http/security.ts` adds `assertSameOrigin(request)` wired into every POST/PATCH/DELETE — 403 on cross-origin writes, allow-through for non-browser clients (no Origin). `next.config.ts` headers block: CSP (no `api.openai.com`, no prod `unsafe-eval`, `frame-ancestors 'none'`), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy` (camera/microphone/geolocation/payment/usb/interest-cohort), HSTS prod-only. Explicit Auth.js cookie config (httpOnly, sameSite=lax, secure in prod). `docs/security-register.md` documents the upstream-blocked PostCSS advisory.
-- **Sprint 4 (`08b9639`, `ec037e6`, `c181b97`) — Test coverage and CI gates.** Route tests for `generated-study-notes` and `import-runs`. Validation-depth tests (length caps, negative `englishWordIndex`). Assistant XSS-rendering safety test. `next.config.ts` headers config test. PostgreSQL preflight in `scripts/acceptance-test.js`. **Real JWT session revocation** via `User.sessionsValidFrom` watermark — bumped on every signOut, checked in the session callback, so a replayed cookie captured before signout now returns 401 (verified end-to-end with curl). Acceptance test signs in via dev credentials before exercising protected pages. **DB integration suite** (`tests/integration/db-ownership.test.ts`) running real Prisma — per-user scoping for notes/highlights/saved-searches/generated-notes/ai-sessions + `onDelete: Cascade` FK behavior. **Coverage gate** via v8 over `app/api/**` + `lib/**`: lines 84.73% / statements 81.53% / functions 77.48% / branches 66.53% — all above thresholds (80/80/75/65).
+- **Sprint 4 (`08b9639`, `ec037e6`, `c181b97`) — Test coverage and CI gates.** Route tests for `generated-study-notes` and `import-runs`. Validation-depth tests (length caps, negative `englishWordIndex`). Assistant XSS-rendering safety test. `next.config.ts` headers config test. PostgreSQL preflight in `scripts/acceptance-test.js`. **Real JWT session revocation** via `User.sessionsValidFrom` watermark — bumped on every signOut, checked in the session callback, so a replayed cookie captured before signout now returns 401 (verified end-to-end with curl). Acceptance test signs in via dev credentials before exercising protected pages. **DB integration suite** (`tests/integration/db-ownership.test.ts`) running real Prisma — per-user scoping for notes/highlights/saved-searches/generated-notes/ai-sessions + `onDelete: Cascade` FK behavior. **Coverage gate** via v8 over `app/api/`** + `lib/**`: lines 84.73% / statements 81.53% / functions 77.48% / branches 66.53% — all above thresholds (80/80/75/65).
 
 Two latent client bugs surfaced during the acceptance-test wiring: `SearchPanel` was sending `chapter: ""` and `AiAssistant` was sending `sessionId: null` — both rejected by the Sprint 1 Zod schemas. Both now omit the empty field instead. A follow-up commit added the custom `/signin` page and a global header sign-out, completing the user-facing surface over the auth + revocation backend that Sprints 2 and 4 stood up.
 
@@ -72,7 +72,7 @@ The assistant route follows a clear retrieval-first contract:
 
 ### Test surfaces
 
-- **200 unit tests across 28 files** (vitest 4 + jsdom + RTL). Coverage gate via v8 over `app/api/**` + `lib/**`: lines 84.73%, statements 81.53%, functions 77.48%, branches 66.53%. Major additions over the Phase 3.0 sprints:
+- **200 unit tests across 28 files** (vitest 4 + jsdom + RTL). Coverage gate via v8 over `app/api/`** + `lib/**`: lines 84.73%, statements 81.53%, functions 77.48%, branches 66.53%. Major additions over the Phase 3.0 sprints:
   - `tests/unit/api/assistant-route.test.ts` — prompt cap, oversize 413, malformed 400, rate-limit 429 with `Retry-After`, 401 unauthenticated, AiSession user-scoping
   - `tests/unit/api/generated-study-notes.test.ts`, `tests/unit/api/import-runs.test.ts` — full route coverage (auth + validation + scoping)
   - `tests/unit/lib/auth.test.ts` — `requireAuth`/`requirePageAuth`/`getOptionalUserId`
@@ -136,6 +136,7 @@ Listed in roughly the order they make sense to tackle, with rough effort sizing.
 The current code already returns `recommendedUpgrade` advisory metadata when scholarly cues are detected, but never escalates. Step 3 turns that recommendation into a real user-confirmed escalation path.
 
 Concretely:
+
 - **UI**: when `recommendedUpgrade` is present on the assistant response, render a "Use scholarly model" affordance that re-submits the same prompt with an escalation flag.
 - **API**: `POST /api/assistant` accepts an optional `escalate: true` field. When set, the route invokes `gpt-5.4` (currently `OPENAI_SCHOLARLY_MODEL`) for synthesis — but only after the same local retrieval has run.
 - **Persistence**: `AiMessage.metadata` already has the typed `modelRole` field. No schema change needed; just emit `"scholarly"` on the assistant message when it was generated by the scholarly model.
@@ -147,6 +148,7 @@ This builds directly on the dispatch-table shape and the shared OpenAI client. E
 ### 2. Step 4: Reader Navigation (M-sized) — ✅ substantially complete
 
 Closed across the UI review remediation:
+
 - ✅ Prev/next chapter controls (top and bottom) — PR 2 + PR 12
 - ✅ Reference jump via verse-number input — PR 11
 - ✅ `?verse=N` URL anchor + scroll-into-view — PR 5
@@ -157,13 +159,15 @@ Closed across the UI review remediation:
 ### 3. Test coverage gaps (S-sized, can be done in parallel)
 
 Three concrete gaps worth closing:
-- **`searchKeyword` and `searchMorphology` unit tests** — currently only `searchLemma` and `findLemmaExamples` have direct unit coverage. The shape is similar; mostly copy-and-adapt.
+
+- `**searchKeyword` and `searchMorphology` unit tests** — currently only `searchLemma` and `findLemmaExamples` have direct unit coverage. The shape is similar; mostly copy-and-adapt.
 - **Empty-retrieval safe response** — the milestone plan calls for "empty retrieval produces a safe no-evidence response" but no unit test exists for the path where every search returns zero results.
 - **Scholarly-recommendation routing test** — the milestone plan calls for "Scholarly prompts can return `recommendedUpgrade`, but no Milestone 2.5 path calls gpt-5.4." Worth a direct test that asserts the upgrade is advisory-only today (and won't be regressed when Step 3 lands).
 
 ### 4. Dev onboarding doc (S-sized)
 
 The README is current as of PR 16. Still worth a short dev-facing doc for:
+
 - The dispatch-table extension pattern (how to add a new retrieval branch).
 - The `HighlightPalette` component pattern (used by both `HighlightMenu` and `EnglishWordPopover`).
 - The migrations folder convention (proper Prisma migrations since the M2.5 code review).
@@ -172,7 +176,8 @@ The README is current as of PR 16. Still worth a short dev-facing doc for:
 ### 5. Step 5: Import parser tests (S-sized backlog) — partially complete
 
 The milestone plan calls for:
-- ✅ WEB USFM cleaning tests (footnotes via `\f...\f*`, cross-references via `\x...\x*`, `\w` / `\+w` / Strong's residue) — covered by the 9 `parseUsfm` tests in `tests/unit/scripts/import-open-bible.test.ts` (PR `d754ffe`)
+
+- ✅ WEB USFM cleaning tests (footnotes via `\f...\f`*, cross-references via `\x...\x*`, `\w` / `\+w` / Strong's residue) — covered by the 9 `parseUsfm` tests in `tests/unit/scripts/import-open-bible.test.ts` (PR `d754ffe`)
 - ✅ MACULA Pericope Adulterae override application — 5 dedicated `parseMaculaTsv` tests
 - ⏭️ MorphGNT morphology normalization tests — still backlog
 - ⏭️ Importer failure paths (missing WEB dir, failed MorphGNT fetch, partial rollback) — still backlog
@@ -182,6 +187,7 @@ The first two are closed by post-PR-16 work. Remaining items are sound investmen
 ### 6. Step 6: Notes workflow polish (M-sized)
 
 Once Step 3 (Scholarly Mode) and Step 4 (Reader Nav) land, the notes flow becomes the next-most-friction surface:
+
 - Link generated study notes to the structured citations they were built from (today the link is implicit via prompt text).
 - Filter notes by reference / tag / note type.
 - Edit flow from assistant answer → saved note (today it's an export-or-discard binary).
@@ -193,6 +199,7 @@ An admin/settings page that surfaces: which corpora are imported, verse/token co
 ### 8. Production-readiness work — ✅ substantially complete (Phase 3.0)
 
 Phase 3.0 (Sprints 1–4) closed the production-readiness blockers that this section originally tracked:
+
 - ✅ Auth integration — Auth.js v5 with the Prisma adapter; GitHub OAuth in prod, dev Credentials behind `AUTH_DEV_ENABLED=1`
 - ✅ User-scoped tables and migrations — `User` / `Account` / `Session` / `VerificationToken` with FK chains and `onDelete: Cascade` from every user-owned table
 - ✅ Authorization checks in every API route — `requireAuth` (401) + ownership filters scoped to `session.user.id`
@@ -202,6 +209,7 @@ Phase 3.0 (Sprints 1–4) closed the production-readiness blockers that this sec
 - ✅ Coverage gate at 80/80/75/65 over server-side runtime
 
 What's still outside Phase 3.0 scope for a real public launch:
+
 - A hosted PostgreSQL (not Docker on `localhost:5433`)
 - Production OAuth credentials and a stable `AUTH_URL`
 - Move the in-memory rate limiter to Upstash / Vercel KV / Cloudflare KV before deploying to a serverless host (the current limiter no-ops on serverless by design)
@@ -233,7 +241,7 @@ All three should exit 0.
 $env:NODE_OPTIONS="--use-system-ca"; npm run dev
 ```
 
-App at http://localhost:3000. With `OPENAI_API_KEY` set (system env or `.env`), assistant runs in live mode; without it, deterministic local-retrieval fallback.
+App at [http://localhost:3000](http://localhost:3000). With `OPENAI_API_KEY` set (system env or `.env`), assistant runs in live mode; without it, deterministic local-retrieval fallback.
 
 ### Re-audit dependencies
 

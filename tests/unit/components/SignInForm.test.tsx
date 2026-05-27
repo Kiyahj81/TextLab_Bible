@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
-import { render, fireEvent } from "@testing-library/react";
+import { render } from "@testing-library/react";
 import { SignInForm } from "@/components/SignInForm";
 
 describe("SignInForm", () => {

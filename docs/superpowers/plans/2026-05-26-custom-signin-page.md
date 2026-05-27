@@ -1,4 +1,4 @@
-# Custom Sign-In Page Implementation Plan
+# Custom Sign-In Page Implementation Plan -- completed 5/26/2026
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -66,7 +66,7 @@
 ```
 DATABASE_URL="postgresql://postgres:postgres@localhost:5433/textlab_bible?schema=public"
 OPENAI_API_KEY=""
-AUTH_SECRET="UkkT4yrjQwR2TvNSyG41sh+znVxOtn/SV+vrwSMlnFs="
+AUTH_SECRET=""
 ```
 
 Append:

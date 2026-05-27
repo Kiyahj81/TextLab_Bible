@@ -43,7 +43,7 @@ describe("requirePageAuth", () => {
       throw new Error("REDIRECT");
     });
     await expect(requirePageAuth()).rejects.toThrow("REDIRECT");
-    expect(redirectMock).toHaveBeenCalledWith("/api/auth/signin");
+    expect(redirectMock).toHaveBeenCalledWith("/signin");
   });
 
   it("returns userId when authenticated", async () => {

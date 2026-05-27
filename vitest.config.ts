@@ -12,6 +12,15 @@ export default defineConfig({
     include: ["tests/unit/**/*.test.{ts,tsx}"],
     globals: false,
     pool: "threads",
+    server: {
+      deps: {
+        // Force vitest to process next-auth and @auth/core through Vite so
+        // the resolve.alias for "next/server" (which lacks the .js extension in
+        // next-auth/lib/env.js) is applied. Without this, Node ESM can't
+        // resolve the bare "next/server" specifier and throws MODULE_NOT_FOUND.
+        inline: ["next-auth", "@auth/core"]
+      }
+    },
     coverage: {
       provider: "v8",
       reporter: ["text", "html"],
@@ -34,7 +43,11 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      "@": fileURLToPath(new URL("./", import.meta.url))
+      "@": fileURLToPath(new URL("./", import.meta.url)),
+      // next-auth/lib/env.js uses a bare "next/server" import that lacks the
+      // .js extension required by Node ESM. Map it to the concrete file so
+      // vitest resolves it when next-auth is inlined for processing.
+      "next/server": fileURLToPath(new URL("./node_modules/next/server.js", import.meta.url))
     }
   }
 });

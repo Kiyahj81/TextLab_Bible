@@ -62,6 +62,18 @@ describe("answerBibleQuestion orchestration", () => {
     expect(answer.citations.some((c) => c.reference === "Rom 7:2")).toBe(true);
   });
 
+  it("routes to the scholarly model when escalation is requested", async () => {
+    isLiveAssistantEnabled.mockReturnValue(true);
+    synthesizeWithRefinement.mockResolvedValue({ answer: "SCHOLARLY", citations: [], toolTrace: [] });
+
+    const answer = await answerBibleQuestion("deep synthesis please", { escalate: true });
+
+    expect(answer.modelRole).toBe("scholarly");
+    expect(synthesizeWithRefinement).toHaveBeenCalledWith(
+      expect.objectContaining({ routing: expect.objectContaining({ modelRole: "scholarly" }) })
+    );
+  });
+
   it("falls back when live synthesis returns null", async () => {
     isLiveAssistantEnabled.mockReturnValue(true);
     synthesizeWithRefinement.mockResolvedValue(null);

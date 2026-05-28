@@ -38,8 +38,11 @@ export type AssistantAnswer = {
   sessionId?: string;
 };
 
-export async function answerBibleQuestion(prompt: string): Promise<AssistantAnswer> {
-  const routing = routeAssistantPrompt(prompt);
+export async function answerBibleQuestion(
+  prompt: string,
+  options: { escalate?: boolean } = {}
+): Promise<AssistantAnswer> {
+  const routing = routeAssistantPrompt(prompt, options.escalate ?? false);
   const signals = extractSignals(prompt);
   const evidence = await runRetrievalPlan(signals);
 

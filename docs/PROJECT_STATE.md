@@ -142,8 +142,13 @@ Louw-Nida enrichment is in scope since the data already ships in the MACULA TSV.
 reconciliation/gap analysis, and the Docker→Neon hosting plan live in
 **`docs/HiFi-exegesis-nt-roadmap.md`**. The 6 phases:
 
-1. **Orchestration upgrade** — implement Paradigm C (deterministic-first retrieval) per the drafted
-   spec, plus real scholarly escalation (subsumes "Step 3" below).
+1. **Orchestration upgrade** — ✅ **done** (branch `milestone-3/phase-1-orchestration`). Replaced the
+   five-branch dispatch table with the Paradigm C deterministic-first pipeline
+   (`lib/ai/signals.ts`, `lib/ai/retrievalPlanner.ts`, `lib/ai/synthesis.ts`; `assistant.ts` is now
+   pure orchestration). Real scholarly escalation is wired: `routeAssistantPrompt(prompt, escalate)`,
+   a user-confirmed `escalate` flag on `POST /api/assistant`, and a "Use scholarly model" affordance
+   in `AiAssistant`. This subsumes the old "Step 3". Unit/tsc/lint/build/coverage all green; DB
+   integration + Playwright acceptance to be run against a Neon test branch.
 2. **Grounding + Silence Protocol** — post-synthesis citation verification; refuse below a 0.90 match.
 3. **Lexical FTS** — `tsvector` + GIN, ranked keyword search.
 4. **Vector + hybrid retrieval** — pgvector, embeddings, RRF, cross-encoder rerank, V±2 windows (heaviest).
@@ -157,7 +162,12 @@ into Milestone 3 Phase 1.
 
 Listed in roughly the order they make sense to tackle, with rough effort sizing.
 
-### 1. Step 3: Scholarly Mode V1 (M-sized milestone, the natural next vertical slice)
+### 1. Step 3: Scholarly Mode V1 — ✅ done (delivered in Milestone 3 Phase 1)
+
+Implemented on branch `milestone-3/phase-1-orchestration`: `routeAssistantPrompt(prompt, escalate)`
+escalates to `gpt-5.4` only on a user-confirmed `escalate` flag (never automatically); the flag is
+accepted by `POST /api/assistant`, persisted via the existing `AiMessage.metadata.modelRole`, and
+surfaced as a "Use scholarly model" button in `AiAssistant`. Original description retained below.
 
 The current code already returns `recommendedUpgrade` advisory metadata when scholarly cues are detected, but never escalates. Step 3 turns that recommendation into a real user-confirmed escalation path.
 

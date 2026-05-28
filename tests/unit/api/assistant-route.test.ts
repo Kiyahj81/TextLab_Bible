@@ -100,6 +100,23 @@ describe("POST /api/assistant", () => {
     expect(body.sessionId).toBe("sess-1");
   });
 
+  it("passes a user-confirmed escalate flag through to the assistant", async () => {
+    const res = await POST(jsonRequest({ prompt: "deep synthesis", escalate: true }));
+    expect(res.status).toBe(200);
+    expect(assistantMock).toHaveBeenCalledWith("deep synthesis", { escalate: true });
+  });
+
+  it("defaults escalate to false when omitted", async () => {
+    await POST(jsonRequest({ prompt: "What is logos?" }));
+    expect(assistantMock).toHaveBeenCalledWith("What is logos?", { escalate: false });
+  });
+
+  it("rejects a non-boolean escalate with 400", async () => {
+    const res = await POST(jsonRequest({ prompt: "x", escalate: "yes" }));
+    expect(res.status).toBe(400);
+    expect(assistantMock).not.toHaveBeenCalled();
+  });
+
   it("returns 429 with Retry-After after burst exhaustion", async () => {
     // Burst is 10/minute → 11th call within the same minute trips the limit
     for (let i = 0; i < 10; i++) {

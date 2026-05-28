@@ -27,6 +27,14 @@ describe("routeAssistantPrompt", () => {
     expect(decision.modelRole).toBe("default");
     expect(decision.recommendedUpgrade?.modelRole).toBe("scholarly");
   });
+
+  it("escalates to the scholarly model when escalate is requested", () => {
+    const decision = routeAssistantPrompt("Give a scholarly analysis", true);
+    expect(decision.modelRole).toBe("scholarly");
+    expect(decision.modelUsed).toBe("gpt-5.4");
+    // Already escalated — no further upgrade should be advised.
+    expect(decision.recommendedUpgrade).toBeUndefined();
+  });
 });
 
 describe("recommendScholarlyUpgrade", () => {

@@ -131,6 +131,13 @@ data-engineering effort that is largely independent of the app code — and is d
 Scope is locked (above). Phases are ordered so each ships a working improvement on its own. Phases
 1–2 are cheap, high-value, and have drafted specs; Phase 4 is the heavy lift.
 
+**Phase 1 — Orchestration upgrade. ✅ DONE (branch `milestone-3/phase-1-orchestration`).** Implemented
+the deterministic-first pipeline (`lib/ai/signals.ts`, `retrievalPlanner.ts`, `synthesis.ts`;
+`assistant.ts` reduced to orchestration) plus user-confirmed scholarly escalation
+(`routeAssistantPrompt(prompt, escalate)`, `escalate` flag on the API, "Use scholarly model" UI).
+`npm run verify` green (lint + tsc + build + coverage); DB integration + acceptance pending a Neon
+test branch. Original plan below.
+
 **Phase 1 — Orchestration upgrade. Implement Paradigm C, as drafted.** Replace the five-branch
 dispatch table with the deterministic-first pipeline from
 `docs/superpowers/specs/2026-05-27-hybrid-assistant-retrieval-design.md`, and additionally wire

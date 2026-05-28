@@ -37,13 +37,22 @@ export function isLiveAssistantEnabled() {
   return Boolean(process.env.OPENAI_API_KEY?.trim()) && process.env.TEXTLAB_ASSISTANT_DISABLE_LIVE !== "1";
 }
 
-export function routeAssistantPrompt(prompt: string): RoutingDecision {
-  const defaultModel = getModelForRole("default");
+export function routeAssistantPrompt(prompt: string, escalate = false): RoutingDecision {
+  // Escalation is always user-confirmed — the router never selects the scholarly
+  // model on its own; it only advises it via recommendedUpgrade.
+  if (escalate) {
+    return {
+      modelRole: "scholarly",
+      modelUsed: getModelForRole("scholarly"),
+      routingDecision: "Escalated to the scholarly model at the user's request."
+    };
+  }
+
   const recommendedUpgrade = recommendScholarlyUpgrade(prompt);
 
   return {
     modelRole: "default",
-    modelUsed: defaultModel,
+    modelUsed: getModelForRole("default"),
     routingDecision: recommendedUpgrade
       ? "Handled by the default model; scholarly mode is available on user-confirmed escalation."
       : "Handled by the default model for normal retrieval planning and synthesis.",

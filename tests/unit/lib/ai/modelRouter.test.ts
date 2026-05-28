@@ -168,6 +168,25 @@ describe("synthesizeWithDefaultModel via the openai SDK", () => {
 
     expect(result).toBeNull();
   });
+
+  it("synthesis instructions do not tell the model to call tools — retrieval is already done", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "test-key");
+    responsesCreate.mockResolvedValue({ output_text: "ok" });
+
+    const { synthesizeWithDefaultModel } = await import("@/lib/ai/modelRouter");
+    await synthesizeWithDefaultModel({
+      prompt: "What are the different senses in which Paul uses νόμος in Romans 7?",
+      localAnswer: baseLocalAnswer,
+      routing: baseRouting
+    });
+
+    const instructions: string = responsesCreate.mock.calls[0][0].instructions;
+    // The synthesis prompt must never tell the model to call tools.
+    // All retrieval has already been performed before synthesis is invoked;
+    // instructing the model to call tools causes it to write tool-call text
+    // as prose output instead of a real answer.
+    expect(instructions).not.toContain("call the relevant search or passage tool");
+  });
 });
 
 describe("assistant fallback when the SDK call fails", () => {

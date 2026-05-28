@@ -1,6 +1,6 @@
 # TextLab Bible — Project State
 
-*Snapshot: 2026-05-26 (post Phase 3.0 security/testing remediation — Sprints 1–4)*
+*Snapshot: 2026-05-27 (post Phase 3.0 security/testing remediation — Sprints 1–4; synthesis prompt bug fix)*
 
 ## Where the project stands
 
@@ -23,6 +23,12 @@ Surfaced through use after the formal review closed:
 - **PR 14** — Reader: **per-word English highlighting** with per-word color popover, mirroring the Greek-token UX. Schema gained `Highlight.englishWordIndex Int?` (4th Prisma migration); `HighlightPalette` extracted from `HighlightMenu` for reuse by `EnglishWordPopover`.
 - **PR 15** — Removed vestigial verse-level "Highlight verse" button after PR 14 made highlighting fully per-word.
 - **PR 16** — Reader: `ReaderControls` resyncs dropdowns to URL after location restore. Notes: tag filter is now a select (`All tags` / `verse` / `word`), new keyword search input on the filter row, where-clause refactored to AND-of-conditions so keyword + reference + tag compose cleanly.
+
+### Post-Phase-3.0 bug fixes
+
+#### Synthesis prompt bug (2026-05-27)
+
+`lib/ai/modelRouter.ts` `ASSISTANT_INSTRUCTIONS` previously included `aiSystemPrompt` verbatim, which contains the directive *"first call the relevant search or passage tool."* But `synthesizeWithDefaultModel` calls the Responses API with no `tools:` array registered — so the model, receiving an instruction to call tools but no tools to call, wrote tool-call invocations as prose output instead of a real answer. The fix replaces the shared `aiSystemPrompt` in the synthesis context with a purpose-built `SYNTHESIS_SYSTEM_PROMPT` that makes the synthesizer role explicit: retrieval is already done, do not call tools, improve the provided draft. A new test in `tests/unit/lib/ai/modelRouter.test.ts` locks this down. Also fixed: `.claude/**` was not in the ESLint `ignores` list, causing stale worktree build artifacts to be linted.
 
 ### Post-PR 16 import accuracy fixes
 

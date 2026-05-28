@@ -1,0 +1,266 @@
+# Milestone 3 — High-Fidelity NT Exegesis Roadmap
+
+*Status:* Approved 2026-05-28 · *Scope:* NT-Greek subset · *Successor to:* Milestone 2.5 (shipped on `main`)
+
+This is **Milestone 3**: bringing the mechanisms from
+`docs/Technical Architecture for High-Fidelity Biblical Exegesis.md` to the existing NT corpus,
+delivered in **6 phases**. It also reconciles that aspirational architecture against what is built
+today and records the scope and hosting decisions made during planning.
+
+## Context
+
+`docs/Technical Architecture for High-Fidelity Biblical Exegesis.md` is a NotebookLM-sourced
+*aspirational* blueprint (dated 2026-05-27). It describes a dual-layer system: a deterministic
+PostgreSQL "source of truth" (word-level Greek/Hebrew/Aramaic alignment, Strong's, morphology,
+Louw-Nida, speaker metadata, RAG chunks + pgvector) and a TypeScript orchestration layer doing
+hybrid retrieval (FTS + vector + RRF + cross-encoder rerank), semantic model routing, and a
+fact-grounding "Silence Protocol" with post-generation citation verification.
+
+This document reconciles that target against what is actually built (Milestone 2.5, shipped on
+`main`), answers **how far we are from the target architecture**, and defines Milestone 3 to close
+the gap for the NT.
+
+## Scope decision (LOCKED — 2026-05-28)
+
+**Chosen scope: NT-Greek subset.** Pursue the doc's *mechanisms* (hybrid retrieval, grounding,
+semantic routing) on the **existing NT Greek (SBLGNT/MorphGNT) + English (WEB) corpus only**, using
+the MorphGNT and MACULA data already loaded. Goal: get the NT working as intended before any corpus
+expansion.
+
+**Explicitly OUT of scope for now** (deferred, not cancelled):
+- OT Hebrew + Aramaic corpus (OSHB/WLC)
+- Strong's numbers
+- Speaker quotations (Clear-Bible gender/age/divinity/depth)
+- Explicit token↔English word-alignment table
+
+Louw-Nida domains are **IN scope** (decided 2026-05-28): the `domain` and `ln` columns already sit in
+`data/macula-greek/macula-greek-SBLGNT.tsv`, so this is "data we already have." (The same TSV also
+carries a `strong` column — Strong's remains deferred but is trivially available later.)
+
+---
+
+## Verdict: ~25–30% of the way there
+
+The project has a **solid foundation that already embodies the doc's core philosophy** (relational
+DB as source of truth, original-language tokens, retrieval-first assistant, "don't hallucinate
+lexicon" prompting). But the four signature mechanisms that make the target "high-fidelity"
+— **vector/hybrid retrieval, semantic routing that actually escalates, agentic tool-calling, and
+enforced grounding verification** — are **not implemented**. Several data assets in the doc
+(Hebrew/Aramaic, Strong's, Louw-Nida, speakers, alignments) are also absent or NT-Greek-only.
+
+---
+
+## Side-by-side reconciliation
+
+### A. Database / data layer
+
+| Target (doc) | Current state | Gap |
+|---|---|---|
+| PostgreSQL + Prisma | ✅ PostgreSQL + Prisma 6 (`prisma/schema.prisma`) | None — matches |
+| Verse table (BBCCCVVV) | ✅ `Verse` keyed by `(corpusId, bookId, chapter, verse)` | Different ID scheme (composite vs integer coordinate); functionally equivalent |
+| Greek tokens w/ lemma, morph | ✅ `Token` (surface, normalized, lemma, morphCode, partOfSpeech, gloss) | None for Greek |
+| Hebrew + Aramaic tokens | ❌ NT-only (SBLGNT + WEB) | **Major** — no OT at all |
+| Strong's numbers (G/H) | ❌ no column | **Major** — core to doc's concordance queries |
+| Louw-Nida domains | ⚠️ present in MACULA TSV source, **not imported** to DB | Minor — data exists upstream, needs column + import |
+| `word_alignments` table | ❌ implicit only (paired by book/ch/verse in `lib/search.ts`) | **Moderate** — no token↔English-word alignment table |
+| `speaker_quotations` (gender/age/divinity/depth) | ❌ none | **Major** — Clear-Bible data not ingested |
+| `chunks` + `pgvector` embeddings | ❌ no extension, no column, no table | **Major** — entire RAG tier missing |
+| FTS `tsvector` + GIN | ❌ uses `ILIKE` substring | **Moderate** |
+
+### B. Retrieval pipeline
+
+| Target (doc) | Current state | Gap |
+|---|---|---|
+| Hybrid lexical + vector search | ❌ deterministic dispatch table + `ILIKE`/lemma/morph lookups (`lib/search.ts`, `lib/ai/assistant.ts`) | **Major** |
+| Reciprocal Rank Fusion (k=60) | ❌ none | **Major** |
+| Cross-encoder rerank (top-30→top-5) | ❌ none | **Major** |
+| Query expansion (synonyms/lemmas) | ⚠️ only a hardcoded 3-lemma alias branch | **Moderate** |
+| Sentence-window context (V±2) | ❌ none | **Moderate** |
+| Two design specs drafted | ✅ `docs/superpowers/specs/2026-05-27-{hybrid,agentic}-*.md` | These plan the *next* step but stop short of vectors/RRF/rerank |
+
+### C. Model orchestration & routing
+
+| Target (doc) | Current state | Gap |
+|---|---|---|
+| TypeScript orchestration layer | ✅ `lib/ai/assistant.ts` + `lib/ai/modelRouter.ts` | Matches in spirit |
+| OpenAI provider | ✅ `openai@4` SDK, Responses API (`lib/ai/openaiClient.ts`) | Doc shows Vercel AI SDK 6 `ToolLoopAgent`; current is raw OpenAI SDK |
+| Semantic intent routing → model tier | ⚠️ `routeAssistantPrompt` detects "scholarly cues" but only **advises** an upgrade; does not embed/classify or actually escalate to `gpt-5.4` | **Moderate** — keyword heuristic, not vector-prototype routing; escalation unwired (PROJECT_STATE "Step 3") |
+| Tool-calling agent loop | ❌ no tools registered with the model; single-shot synthesis after local retrieval | **Major** (agentic spec drafted, not built) |
+| Stateless <20ms routing | ⚠️ routing is cheap/stateless but keyword-based, not embedding-based | Minor |
+
+### D. Fact-grounding / Silence Protocol
+
+| Target (doc) | Current state | Gap |
+|---|---|---|
+| Structured citations linked to `verse_id`/`token_id` | ⚠️ assistant returns `citations` + `toolTrace` metadata, but not verified against DB | Partial |
+| Post-retrieval fuzzy-match verification | ❌ none | **Major** |
+| Silence Protocol (refuse < threshold) | ❌ none — relies on prompt instructions only (`SYNTHESIS_SYSTEM_PROMPT`) | **Major** |
+| RAGAS faithfulness eval (>0.90) | ❌ none | **Moderate** |
+
+### E. Already-strong areas the doc doesn't emphasize (current project is *ahead* here)
+
+- Auth.js v5 + OAuth, session revocation, CSP/HSTS/same-origin hardening, 10 req/min rate limiting.
+- ~200 unit tests + coverage gate, DB integration tests, Playwright acceptance suite.
+- Reader with per-word English highlighting + morphology popovers; notes; saved searches.
+
+---
+
+## How far away, by capability (rough effort to reach target)
+
+| Capability | Distance | Est. effort |
+|---|---|---|
+| Agentic tool-calling (spec already written) | Closest | ~2–3 days |
+| Real semantic routing + scholarly escalation | Close | ~2–4 days |
+| FTS (`tsvector`/GIN) + keyword ranking | Close | ~1–2 days |
+| Grounding verification + Silence Protocol | Medium | ~3–5 days |
+| pgvector + embeddings + hybrid + RRF + rerank | Far | ~1–2 weeks |
+| Louw-Nida import (data already present) | Small | ~1 day |
+| Strong's numbers (need source + schema) | Medium | ~3–5 days |
+| Speaker quotations (Clear-Bible ingest) | Medium | ~3–5 days |
+| Hebrew + Aramaic OT corpus (OSHB/WLC + alignment) | Far | ~2–4 weeks |
+| RAGAS-style eval harness | Medium | ~2–3 days |
+
+**Net:** the *orchestration/grounding* half of the doc is reachable in roughly 2–4 focused weeks.
+The *data completeness* half (OT, Strong's, speakers, full alignment) is a larger, multi-week
+data-engineering effort that is largely independent of the app code — and is deferred past Milestone 3.
+
+---
+
+## Milestone 3 — the 6 phases (sequenced cheapest-highest-value first)
+
+Scope is locked (above). Phases are ordered so each ships a working improvement on its own. Phases
+1–2 are cheap, high-value, and have drafted specs; Phase 4 is the heavy lift.
+
+**Phase 1 — Orchestration upgrade. Implement Paradigm C, as drafted.** Replace the five-branch
+dispatch table with the deterministic-first pipeline from
+`docs/superpowers/specs/2026-05-27-hybrid-assistant-retrieval-design.md`, and additionally wire
+*real* scholarly escalation (PROJECT_STATE "Step 3") so a confirmed scholarly query actually calls
+`gpt-5.4` instead of only advising it.
+- New files (per the C spec): `lib/ai/{signals,retrievalPlanner,synthesis}.ts` + their unit tests.
+- Modify: `lib/ai/assistant.ts` (delete branches, keep `detectBookFromPrompt`), `lib/ai/modelRouter.ts`.
+- Resolve the C spec's four open questions (§10) during implementation: multi-`getPassage` handling
+  (recommend "execute all in first round"), proper-noun filtering, whether `ENGLISH_TO_GREEK_LEMMA`
+  moves to JSON, and deleting the now-unused `lib/ai/systemPrompt.ts`.
+
+> **How the two specs factor in (important — two different meanings of "hybrid"):**
+> - Paradigms **B** and **C** are competing designs for the *orchestration style* over the
+>   **existing** keyword/lemma/morph search in `lib/search.ts`. Both explicitly list semantic/vector
+>   search as a **non-goal**. "Hybrid" in the C spec's title means "deterministic preprocessor +
+>   model refinement," NOT lexical+vector fusion.
+> - We are **implementing C**, not replacing it with something different. The only deviation: C lists
+>   scholarly escalation as a non-goal, and we add it — so Phase 1 = "C as written" + the escalation
+>   C deferred.
+> - **Paradigm B is deferred, not discarded.** The C spec itself (§12) recommends shipping C first,
+>   then revisiting B once real usage shows where the deterministic detectors miss; C's planner is
+>   designed to become B's pre-retrieval layer with minimal rework.
+> - The **architecture doc's "Hybrid Retrieval Pipeline"** (lexical FTS + pgvector + RRF +
+>   cross-encoder rerank) is a *different, deeper layer* that both specs deliberately excluded. It is
+>   **Phases 3–4 of this roadmap**, and it plugs in *underneath* C's planner: `retrievalPlanner.ts`
+>   gains a hybrid-search call alongside (or replacing) the current keyword/lemma searches. So the
+>   specs and the doc are complementary layers, not alternatives.
+
+**Phase 2 — Grounding + Silence Protocol.** Post-synthesis verifier: extract cited references, fetch
+the real DB verse text, fuzzy-match (Levenshtein/substring ≥0.90), and refuse with a structured
+"insufficient textual evidence" message on failure. New: `lib/ai/grounding.ts`, invoked at the API
+boundary in `app/api/assistant/route.ts`. This is the single biggest fidelity win and uses only the
+NT data we already have.
+
+**Phase 3 — Lexical FTS.** Add a `tsvector` column + GIN index migration on `Verse.text`; replace the
+`ILIKE` substring match in `searchKeyword` (`lib/search.ts`) with ranked full-text search. Lexical
+half of hybrid retrieval; also improves the standalone search UI.
+
+**Phase 4 — Vector + hybrid retrieval (heaviest).** Enable `pgvector`; add a `chunks` table (or
+embedding column) at verse / verse-window granularity; build an embedding ingestion script (likely
+OpenAI embeddings given existing integration, or a multilingual model for Greek); implement RRF
+fusion of FTS + vector results (k=60), then cross-encoder rerank (top-30→top-5) and sentence-window
+(V±2) context assembly. Completes the doc's hybrid pipeline for the NT.
+
+**Phase 5 — Louw-Nida enrichment (IN scope, cheap, parallelizable).** Concrete steps:
+1. `prisma/schema.prisma`: add `louwNida String?` (the `ln` ref, e.g. "37.36") and `domain String?`
+   (semantic-domain label) to `Token`; add an index on `louwNida` for domain queries.
+2. New migration via `prisma migrate dev`.
+3. `scripts/import-open-bible.ts`: in `parseMaculaTsv`, add `col("ln")` / `col("domain")` lookups,
+   extend `ParsedMaculaRow`, and carry the values through the insert/update path (the `updates` array
+   in `importMaculaGreekGlosses` currently carries only `gloss` — extend it).
+4. Re-run `npm run import:macula-glosses`.
+5. Surface in the morphology popover and (optionally) let the assistant route "semantic domain"
+   queries through Phase 1 retrieval signals.
+
+**Phase 6 — Evaluation harness.** RAGAS-style faithfulness (target >0.90) + context-precision checks
+to guard quality and catch grounding regressions as phases land.
+
+**Deferred past Milestone 3:** OT Hebrew/Aramaic, Strong's numbers, speaker quotations, explicit
+word-alignment table.
+
+---
+
+## Database hosting: migrate Docker Postgres → Neon
+
+Goal: stop depending on a local Docker Postgres (`localhost:5433`) for dev/testing by hosting the DB on
+Neon (serverless Postgres). Current setup: `prisma/schema.prisma` datasource uses only
+`url = env("DATABASE_URL")`; `lib/db.ts` uses a plain `PrismaClient` (no driver adapter); Prisma 6.7.
+
+**This is mostly a connection-string + config change — minimal code.** Neon speaks standard Postgres
+over TLS, and Prisma 6 connects with no driver-adapter required for a Next.js Node server.
+
+**Required changes**
+1. **Neon project** → create one, then copy two connection strings from the dashboard:
+   - **Pooled** (host contains `-pooler`, uses PgBouncer) — for the app at runtime.
+   - **Direct** (no `-pooler`) — for migrations.
+   Both need `?sslmode=require`.
+2. **`prisma/schema.prisma`** — add a direct URL so migrations bypass the pooler:
+   ```prisma
+   datasource db {
+     provider  = "postgresql"
+     url       = env("DATABASE_URL")     // pooled (runtime)
+     directUrl = env("DIRECT_URL")       // direct (migrations)
+   }
+   ```
+3. **`.env` / `.env.example`** — set `DATABASE_URL` to the pooled string and add `DIRECT_URL` for the
+   direct string. Keep the old Docker URL commented for offline fallback.
+4. **Run migrations against Neon:** `prisma migrate deploy` (apply existing migrations) — `prisma
+   migrate dev` also works via `directUrl` (needs a role with createdb for the shadow DB).
+5. **Seed / import:** `npm run db:seed` and `npm run import:open-bible` / `import:macula-glosses`
+   already read `DATABASE_URL`, so they'll target Neon automatically. Full-NT import over the network
+   is slower than localhost but fine.
+
+**No change needed** to `lib/db.ts` for a Node-runtime Next.js server.
+
+**Notable considerations / caveats**
+- **pgvector works on Neon** (`CREATE EXTENSION vector`), so Phase 4 stays compatible — good.
+- **Integration tests** (`test:integration`, `test:acceptance`) run real, destructive Prisma writes
+  against `DATABASE_URL`. **Decision (2026-05-28): use a Neon branch** as an ephemeral, isolated test
+  DB — no Docker at all. Tests will point at a dedicated Neon branch's connection string (e.g. via a
+  separate `.env.test` / CI secret), keeping the main branch's data clean.
+- **Driver adapter (`@prisma/adapter-neon` + `@neondatabase/serverless`)** is **only** needed for
+  edge/serverless-function runtimes wanting WebSocket pooling. Not required now; revisit only if the
+  app is later deployed to an edge runtime.
+- **Connection limits:** always use the pooled URL at runtime so Next.js serverless invocations don't
+  exhaust Neon connections.
+- `AUTH_*`, `OPENAI_*` env vars are unaffected.
+
+---
+
+## Verification (for any phase actually executed)
+
+- `npm test` (unit) + coverage gate must stay green (80/80/75/65; branch floor 65%).
+- DB integration tests (`tests/integration/`) and Playwright acceptance suite pass.
+- Manual: run app, ask the assistant a word-study, a passage, and a deliberately unsupported
+  question — confirm citations resolve to real DB verses and (Phase 2+) unsupported claims trigger
+  refusal rather than fabrication.
+- Update `docs/PROJECT_STATE.md`, `ReadMe.md`, and `docs/security-register.md` per CLAUDE.md after
+  any major change.
+
+---
+
+## Key files referenced
+
+- Data: `prisma/schema.prisma`, `prisma/seed.ts`, `scripts/import-open-bible.ts`,
+  `data/macula-greek/macula-greek-SBLGNT.tsv`, `data/web-usfm/`
+- Retrieval: `lib/search.ts`, `lib/search-highlight.ts`
+- Assistant: `lib/ai/assistant.ts`, `lib/ai/modelRouter.ts`, `lib/ai/openaiClient.ts`,
+  `lib/ai/systemPrompt.ts` (vestigial), `app/api/assistant/route.ts`
+- Specs (orchestration designs): `docs/superpowers/specs/2026-05-27-hybrid-assistant-retrieval-design.md`,
+  `docs/superpowers/specs/2026-05-27-agentic-assistant-tool-calling-design.md`
+- Source architecture: `docs/Technical Architecture for High-Fidelity Biblical Exegesis.md`
+- Status: `docs/PROJECT_STATE.md`

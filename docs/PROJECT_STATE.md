@@ -133,6 +133,26 @@ The lines/statements/functions thresholds are at 80/80/75 with comfortable headr
 
 - No developer onboarding doc for the dispatch table — a new contributor adding a sixth branch has to read the existing four to learn the pattern.
 
+## Milestone 3 — High-Fidelity NT Exegesis (approved 2026-05-28)
+
+The next major arc is **Milestone 3**, which brings the mechanisms from
+`docs/Technical Architecture for High-Fidelity Biblical Exegesis.md` to the existing NT corpus.
+Scope is locked to an **NT-Greek subset** (no OT Hebrew/Aramaic, Strong's, or speaker data yet);
+Louw-Nida enrichment is in scope since the data already ships in the MACULA TSV. Full roadmap,
+reconciliation/gap analysis, and the Docker→Neon hosting plan live in
+**`docs/HiFi-exegesis-nt-roadmap.md`**. The 6 phases:
+
+1. **Orchestration upgrade** — implement Paradigm C (deterministic-first retrieval) per the drafted
+   spec, plus real scholarly escalation (subsumes "Step 3" below).
+2. **Grounding + Silence Protocol** — post-synthesis citation verification; refuse below a 0.90 match.
+3. **Lexical FTS** — `tsvector` + GIN, ranked keyword search.
+4. **Vector + hybrid retrieval** — pgvector, embeddings, RRF, cross-encoder rerank, V±2 windows (heaviest).
+5. **Louw-Nida enrichment** — import the `domain`/`ln` columns already in the MACULA TSV.
+6. **Evaluation harness** — RAGAS-style faithfulness/context-precision gates.
+
+The "Logical next steps" below remain valid as smaller increments; Step 3 in particular is absorbed
+into Milestone 3 Phase 1.
+
 ## Logical next steps
 
 Listed in roughly the order they make sense to tackle, with rough effort sizing.

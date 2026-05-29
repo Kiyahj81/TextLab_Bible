@@ -4,7 +4,7 @@ import { AuthError } from "next-auth";
 const { signInMock } = vi.hoisted(() => ({ signInMock: vi.fn() }));
 vi.mock("@/auth", () => ({ signIn: signInMock }));
 
-import { devSignIn } from "@/app/signin/actions";
+import { devSignIn, githubSignIn } from "@/app/signin/actions";
 
 function makeAuthError(type: string): Error {
   const err = Object.create(AuthError.prototype) as Error & { type: string };
@@ -14,7 +14,9 @@ function makeAuthError(type: string): Error {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  // mockReset (not just clearAllMocks) so a rejected value set in one test does
+  // not leak its implementation into the next.
+  signInMock.mockReset();
 });
 
 describe("devSignIn", () => {
@@ -48,5 +50,22 @@ describe("devSignIn", () => {
     const result = await devSignIn(null, fd);
     expect(result).toBe("Email is required.");
     expect(signInMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("githubSignIn", () => {
+  it("passes a valid internal callbackUrl through as redirectTo", async () => {
+    await githubSignIn("/notes");
+    expect(signInMock).toHaveBeenCalledWith("github", { redirectTo: "/notes" });
+  });
+
+  it("rejects an external/backslash callbackUrl before calling signIn", async () => {
+    await githubSignIn("/\\evil.example.com");
+    expect(signInMock).toHaveBeenCalledWith("github", { redirectTo: "/read" });
+  });
+
+  it("falls back to /read when no callbackUrl is provided", async () => {
+    await githubSignIn();
+    expect(signInMock).toHaveBeenCalledWith("github", { redirectTo: "/read" });
   });
 });

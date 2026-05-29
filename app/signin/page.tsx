@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { SignInForm } from "@/components/SignInForm";
+import { safeInternalPath } from "@/lib/http/safe-redirect";
 import { devSignIn, githubSignIn } from "./actions";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -19,12 +20,6 @@ function firstParam(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 
-function safeCallback(raw: string | undefined): string {
-  if (!raw) return "/read";
-  if (!raw.startsWith("/") || raw.startsWith("//")) return "/read";
-  return raw;
-}
-
 export default async function SignInPage({ searchParams }: { searchParams: SearchParams }) {
   // Already signed in? Skip the page.
   const session = await auth();
@@ -33,7 +28,7 @@ export default async function SignInPage({ searchParams }: { searchParams: Searc
   }
 
   const params = await searchParams;
-  const callbackUrl = safeCallback(firstParam(params.callbackUrl));
+  const callbackUrl = safeInternalPath(firstParam(params.callbackUrl));
   const errorCode = firstParam(params.error);
   const initialError = errorCode ? ERROR_MESSAGES[errorCode] ?? ERROR_MESSAGES.default : null;
 
@@ -65,6 +60,17 @@ export default async function SignInPage({ searchParams }: { searchParams: Searc
           </p>
         ) : null}
 
+        {/* Surface OAuth ?error= codes (e.g. OAuthAccountNotLinked) here so they
+            show in GitHub-only deployments, not just the dev-credentials form. */}
+        {initialError ? (
+          <p
+            role="alert"
+            className="mt-6 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
+          >
+            {initialError}
+          </p>
+        ) : null}
+
         {githubEnabled ? (
           <form
             action={async () => {
@@ -92,7 +98,7 @@ export default async function SignInPage({ searchParams }: { searchParams: Searc
 
         {devEnabled ? (
           <div className={githubEnabled ? "" : "mt-6"}>
-            <SignInForm action={devSignIn} callbackUrl={callbackUrl} initialError={initialError} />
+            <SignInForm action={devSignIn} callbackUrl={callbackUrl} />
             <p className="mt-3 text-xs text-slate-500">
               Dev login is enabled. Any email signs in and creates/looks up its user
               record. Never enable this in production.

@@ -277,11 +277,8 @@ export function buildRefusalAnswer(
     "",
     `TextLab drafted an answer to "${prompt.trim()}" but could not verify its citations against the SBLGNT, so it withheld the response rather than risk an unsupported claim.`,
     "",
-    failed.length ? `Unverified claims:\n${reasons}` : "",
-    "",
+    ...(failed.length ? [`Unverified claims:\n${reasons}`, ""] : []),
     "Verified evidence retrieved for your query:",
     evidence.formattedEvidence
-  ]
-    .filter((line) => line !== "")
-    .join("\n");
+  ].join("\n");
 }

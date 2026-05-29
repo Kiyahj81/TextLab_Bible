@@ -26,12 +26,16 @@ export type GroundingReport = {
 
 type ParsedReference = NonNullable<ReturnType<typeof parseReference>>;
 
+function cacheKey(corpus: "SBLGNT" | "WEB", ref: ParsedReference): string {
+  return `${corpus}|${ref.book}|${ref.chapter}|${ref.verse}|${ref.verseEnd ?? ""}`;
+}
+
 async function resolveText(
   cache: Map<string, string | null>,
   corpus: "SBLGNT" | "WEB",
   ref: ParsedReference
 ): Promise<string | null> {
-  const key = `${corpus}|${ref.book}|${ref.chapter}|${ref.verse}|${ref.verseEnd ?? ""}`;
+  const key = cacheKey(corpus, ref);
   if (cache.has(key)) return cache.get(key) ?? null;
 
   const res = await getPassage({
@@ -48,19 +52,34 @@ async function resolveText(
 
 export async function verifyGrounding(claims: GroundingClaim[]): Promise<GroundingReport> {
   const cache = new Map<string, string | null>();
-  const verdicts: ClaimVerdict[] = [];
 
-  for (const claim of claims) {
-    const parsed = parseReference(claim.reference);
+  // Parse once, then resolve every distinct verse lookup in parallel so a
+  // multi-claim response costs a single DB round-trip instead of N serial ones.
+  // SBLGNT is always needed (the citation spine); WEB only for claims that carry
+  // an English display aid.
+  const parsedClaims = claims.map((claim) => parseReference(claim.reference));
+  const lookups = new Map<string, { corpus: "SBLGNT" | "WEB"; ref: ParsedReference }>();
+  claims.forEach((claim, index) => {
+    const ref = parsedClaims[index];
+    if (!ref) return;
+    lookups.set(cacheKey("SBLGNT", ref), { corpus: "SBLGNT", ref });
+    if (claim.englishQuote) lookups.set(cacheKey("WEB", ref), { corpus: "WEB", ref });
+  });
+  await Promise.all([...lookups.values()].map((lookup) => resolveText(cache, lookup.corpus, lookup.ref)));
+
+  // Evaluate verdicts against the warm cache (no further DB awaits).
+  const verdicts: ClaimVerdict[] = [];
+  claims.forEach((claim, index) => {
+    const parsed = parsedClaims[index];
     if (!parsed) {
       verdicts.push({ claim, status: "reference-not-found" });
-      continue;
+      return;
     }
 
-    const sblText = await resolveText(cache, "SBLGNT", parsed);
+    const sblText = cache.get(cacheKey("SBLGNT", parsed)) ?? null;
     if (sblText === null) {
       verdicts.push({ claim, status: "reference-not-found" });
-      continue;
+      return;
     }
 
     const verdict: ClaimVerdict = { claim, status: "verified", resolvedText: sblText };
@@ -69,13 +88,13 @@ export async function verifyGrounding(claims: GroundingClaim[]): Promise<Groundi
       const score = containmentScore(normalizeGreek(claim.greekQuote), normalizeGreek(sblText));
       if (score < QUOTE_MATCH_THRESHOLD) {
         verdicts.push({ claim, status: "quote-mismatch", matchScore: score, resolvedText: sblText });
-        continue;
+        return;
       }
       verdict.matchScore = score;
     }
 
     if (claim.englishQuote) {
-      const webText = await resolveText(cache, "WEB", parsed);
+      const webText = cache.get(cacheKey("WEB", parsed)) ?? null;
       if (webText === null) {
         verdict.alignmentCaveat =
           "WEB has no verse at this reference; the English display aid was withheld.";
@@ -89,7 +108,7 @@ export async function verifyGrounding(claims: GroundingClaim[]): Promise<Groundi
     }
 
     verdicts.push(verdict);
-  }
+  });
 
   return { grounded: verdicts.every((v) => v.status === "verified"), verdicts };
 }

@@ -67,11 +67,11 @@ export async function verifyGrounding(claims: GroundingClaim[]): Promise<Groundi
 
     if (claim.greekQuote) {
       const score = containmentScore(normalizeGreek(claim.greekQuote), normalizeGreek(sblText));
-      verdict.matchScore = score;
       if (score < QUOTE_MATCH_THRESHOLD) {
         verdicts.push({ claim, status: "quote-mismatch", matchScore: score, resolvedText: sblText });
         continue;
       }
+      verdict.matchScore = score;
     }
 
     if (claim.englishQuote) {

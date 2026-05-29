@@ -44,7 +44,7 @@ afterEach(() => {
 describe("synthesizeWithRefinement", () => {
   it("returns the model answer directly when no tool calls are emitted", async () => {
     vi.stubEnv("OPENAI_API_KEY", "key");
-    responsesCreate.mockResolvedValue({ output: [], output_text: "Final answer" });
+    responsesCreate.mockResolvedValue({ output: [], output_text: JSON.stringify({ answer: "Final answer", claims: [] }) });
 
     const { synthesizeWithRefinement } = await import("@/lib/ai/synthesis");
     const result = await synthesizeWithRefinement({ prompt: "What does νόμος mean?", evidence, routing });
@@ -72,7 +72,7 @@ describe("synthesizeWithRefinement", () => {
         ],
         output_text: ""
       })
-      .mockResolvedValueOnce({ output: [], output_text: "Refined answer" });
+      .mockResolvedValueOnce({ output: [], output_text: JSON.stringify({ answer: "Refined answer", claims: [] }) });
     getPassage.mockResolvedValue({
       corpus: "SBLGNT",
       references: [{ book: "Rom", chapter: 7, verse: 2, reference: "Rom 7:2", text: "οἴδαμεν γὰρ" }]
@@ -109,7 +109,7 @@ describe("synthesizeWithRefinement", () => {
         ],
         output_text: ""
       })
-      .mockResolvedValueOnce({ output: [], output_text: "Refined answer" });
+      .mockResolvedValueOnce({ output: [], output_text: JSON.stringify({ answer: "Refined answer", claims: [] }) });
     getPassage.mockResolvedValue({
       corpus: "SBLGNT",
       references: [{ book: "Rom", chapter: 7, verse: 2, reference: "Rom 7:2", text: "x" }]
@@ -124,7 +124,7 @@ describe("synthesizeWithRefinement", () => {
 
   it("registers verseEnd as required + nullable so the strict tool schema is valid", async () => {
     vi.stubEnv("OPENAI_API_KEY", "key");
-    responsesCreate.mockResolvedValue({ output: [], output_text: "ok" });
+    responsesCreate.mockResolvedValue({ output: [], output_text: JSON.stringify({ answer: "ok", claims: [] }) });
 
     const { synthesizeWithRefinement } = await import("@/lib/ai/synthesis");
     await synthesizeWithRefinement({ prompt: "x", evidence, routing });
@@ -152,7 +152,7 @@ describe("synthesizeWithRefinement", () => {
         ],
         output_text: ""
       })
-      .mockResolvedValueOnce({ output: [], output_text: "done" });
+      .mockResolvedValueOnce({ output: [], output_text: JSON.stringify({ answer: "done", claims: [] }) });
     getPassage.mockResolvedValue({
       corpus: "SBLGNT",
       references: [{ book: "Rom", chapter: 7, verse: 2, reference: "Rom 7:2", text: "x" }]
@@ -178,7 +178,7 @@ describe("synthesizeWithRefinement", () => {
         ],
         output_text: ""
       })
-      .mockResolvedValueOnce({ output: [], output_text: "Refined despite DB error" });
+      .mockResolvedValueOnce({ output: [], output_text: JSON.stringify({ answer: "Refined despite DB error", claims: [] }) });
     getPassage.mockRejectedValue(new Error("db connection lost"));
 
     const { synthesizeWithRefinement } = await import("@/lib/ai/synthesis");
@@ -211,7 +211,7 @@ describe("synthesizeWithRefinement", () => {
 
   it("caps the citations included in the model payload at 20 entries", async () => {
     vi.stubEnv("OPENAI_API_KEY", "key");
-    responsesCreate.mockResolvedValue({ output: [], output_text: "ok" });
+    responsesCreate.mockResolvedValue({ output: [], output_text: JSON.stringify({ answer: "ok", claims: [] }) });
 
     const manyCitations = Array.from({ length: 50 }, (_, idx) => ({
       reference: `Rom ${idx + 1}:1`,
@@ -237,6 +237,48 @@ describe("synthesizeWithRefinement", () => {
     const { SYNTHESIS_SYSTEM_PROMPT } = await import("@/lib/ai/synthesis");
     expect(SYNTHESIS_SYSTEM_PROMPT).not.toContain("call the relevant search or passage tool");
   });
+
+  it("parses structured output into answer + claims", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "key");
+    responsesCreate.mockResolvedValue({
+      output: [],
+      output_text: JSON.stringify({
+        answer: "The Word was with God.",
+        claims: [{ reference: "John 1:1", greekQuote: "ἐν ἀρχῇ", gloss: "in beginning", englishQuote: null }]
+      })
+    });
+
+    const { synthesizeWithRefinement } = await import("@/lib/ai/synthesis");
+    const result = await synthesizeWithRefinement({ prompt: "John 1", evidence, routing });
+
+    expect(result?.answer).toBe("The Word was with God.");
+    expect(result?.claims).toEqual([
+      { reference: "John 1:1", greekQuote: "ἐν ἀρχῇ", gloss: "in beginning", englishQuote: null }
+    ]);
+  });
+
+  it("returns null when the structured output is not valid JSON", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "key");
+    responsesCreate.mockResolvedValue({ output: [], output_text: "not json at all" });
+
+    const { synthesizeWithRefinement } = await import("@/lib/ai/synthesis");
+    const result = await synthesizeWithRefinement({ prompt: "x", evidence, routing });
+
+    expect(result).toBeNull();
+  });
+
+  it("requests a strict json_schema output format on the synthesis call", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "key");
+    responsesCreate.mockResolvedValue({ output: [], output_text: JSON.stringify({ answer: "ok", claims: [] }) });
+
+    const { synthesizeWithRefinement } = await import("@/lib/ai/synthesis");
+    await synthesizeWithRefinement({ prompt: "x", evidence, routing });
+
+    const format = responsesCreate.mock.calls[0][0].text.format;
+    expect(format.type).toBe("json_schema");
+    expect(format.strict).toBe(true);
+    expect(format.schema.properties.claims.type).toBe("array");
+  });
 });
 
 describe("buildDeterministicFallback", () => {
@@ -259,5 +301,25 @@ describe("buildDeterministicFallback", () => {
     });
 
     expect(text).toContain("No retrieval signals produced evidence from the corpus.");
+  });
+});
+
+describe("buildRefusalAnswer", () => {
+  it("renders an insufficient-evidence message with failed claims and the real evidence", async () => {
+    const { buildRefusalAnswer } = await import("@/lib/ai/synthesis");
+    const report = {
+      grounded: false,
+      verdicts: [
+        {
+          claim: { reference: "John 99:99", greekQuote: "x", gloss: null, englishQuote: null },
+          status: "reference-not-found" as const
+        }
+      ]
+    };
+    const text = buildRefusalAnswer("what about John 99?", evidence, report);
+
+    expect(text).toContain("Insufficient textual evidence");
+    expect(text).toContain("John 99:99");
+    expect(text).toContain(evidence.formattedEvidence);
   });
 });

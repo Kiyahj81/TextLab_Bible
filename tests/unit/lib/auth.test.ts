@@ -2,14 +2,17 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const { authMock } = vi.hoisted(() => ({ authMock: vi.fn() }));
 const { redirectMock } = vi.hoisted(() => ({ redirectMock: vi.fn() }));
+const { headersMock } = vi.hoisted(() => ({ headersMock: vi.fn() }));
 
 vi.mock("@/auth", () => ({ auth: authMock }));
 vi.mock("next/navigation", () => ({ redirect: redirectMock }));
+vi.mock("next/headers", () => ({ headers: headersMock }));
 
 import { getOptionalUserId, requireAuth, requirePageAuth } from "@/lib/auth";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  headersMock.mockResolvedValue(new Headers());
 });
 
 describe("requireAuth", () => {
@@ -37,13 +40,25 @@ describe("requireAuth", () => {
 });
 
 describe("requirePageAuth", () => {
-  it("redirects when no session", async () => {
+  it("redirects to plain /signin when no session and no path header", async () => {
     authMock.mockResolvedValue(null);
     redirectMock.mockImplementation(() => {
       throw new Error("REDIRECT");
     });
     await expect(requirePageAuth()).rejects.toThrow("REDIRECT");
     expect(redirectMock).toHaveBeenCalledWith("/signin");
+  });
+
+  it("redirects with a callbackUrl when the requested path is known", async () => {
+    authMock.mockResolvedValue(null);
+    headersMock.mockResolvedValue(new Headers({ "x-pathname": "/notes?tag=verse" }));
+    redirectMock.mockImplementation(() => {
+      throw new Error("REDIRECT");
+    });
+    await expect(requirePageAuth()).rejects.toThrow("REDIRECT");
+    expect(redirectMock).toHaveBeenCalledWith(
+      `/signin?callbackUrl=${encodeURIComponent("/notes?tag=verse")}`
+    );
   });
 
   it("returns userId when authenticated", async () => {

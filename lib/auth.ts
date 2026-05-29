@@ -1,3 +1,4 @@
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
@@ -24,7 +25,10 @@ export async function requirePageAuth(): Promise<string> {
   const session = await auth();
   const userId = session?.user?.id;
   if (!userId) {
-    redirect("/signin");
+    // middleware.ts injects x-pathname so we can return the user to the page
+    // they requested after sign-in. safeInternalPath re-validates it there.
+    const path = (await headers()).get("x-pathname");
+    redirect(path && path !== "/" ? `/signin?callbackUrl=${encodeURIComponent(path)}` : "/signin");
   }
   return userId;
 }

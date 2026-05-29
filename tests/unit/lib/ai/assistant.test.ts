@@ -4,12 +4,21 @@ import type { EvidencePacket } from "@/lib/ai/retrievalPlanner";
 const { runRetrievalPlan } = vi.hoisted(() => ({ runRetrievalPlan: vi.fn() }));
 vi.mock("@/lib/ai/retrievalPlanner", () => ({ runRetrievalPlan }));
 
-const { synthesizeWithRefinement, buildDeterministicFallback, buildRefusalAnswer } = vi.hoisted(() => ({
+const { synthesizeWithRefinement, buildDeterministicFallback, buildRefusalAnswer, appendAlignmentNotes } = vi.hoisted(() => ({
   synthesizeWithRefinement: vi.fn(),
   buildDeterministicFallback: vi.fn(() => "FALLBACK_ANSWER"),
-  buildRefusalAnswer: vi.fn(() => "REFUSAL_ANSWER")
+  buildRefusalAnswer: vi.fn(() => "REFUSAL_ANSWER"),
+  // Fake that appends a marker only when a caveat is present, so the wiring is testable.
+  appendAlignmentNotes: vi.fn((answer: string, report: { verdicts: Array<{ alignmentCaveat?: string }> }) =>
+    report.verdicts.some((v) => v.alignmentCaveat) ? `${answer}\n[ALIGN]` : answer
+  )
 }));
-vi.mock("@/lib/ai/synthesis", () => ({ synthesizeWithRefinement, buildDeterministicFallback, buildRefusalAnswer }));
+vi.mock("@/lib/ai/synthesis", () => ({
+  synthesizeWithRefinement,
+  buildDeterministicFallback,
+  buildRefusalAnswer,
+  appendAlignmentNotes
+}));
 
 const { verifyGrounding } = vi.hoisted(() => ({ verifyGrounding: vi.fn() }));
 vi.mock("@/lib/ai/grounding", () => ({ verifyGrounding }));
@@ -143,6 +152,27 @@ describe("answerBibleQuestion orchestration", () => {
 
     expect(answer.grounded).toBe(true);
     expect(answer.answer).toBe("GOOD ANSWER");
+  });
+
+  it("surfaces WEB alignment caveats on a grounded answer", async () => {
+    isLiveAssistantEnabled.mockReturnValue(true);
+    const claim = { reference: "1 John 2:23", greekQuote: "x", gloss: null, englishQuote: "y" };
+    synthesizeWithRefinement.mockResolvedValue({
+      answer: "GOOD ANSWER",
+      claims: [claim],
+      citations: packet.citations,
+      toolTrace: []
+    });
+    verifyGrounding.mockResolvedValue({
+      grounded: true,
+      verdicts: [{ claim, status: "verified", alignmentCaveat: "WEB has no verse at this reference; the English display aid was withheld." }]
+    });
+
+    const answer = await answerBibleQuestion("1 John 2:23");
+
+    expect(answer.grounded).toBe(true);
+    expect(appendAlignmentNotes).toHaveBeenCalledWith("GOOD ANSWER", expect.objectContaining({ grounded: true }));
+    expect(answer.answer).toContain("[ALIGN]");
   });
 
   it("falls back deterministically when verification throws (infra failure)", async () => {

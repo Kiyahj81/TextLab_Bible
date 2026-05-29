@@ -321,5 +321,43 @@ describe("buildRefusalAnswer", () => {
     expect(text).toContain("Insufficient textual evidence");
     expect(text).toContain("John 99:99");
     expect(text).toContain(evidence.formattedEvidence);
+    // Paragraph breaks (blank lines) must survive — the message is rendered in a <pre>.
+    expect(text).toContain("\n\n");
+  });
+});
+
+describe("appendAlignmentNotes", () => {
+  it("returns the answer unchanged when no verdict carries a caveat", async () => {
+    const { appendAlignmentNotes } = await import("@/lib/ai/synthesis");
+    const report = {
+      grounded: true,
+      verdicts: [
+        {
+          claim: { reference: "John 1:1", greekQuote: "x", gloss: null, englishQuote: null },
+          status: "verified" as const
+        }
+      ]
+    };
+    expect(appendAlignmentNotes("ANSWER", report)).toBe("ANSWER");
+  });
+
+  it("appends a translation alignment note when a WEB aid was caveated", async () => {
+    const { appendAlignmentNotes } = await import("@/lib/ai/synthesis");
+    const report = {
+      grounded: true,
+      verdicts: [
+        {
+          claim: { reference: "1 John 2:23", greekQuote: "x", gloss: null, englishQuote: "y" },
+          status: "verified" as const,
+          alignmentCaveat:
+            "The WEB display translation does not align with the SBLGNT evidence here; the English aid was withheld."
+        }
+      ]
+    };
+    const text = appendAlignmentNotes("ANSWER", report);
+
+    expect(text).toContain("ANSWER");
+    expect(text).toContain("Translation alignment note:");
+    expect(text).toContain("1 John 2:23");
   });
 });

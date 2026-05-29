@@ -9,7 +9,12 @@ import {
 } from "@/lib/ai/modelRouter";
 import { detectBookFromPrompt, extractSignals } from "@/lib/ai/signals";
 import { type EvidencePacket, runRetrievalPlan } from "@/lib/ai/retrievalPlanner";
-import { buildDeterministicFallback, buildRefusalAnswer, synthesizeWithRefinement } from "@/lib/ai/synthesis";
+import {
+  appendAlignmentNotes,
+  buildDeterministicFallback,
+  buildRefusalAnswer,
+  synthesizeWithRefinement
+} from "@/lib/ai/synthesis";
 import { verifyGrounding, type GroundingReport } from "@/lib/ai/grounding";
 import { type ToolTraceEntry } from "@/lib/ai/toolTrace";
 
@@ -96,7 +101,7 @@ export async function answerBibleQuestion(
 
     return withMarkdown({
       title: "TextLab Assistant",
-      answer: result.answer,
+      answer: appendAlignmentNotes(result.answer, report),
       citations: result.citations,
       toolTrace: [
         ...result.toolTrace,

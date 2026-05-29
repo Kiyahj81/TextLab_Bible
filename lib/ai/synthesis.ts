@@ -282,3 +282,13 @@ export function buildRefusalAnswer(
     evidence.formattedEvidence
   ].join("\n");
 }
+
+// On a grounded answer, WEB display aids that failed alignment are non-fatal but
+// must not be shown to the reader without warning. Append the recorded alignment
+// caveats so the user knows the English display text may not match the cited Greek.
+export function appendAlignmentNotes(answer: string, report: GroundingReport): string {
+  const caveats = report.verdicts.filter((v) => v.alignmentCaveat);
+  if (caveats.length === 0) return answer;
+  const lines = caveats.map((v) => `- ${v.claim.reference}: ${v.alignmentCaveat}`).join("\n");
+  return `${answer}\n\n---\nTranslation alignment note:\n${lines}`;
+}

@@ -47,6 +47,23 @@ export function bookName(osisId: string) {
   return ntBooks.find((book) => book.osisId === osisId)?.name ?? osisId;
 }
 
+export function parseReference(
+  input?: string | null
+): { book: string; chapter: number; verse: number; verseEnd?: number } | null {
+  if (!input) return null;
+  const match = input.trim().match(/^(.+?)\s+(\d+):(\d+)(?:-(\d+))?$/);
+  if (!match) return null;
+
+  const book = normalizeBook(match[1]);
+  if (!book) return null;
+
+  const chapter = Number.parseInt(match[2], 10);
+  const verse = Number.parseInt(match[3], 10);
+  const verseEnd = match[4] ? Number.parseInt(match[4], 10) : undefined;
+
+  return { book, chapter, verse, ...(verseEnd !== undefined ? { verseEnd } : {}) };
+}
+
 export function parseTags(input: string) {
   return input
     .split(",")

@@ -4,6 +4,8 @@ import type { AssistantAnswer } from "@/lib/ai/assistant";
 
 export type AssistantMessageMetadata = {
   mode: AssistantAnswer["mode"];
+  grounded: AssistantAnswer["grounded"];
+  groundingReport?: AssistantAnswer["groundingReport"];
   modelRole: AssistantAnswer["modelRole"];
   modelUsed: AssistantAnswer["modelUsed"];
   routingDecision: AssistantAnswer["routingDecision"];
@@ -48,6 +50,8 @@ export async function finishAssistantExchange(input: {
 }): Promise<void> {
   const metadata: AssistantMessageMetadata = {
     mode: input.answer.mode,
+    grounded: input.answer.grounded,
+    groundingReport: input.answer.groundingReport,
     modelRole: input.answer.modelRole,
     modelUsed: input.answer.modelUsed,
     routingDecision: input.answer.routingDecision,

@@ -9,7 +9,13 @@ import {
 } from "@/lib/ai/modelRouter";
 import { detectBookFromPrompt, extractSignals } from "@/lib/ai/signals";
 import { type EvidencePacket, runRetrievalPlan } from "@/lib/ai/retrievalPlanner";
-import { buildDeterministicFallback, synthesizeWithRefinement } from "@/lib/ai/synthesis";
+import {
+  appendAlignmentNotes,
+  buildDeterministicFallback,
+  buildRefusalAnswer,
+  synthesizeWithRefinement
+} from "@/lib/ai/synthesis";
+import { verifyGrounding, type GroundingReport } from "@/lib/ai/grounding";
 import { type ToolTraceEntry } from "@/lib/ai/toolTrace";
 
 export { detectBookFromPrompt };
@@ -31,6 +37,8 @@ export type AssistantAnswer = {
   markdown: string;
   toolTrace: ToolTraceEntry[];
   mode: AssistantMode;
+  grounded: boolean;
+  groundingReport?: GroundingReport;
   modelRole: ModelRole;
   modelUsed: string;
   routingDecision: string;
@@ -56,15 +64,53 @@ export async function answerBibleQuestion(
       return fallbackAnswer(prompt, evidence, routing);
     }
 
+    let report: GroundingReport;
+    try {
+      report = await verifyGrounding(result.claims);
+    } catch (verifyError) {
+      const message = verifyError instanceof Error ? verifyError.message : "Unknown error";
+      return withMarkdown({
+        title: "TextLab Assistant",
+        answer: buildDeterministicFallback(prompt, evidence),
+        citations: evidence.citations,
+        toolTrace: [...result.toolTrace, { tool: "grounding", error: message }],
+        mode: "fallback",
+        grounded: true,
+        ...routing,
+        routingDecision: `${routing.routingDecision} Grounding verification could not run, so TextLab returned the local retrieval fallback.`
+      });
+    }
+
+    if (!report.grounded) {
+      const failed = report.verdicts.filter((v) => v.status !== "verified").length;
+      return withMarkdown({
+        title: "TextLab Assistant",
+        answer: buildRefusalAnswer(prompt, evidence, report),
+        citations: evidence.citations,
+        toolTrace: [
+          ...result.toolTrace,
+          { tool: "grounding", args: { grounded: false, failedClaims: failed } },
+          { tool: "modelRouter", args: { role: routing.modelRole, model: routing.modelUsed } }
+        ],
+        mode: "live",
+        grounded: false,
+        groundingReport: report,
+        ...routing
+      });
+    }
+
     return withMarkdown({
       title: "TextLab Assistant",
-      answer: result.answer,
+      answer: appendAlignmentNotes(result.answer, report),
       citations: result.citations,
       toolTrace: [
         ...result.toolTrace,
+        { tool: "grounding", args: { grounded: true } },
         { tool: "modelRouter", args: { role: routing.modelRole, model: routing.modelUsed } }
       ],
       mode: "live",
+      grounded: true,
+      groundingReport: report,
       ...routing
     });
   } catch (error) {
@@ -75,6 +121,7 @@ export async function answerBibleQuestion(
       citations: evidence.citations,
       toolTrace: [...evidence.toolTrace, { tool: "openai.responses.create", error: message }],
       mode: "fallback",
+      grounded: true,
       ...routing,
       routingDecision: `${routing.routingDecision} The live model call failed, so TextLab returned the local retrieval fallback.`
     });
@@ -88,6 +135,7 @@ function fallbackAnswer(prompt: string, evidence: EvidencePacket, routing: Routi
     citations: evidence.citations,
     toolTrace: evidence.toolTrace,
     mode: "fallback",
+    grounded: true,
     ...routing
   });
 }
@@ -98,6 +146,8 @@ type WithMarkdownInput = {
   citations: AssistantCitation[];
   toolTrace: ToolTraceEntry[];
   mode: AssistantMode;
+  grounded: boolean;
+  groundingReport?: GroundingReport;
   modelRole: ModelRole;
   modelUsed: string;
   routingDecision: string;

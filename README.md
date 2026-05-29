@@ -19,6 +19,7 @@ Milestone 2.5 of the TextLab Bible MVP: a single full-stack Next.js app deliveri
   - Deterministic-first retrieval: signal extraction (references, Greek words, topics, morphology, intent) → parallel corpus search → model synthesis with a single `getPassage` refinement step
   - User-confirmed **scholarly-model escalation** — a "Use scholarly model" affordance re-runs the prompt on `gpt-5.4` (never automatic)
   - Live OpenAI synthesis when `OPENAI_API_KEY` is set; deterministic local fallback otherwise
+  - **Grounding / Silence Protocol** — before any answer is returned or stored, the assistant verifies its citations against the SBLGNT. If a Greek quote falls below the 0.90 similarity threshold or a reference cannot be resolved, the answer is withheld and the UI displays "Withheld — insufficient textual evidence" rather than risk an unsupported claim. WEB (English) citations are a display aid only: a WEB mismatch appends a caveat but does not withhold.
   - Structured citations and `ToolTraceEntry[]` retrieval trace visible in the UI
   - Q&A history persisted to `AiSession` / `AiMessage` with typed JSON `metadata`
   - Markdown export of any generated answer

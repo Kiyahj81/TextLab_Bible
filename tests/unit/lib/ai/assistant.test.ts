@@ -4,11 +4,24 @@ import type { EvidencePacket } from "@/lib/ai/retrievalPlanner";
 const { runRetrievalPlan } = vi.hoisted(() => ({ runRetrievalPlan: vi.fn() }));
 vi.mock("@/lib/ai/retrievalPlanner", () => ({ runRetrievalPlan }));
 
-const { synthesizeWithRefinement, buildDeterministicFallback } = vi.hoisted(() => ({
+const { synthesizeWithRefinement, buildDeterministicFallback, buildRefusalAnswer, appendAlignmentNotes } = vi.hoisted(() => ({
   synthesizeWithRefinement: vi.fn(),
-  buildDeterministicFallback: vi.fn(() => "FALLBACK_ANSWER")
+  buildDeterministicFallback: vi.fn(() => "FALLBACK_ANSWER"),
+  buildRefusalAnswer: vi.fn(() => "REFUSAL_ANSWER"),
+  // Fake that appends a marker only when a caveat is present, so the wiring is testable.
+  appendAlignmentNotes: vi.fn((answer: string, report: { verdicts: Array<{ alignmentCaveat?: string }> }) =>
+    report.verdicts.some((v) => v.alignmentCaveat) ? `${answer}\n[ALIGN]` : answer
+  )
 }));
-vi.mock("@/lib/ai/synthesis", () => ({ synthesizeWithRefinement, buildDeterministicFallback }));
+vi.mock("@/lib/ai/synthesis", () => ({
+  synthesizeWithRefinement,
+  buildDeterministicFallback,
+  buildRefusalAnswer,
+  appendAlignmentNotes
+}));
+
+const { verifyGrounding } = vi.hoisted(() => ({ verifyGrounding: vi.fn() }));
+vi.mock("@/lib/ai/grounding", () => ({ verifyGrounding }));
 
 const { isLiveAssistantEnabled } = vi.hoisted(() => ({ isLiveAssistantEnabled: vi.fn(() => false) }));
 vi.mock("@/lib/ai/modelRouter", async (importOriginal) => {
@@ -29,6 +42,8 @@ const packet: EvidencePacket = {
 beforeEach(() => {
   vi.clearAllMocks();
   buildDeterministicFallback.mockReturnValue("FALLBACK_ANSWER");
+  buildRefusalAnswer.mockReturnValue("REFUSAL_ANSWER");
+  verifyGrounding.mockResolvedValue({ grounded: true, verdicts: [] });
   runRetrievalPlan.mockResolvedValue(packet);
   isLiveAssistantEnabled.mockReturnValue(false);
 });
@@ -42,12 +57,14 @@ describe("answerBibleQuestion orchestration", () => {
     expect(answer.mode).toBe("fallback");
     expect(answer.answer).toBe("FALLBACK_ANSWER");
     expect(answer.citations).toEqual(packet.citations);
+    expect(answer.grounded).toBe(true);
   });
 
   it("returns the synthesized answer when live and synthesis succeeds", async () => {
     isLiveAssistantEnabled.mockReturnValue(true);
     synthesizeWithRefinement.mockResolvedValue({
       answer: "LIVE ANSWER",
+      claims: [],
       citations: [
         ...packet.citations,
         { reference: "Rom 7:2", corpus: "SBLGNT", searchQuery: "passage", toolName: "getPassage" }
@@ -60,11 +77,12 @@ describe("answerBibleQuestion orchestration", () => {
     expect(answer.mode).toBe("live");
     expect(answer.answer).toBe("LIVE ANSWER");
     expect(answer.citations.some((c) => c.reference === "Rom 7:2")).toBe(true);
+    expect(answer.grounded).toBe(true);
   });
 
   it("routes to the scholarly model when escalation is requested", async () => {
     isLiveAssistantEnabled.mockReturnValue(true);
-    synthesizeWithRefinement.mockResolvedValue({ answer: "SCHOLARLY", citations: [], toolTrace: [] });
+    synthesizeWithRefinement.mockResolvedValue({ answer: "SCHOLARLY", claims: [], citations: [], toolTrace: [] });
 
     const answer = await answerBibleQuestion("deep synthesis please", { escalate: true });
 
@@ -82,6 +100,7 @@ describe("answerBibleQuestion orchestration", () => {
 
     expect(answer.mode).toBe("fallback");
     expect(answer.answer).toBe("FALLBACK_ANSWER");
+    expect(answer.grounded).toBe(true);
   });
 
   it("falls back locally when live synthesis throws, recording the error in the trace", async () => {
@@ -92,6 +111,80 @@ describe("answerBibleQuestion orchestration", () => {
 
     expect(answer.mode).toBe("fallback");
     expect(answer.toolTrace.some((entry) => entry.tool === "openai.responses.create" && entry.error)).toBe(true);
+    expect(answer.grounded).toBe(true);
+  });
+
+  it("withholds the answer when grounding fails", async () => {
+    isLiveAssistantEnabled.mockReturnValue(true);
+    synthesizeWithRefinement.mockResolvedValue({
+      answer: "DRAFT WITH BAD CITATION",
+      claims: [{ reference: "John 99:99", greekQuote: "x", gloss: null, englishQuote: null }],
+      citations: [],
+      toolTrace: []
+    });
+    verifyGrounding.mockResolvedValue({
+      grounded: false,
+      verdicts: [
+        { claim: { reference: "John 99:99", greekQuote: "x", gloss: null, englishQuote: null }, status: "reference-not-found" }
+      ]
+    });
+
+    const answer = await answerBibleQuestion("bad question");
+
+    expect(answer.grounded).toBe(false);
+    expect(answer.mode).toBe("live");
+    expect(answer.answer).toBe("REFUSAL_ANSWER");
+    expect(answer.answer).not.toContain("DRAFT WITH BAD CITATION");
+    expect(answer.citations).toEqual(packet.citations);
+    expect(answer.groundingReport?.grounded).toBe(false);
+  });
+
+  it("returns the grounded answer with grounded:true when verification passes", async () => {
+    isLiveAssistantEnabled.mockReturnValue(true);
+    synthesizeWithRefinement.mockResolvedValue({
+      answer: "GOOD ANSWER",
+      claims: [{ reference: "Rom 7:1", greekQuote: "νόμος", gloss: null, englishQuote: null }],
+      citations: packet.citations,
+      toolTrace: []
+    });
+
+    const answer = await answerBibleQuestion("good question");
+
+    expect(answer.grounded).toBe(true);
+    expect(answer.answer).toBe("GOOD ANSWER");
+  });
+
+  it("surfaces WEB alignment caveats on a grounded answer", async () => {
+    isLiveAssistantEnabled.mockReturnValue(true);
+    const claim = { reference: "1 John 2:23", greekQuote: "x", gloss: null, englishQuote: "y" };
+    synthesizeWithRefinement.mockResolvedValue({
+      answer: "GOOD ANSWER",
+      claims: [claim],
+      citations: packet.citations,
+      toolTrace: []
+    });
+    verifyGrounding.mockResolvedValue({
+      grounded: true,
+      verdicts: [{ claim, status: "verified", alignmentCaveat: "WEB has no verse at this reference; the English display aid was withheld." }]
+    });
+
+    const answer = await answerBibleQuestion("1 John 2:23");
+
+    expect(answer.grounded).toBe(true);
+    expect(appendAlignmentNotes).toHaveBeenCalledWith("GOOD ANSWER", expect.objectContaining({ grounded: true }));
+    expect(answer.answer).toContain("[ALIGN]");
+  });
+
+  it("falls back deterministically when verification throws (infra failure)", async () => {
+    isLiveAssistantEnabled.mockReturnValue(true);
+    synthesizeWithRefinement.mockResolvedValue({ answer: "x", claims: [], citations: [], toolTrace: [] });
+    verifyGrounding.mockRejectedValue(new Error("db connection lost"));
+
+    const answer = await answerBibleQuestion("anything");
+
+    expect(answer.mode).toBe("fallback");
+    expect(answer.grounded).toBe(true);
+    expect(answer.answer).toBe("FALLBACK_ANSWER");
   });
 });
 

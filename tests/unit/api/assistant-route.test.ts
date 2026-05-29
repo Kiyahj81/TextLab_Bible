@@ -149,4 +149,29 @@ describe("POST /api/assistant", () => {
       where: { id: "sess-of-bob", userId: "alice" }
     });
   });
+
+  it("persists grounded:false metadata for a withheld answer", async () => {
+    assistantMock.mockResolvedValue({
+      answer: "Insufficient textual evidence.",
+      citations: [],
+      markdown: "# x",
+      toolTrace: [],
+      mode: "live",
+      grounded: false,
+      groundingReport: { grounded: false, verdicts: [] },
+      modelRole: "default",
+      modelUsed: "gpt-5.3-chat-latest",
+      routingDecision: "..."
+    });
+
+    const res = await POST(jsonRequest({ prompt: "bad question" }));
+    expect(res.status).toBe(200);
+
+    const assistantCall = prismaMock.aiMessage.create.mock.calls.find(
+      (c) => c[0].data.role === "assistant"
+    );
+    expect(assistantCall).toBeDefined();
+    const metadata = assistantCall![0].data.metadata as { grounded: boolean };
+    expect(metadata.grounded).toBe(false);
+  });
 });

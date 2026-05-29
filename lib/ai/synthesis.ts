@@ -1,6 +1,7 @@
 import type { AssistantCitation } from "@/lib/ai/assistant";
 import type { RoutingDecision } from "@/lib/ai/modelRouter";
 import type { EvidencePacket } from "@/lib/ai/retrievalPlanner";
+import type { GroundingClaim, GroundingReport } from "@/lib/ai/grounding";
 import { getMaxOutputTokens } from "@/lib/ai/modelRouter";
 import { getOpenAi } from "@/lib/ai/openaiClient";
 import { type ToolTraceEntry } from "@/lib/ai/toolTrace";
@@ -26,9 +27,17 @@ Structure the answer in three sections:
 2. Interpretive suggestion
 3. Application/reflection
 
-Cite every textual claim with book, chapter, verse, and corpus. Never invent
-lexicon entries, manuscript evidence, or scholarly citations. Do not claim that
-a Greek word "means" something unless the retrieved usage data supports it.`;
+Write the readable English explanation first. When a claim depends on the
+original language, quote the Greek as supporting evidence and give a short
+literal gloss — never make the reader decode Greek to follow the argument.
+
+Return JSON matching the provided schema: an "answer" string (the prose above)
+and a "claims" array. For EVERY textual claim, add one entry with the SBLGNT
+"reference", the exact "greekQuote" from that verse (or null), a literal "gloss"
+(or null), and an optional "englishQuote" quoted verbatim from WEB as a labeled
+readable aid (or null). Citations are always anchored to the SBLGNT (Greek)
+source. Never invent lexicon entries, manuscript evidence, or scholarly
+citations.`;
 
 const REFINEMENT_TOOL = {
   type: "function" as const,
@@ -56,8 +65,37 @@ const REFINEMENT_TOOL = {
   }
 };
 
+const SYNTHESIS_OUTPUT_FORMAT = {
+  type: "json_schema" as const,
+  name: "grounded_answer",
+  strict: true,
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      answer: { type: "string" },
+      claims: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            reference: { type: "string" },
+            greekQuote: { type: ["string", "null"] },
+            gloss: { type: ["string", "null"] },
+            englishQuote: { type: ["string", "null"] }
+          },
+          required: ["reference", "greekQuote", "gloss", "englishQuote"]
+        }
+      }
+    },
+    required: ["answer", "claims"]
+  }
+};
+
 export type SynthesisResult = {
   answer: string;
+  claims: GroundingClaim[];
   citations: AssistantCitation[];
   toolTrace: ToolTraceEntry[];
 };
@@ -131,6 +169,23 @@ async function executeGetPassage(call: FunctionCallItem): Promise<{
   return { output: res, citations, trace: { tool: "getPassage", args } };
 }
 
+function parseSynthesisOutput(text: string | undefined): { answer: string; claims: GroundingClaim[] } | null {
+  const raw = text?.trim();
+  if (!raw) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null) return null;
+  const obj = parsed as { answer?: unknown; claims?: unknown };
+  const answer = typeof obj.answer === "string" ? obj.answer.trim() : "";
+  if (!answer) return null;
+  const claims = Array.isArray(obj.claims) ? (obj.claims as GroundingClaim[]) : [];
+  return { answer, claims };
+}
+
 export async function synthesizeWithRefinement(input: SynthesisInput): Promise<SynthesisResult | null> {
   const client = getOpenAi();
   if (!client) return null;
@@ -149,6 +204,7 @@ export async function synthesizeWithRefinement(input: SynthesisInput): Promise<S
     max_output_tokens: getMaxOutputTokens(),
     tools: [REFINEMENT_TOOL],
     tool_choice: "auto",
+    text: { format: SYNTHESIS_OUTPUT_FORMAT },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     input: inputItems as any
   });
@@ -156,8 +212,8 @@ export async function synthesizeWithRefinement(input: SynthesisInput): Promise<S
 
   const calls = functionCalls(first.output);
   if (calls.length === 0) {
-    const answer = first.output_text?.trim();
-    return answer ? { answer, citations, toolTrace } : null;
+    const parsed = parseSynthesisOutput(first.output_text);
+    return parsed ? { answer: parsed.answer, claims: parsed.claims, citations, toolTrace } : null;
   }
 
   // Execute every getPassage call from this round, then make exactly one more
@@ -175,13 +231,14 @@ export async function synthesizeWithRefinement(input: SynthesisInput): Promise<S
     model: routing.modelUsed,
     instructions: SYNTHESIS_SYSTEM_PROMPT,
     max_output_tokens: getMaxOutputTokens(),
+    text: { format: SYNTHESIS_OUTPUT_FORMAT },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     input: inputItems as any
   });
   toolTrace.push({ tool: "openai.responses.create", args: { model: routing.modelUsed, phase: "refinement-synthesis" } });
 
-  const answer = second.output_text?.trim();
-  return answer ? { answer, citations, toolTrace } : null;
+  const parsed = parseSynthesisOutput(second.output_text);
+  return parsed ? { answer: parsed.answer, claims: parsed.claims, citations, toolTrace } : null;
 }
 
 export function buildDeterministicFallback(prompt: string, evidence: EvidencePacket): string {
@@ -199,4 +256,39 @@ export function buildDeterministicFallback(prompt: string, evidence: EvidencePac
       ? "Application/reflection: Use the cited references as the starting point before making broader theological claims."
       : "Application/reflection: Try rephrasing the question around a specific passage, Greek word, or reference so TextLab can retrieve supporting text."
   ].join("\n");
+}
+
+export function buildRefusalAnswer(
+  prompt: string,
+  evidence: EvidencePacket,
+  report: GroundingReport
+): string {
+  const failed = report.verdicts.filter((v) => v.status !== "verified");
+  const reasons = failed
+    .map(
+      (v) =>
+        `- ${v.claim.reference}: ${v.status}` +
+        (v.matchScore !== undefined ? ` (match ${v.matchScore.toFixed(2)})` : "")
+    )
+    .join("\n");
+
+  return [
+    "Insufficient textual evidence.",
+    "",
+    `TextLab drafted an answer to "${prompt.trim()}" but could not verify its citations against the SBLGNT, so it withheld the response rather than risk an unsupported claim.`,
+    "",
+    ...(failed.length ? [`Unverified claims:\n${reasons}`, ""] : []),
+    "Verified evidence retrieved for your query:",
+    evidence.formattedEvidence
+  ].join("\n");
+}
+
+// On a grounded answer, WEB display aids that failed alignment are non-fatal but
+// must not be shown to the reader without warning. Append the recorded alignment
+// caveats so the user knows the English display text may not match the cited Greek.
+export function appendAlignmentNotes(answer: string, report: GroundingReport): string {
+  const caveats = report.verdicts.filter((v) => v.alignmentCaveat);
+  if (caveats.length === 0) return answer;
+  const lines = caveats.map((v) => `- ${v.claim.reference}: ${v.alignmentCaveat}`).join("\n");
+  return `${answer}\n\n---\nTranslation alignment note:\n${lines}`;
 }

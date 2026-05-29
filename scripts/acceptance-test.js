@@ -209,6 +209,10 @@ async function run() {
     await page.getByText("gpt-5.3-chat-latest").waitFor();
     await page.getByText('searchLemma({"lemma":"λόγος","book":"John"})').waitFor();
     await page.getByText("John 1:1, SBLGNT").first().waitFor();
+    // Grounding: a normal, well-supported prompt must NOT be withheld.
+    const withheldCount = await page.getByText("Withheld — insufficient evidence").count();
+    assert(withheldCount === 0, "grounding falsely withheld a well-supported answer");
+    result.interactions.push("Grounding did not withhold the supported assistant answer.");
     await page.getByRole("button", { name: "Save generated note" }).click();
     await page.getByText("Generated note saved.").waitFor();
     await page.getByText("Show me every use of λόγος in John 1").first().waitFor();

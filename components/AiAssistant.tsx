@@ -18,6 +18,7 @@ type AssistantResponse = {
   }>;
   toolTrace: ToolTraceEntry[];
   mode: AssistantMode;
+  grounded: boolean;
   sessionId: string;
   modelRole: ModelRole;
   modelUsed: string;
@@ -291,6 +292,13 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
               </div>
             ) : null}
             {saveStatus ? <p className="mb-3 text-sm text-slate-600">{saveStatus}</p> : null}
+            {!restoredView && response && response.grounded === false ? (
+              <div className="mb-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                <strong>Withheld — insufficient evidence.</strong> TextLab could not verify the drafted
+                citations against the SBLGNT and declined to answer. The verified retrieval evidence is
+                shown below.
+              </div>
+            ) : null}
             <pre className="whitespace-pre-wrap break-words text-sm leading-7 text-slate-800">{answerText}</pre>
           </article>
         ) : !loading ? (

@@ -300,6 +300,12 @@ response. (Acceptance assumes the full SBLGNT corpus — see memory note.)
 - Multiple / future English translations (shape allows; only WEB wired now).
 - Claim-level NLI/entailment faithfulness scoring (that is Phase 6, the evaluation harness).
 - Streaming the synthesized answer.
+- **Unverified inline prose references (accepted boundary):** the protocol verifies only the
+  structured `claims[]` the model declares. A reference written inline in the prose `answer`
+  with no corresponding claim entry is not checked (an empty `claims[]` is grounded by
+  construction). The synthesis prompt instructs the model to emit a claim for every textual
+  claim; tightening this (e.g. sweeping the prose for `Book ch:v` patterns lacking a claim) is
+  a Phase 6 hardening follow-up.
 
 ## Verification (Definition of Done)
 

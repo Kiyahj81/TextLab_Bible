@@ -129,6 +129,14 @@ The assistant route follows a clear retrieval-first contract:
 
 **postcss <8.5.10** (GHSA-qx2v-qp2m-jg93, XSS via unescaped `</style>` in CSS stringify), bundled inside Next 15. Tracked in `docs/security-register.md` with mitigation rationale: PostCSS only runs at build time over our own CSS, never on untrusted input. **No action available** until Next bumps its bundled postcss. Re-run `npm run security:audit` after each Next release.
 
+### Grounding verifies declared claims only
+
+The Silence Protocol checks the structured `claims[]` the synthesis model emits, not arbitrary
+references written inline in the prose answer. An answer that cites a verse inline without a
+matching claim entry is not verified (empty `claims[]` is grounded by construction). Low risk
+given the synthesis prompt requires a claim per textual claim; a prose-sweep hardening is a
+Phase 6 follow-up.
+
 ### Branch coverage at 66.53% (gate at 65%)
 
 The lines/statements/functions thresholds are at 80/80/75 with comfortable headroom. Branches are tighter and will need targeted tests in `lib/ai/assistant.ts` and `lib/search.ts` before raising the branch gate above 70.

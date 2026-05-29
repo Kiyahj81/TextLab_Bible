@@ -94,4 +94,11 @@ describe("verifyGrounding", () => {
     getPassage.mockRejectedValue(new Error("db connection lost"));
     await expect(verifyGrounding([claim({ greekQuote: "x" })])).rejects.toThrow("db connection lost");
   });
+
+  it("treats an empty claims array as grounded (nothing to verify)", async () => {
+    mockVerses({ SBLGNT: {} });
+    const report = await verifyGrounding([]);
+    expect(report.grounded).toBe(true);
+    expect(report.verdicts).toEqual([]);
+  });
 });

@@ -177,6 +177,31 @@ describe("runRetrievalPlan", () => {
     expect(findLemmaExamples).toHaveBeenCalled();
   });
 
+  it("caps citations per call and overall so consumers' limits are respected", async () => {
+    getPassage.mockImplementation(async (input: { corpus: string; book: string; chapter: number }) => ({
+      corpus: input.corpus,
+      references: Array.from({ length: 60 }, (_, i) => ({
+        book: input.book,
+        chapter: input.chapter,
+        verse: i + 1,
+        reference: `${input.book} ${input.chapter}:${i + 1}`,
+        text: "t"
+      }))
+    }));
+
+    const packet = await runRetrievalPlan({
+      ...emptySignals,
+      references: [{ book: "John", chapter: 1 }],
+      intent: "passage-study"
+    });
+
+    // Each getPassage call contributes a bounded sample, not all 60 verses.
+    expect(packet.citations.filter((c) => c.corpus === "SBLGNT").length).toBeLessThanOrEqual(10);
+    expect(packet.citations.length).toBeLessThanOrEqual(40);
+    // The first verse is still cited.
+    expect(packet.citations.some((c) => c.reference === "John 1:1")).toBe(true);
+  });
+
   it("produces an empty-evidence packet when there are no signals", async () => {
     const packet = await runRetrievalPlan(emptySignals);
 

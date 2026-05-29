@@ -19,6 +19,10 @@ export type EvidencePacket = {
 // Bounds the number of DB-backed tool calls a single prompt can trigger.
 const MAX_PLANNED_CALLS = 8;
 const MAX_SECTION_LINES = 10;
+// Each call cites a bounded sample (mirrors the displayed lines), and the whole
+// packet is capped so downstream consumers (the save-note schema caps at 50, the
+// synthesis payload slices to 20) never overflow.
+const MAX_TOTAL_CITATIONS = 40;
 
 type CallResult = { citations: AssistantCitation[]; section: string; traces: ToolTraceEntry[] };
 
@@ -50,7 +54,7 @@ function passageCall(corpus: "SBLGNT" | "WEB", ref: ParsedReference): PlannedCal
     errorTrace: { tool: "getPassage", args },
     run: async () => {
       const res = await getPassage(args);
-      const citations = res.references.map((r) => ({
+      const citations = res.references.slice(0, MAX_SECTION_LINES).map((r) => ({
         reference: r.reference,
         corpus: res.corpus,
         searchQuery: "passage",
@@ -76,7 +80,7 @@ function lemmaCall(lemma: string, book?: string): PlannedCall {
     errorTrace: { tool: "searchLemma", args },
     run: async () => {
       const res = await searchLemma({ ...args, pageSize: 20 });
-      const citations = res.results.map((r) => ({
+      const citations = res.results.slice(0, MAX_SECTION_LINES).map((r) => ({
         reference: r.reference,
         corpus: r.corpus,
         searchQuery: `lemma:${lemma}`,
@@ -102,7 +106,7 @@ function keywordCall(word: string, book?: string): PlannedCall {
     errorTrace: { tool: "searchKeyword", args },
     run: async () => {
       const res = await searchKeyword({ ...args, pageSize: 10 });
-      const citations = res.results.map((r) => ({
+      const citations = res.results.slice(0, MAX_SECTION_LINES).map((r) => ({
         reference: r.reference,
         corpus: r.corpus,
         searchQuery: `keyword:${word}`,
@@ -125,7 +129,7 @@ function morphCall(code: string, mode: "exact" | "prefix", book?: string): Plann
     errorTrace: { tool: "searchMorphology", args },
     run: async () => {
       const res = await searchMorphology({ ...args, pageSize: 20 });
-      const citations = res.results.map((r) => ({
+      const citations = res.results.slice(0, MAX_SECTION_LINES).map((r) => ({
         reference: r.reference,
         corpus: r.corpus,
         searchQuery: `morph:${code}`,
@@ -228,7 +232,7 @@ export async function runRetrievalPlan(signals: Signals): Promise<EvidencePacket
   });
 
   return {
-    citations,
+    citations: citations.slice(0, MAX_TOTAL_CITATIONS),
     toolTrace,
     formattedEvidence:
       sections.length > 0 ? sections.join("\n\n") : "No retrieval signals produced evidence from the corpus."

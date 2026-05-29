@@ -24,6 +24,7 @@ const answer: AssistantAnswer = {
   markdown: "# x",
   toolTrace: [{ tool: "getPassage", args: {} }],
   mode: "fallback",
+  grounded: true,
   modelRole: "default",
   modelUsed: "gpt-5.3-chat-latest",
   routingDecision: "Handled by the default model"

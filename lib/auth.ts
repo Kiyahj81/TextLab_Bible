@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { jsonError } from "@/lib/http/validation";
+import { safeInternalPath } from "@/lib/http/safe-redirect";
 
 export type AuthSuccess = { ok: true; userId: string };
 export type AuthFailure = { ok: false; response: NextResponse };
@@ -26,9 +27,11 @@ export async function requirePageAuth(): Promise<string> {
   const userId = session?.user?.id;
   if (!userId) {
     // middleware.ts injects x-pathname so we can return the user to the page
-    // they requested after sign-in. safeInternalPath re-validates it there.
-    const path = (await headers()).get("x-pathname");
-    redirect(path && path !== "/" ? `/signin?callbackUrl=${encodeURIComponent(path)}` : "/signin");
+    // they requested after sign-in. Re-validate here so requirePageAuth can
+    // never itself emit a malformed callbackUrl, regardless of the header.
+    const rawPath = (await headers()).get("x-pathname");
+    const safePath = rawPath ? safeInternalPath(rawPath, "") : "";
+    redirect(safePath && safePath !== "/" ? `/signin?callbackUrl=${encodeURIComponent(safePath)}` : "/signin");
   }
   return userId;
 }

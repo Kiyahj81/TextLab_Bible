@@ -35,4 +35,26 @@ describe("safeInternalPath", () => {
   it("honors a custom fallback", () => {
     expect(safeInternalPath("//evil", "/signin")).toBe("/signin");
   });
+
+  it("rejects a single percent-encoded backslash", () => {
+    // Decodes to /\evil.com.
+    expect(safeInternalPath("/%5Cevil.example.com")).toBe("/read");
+  });
+
+  it("rejects a double percent-encoded backslash (the Next-decoded form)", () => {
+    // What searchParams hands us after Next decodes ?callbackUrl=/%255Cevil.com once.
+    expect(safeInternalPath("/%255Cevil.example.com")).toBe("/read");
+  });
+
+  it("rejects a percent-encoded protocol-relative prefix", () => {
+    expect(safeInternalPath("/%2F%2Fevil.example.com")).toBe("/read");
+  });
+
+  it("rejects malformed percent-encoding", () => {
+    expect(safeInternalPath("/%")).toBe("/read");
+  });
+
+  it("preserves a legitimately percent-encoded query value", () => {
+    expect(safeInternalPath("/search?q=a%20b")).toBe("/search?q=a%20b");
+  });
 });

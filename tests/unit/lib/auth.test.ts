@@ -61,6 +61,16 @@ describe("requirePageAuth", () => {
     );
   });
 
+  it("ignores an unsafe x-pathname and redirects to plain /signin", async () => {
+    authMock.mockResolvedValue(null);
+    headersMock.mockResolvedValue(new Headers({ "x-pathname": "//evil.example.com" }));
+    redirectMock.mockImplementation(() => {
+      throw new Error("REDIRECT");
+    });
+    await expect(requirePageAuth()).rejects.toThrow("REDIRECT");
+    expect(redirectMock).toHaveBeenCalledWith("/signin");
+  });
+
   it("returns userId when authenticated", async () => {
     authMock.mockResolvedValue({ user: { id: "u1" } });
     const userId = await requirePageAuth();

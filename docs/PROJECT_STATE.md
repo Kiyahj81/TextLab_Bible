@@ -1,6 +1,6 @@
 # TextLab Bible — Project State
 
-*Snapshot: 2026-05-27 (post Phase 3.0 security/testing remediation — Sprints 1–4; synthesis prompt bug fix)*
+*Snapshot: 2026-05-29 (post Milestone 3 Phase 2 — Grounding + Silence Protocol)*
 
 ## Where the project stands
 
@@ -73,12 +73,22 @@ The assistant route follows a clear retrieval-first contract:
 
 1. **Route the prompt** (`routeAssistantPrompt`) — returns `{ modelRole, modelUsed, routingDecision }` and an optional advisory `recommendedUpgrade` if scholarly cues are detected.
 2. **Run local retrieval first** (`answerFromLocalRetrieval`) — a **dispatch table** of branch functions (`importantWordsBranch`, `lemmaAliasBranch`, `morphologyBranch`, `passageBranch`, `keywordFallback`) iterates until one returns an answer. Branches share a `BranchContext` with the prompt, normalized lowercased prompt, detected book, routing, and an accumulating `ToolTraceEntry[]`.
-3. **Optionally synthesize** (`synthesizeWithDefaultModel`) — when `OPENAI_API_KEY` is set, calls the official `openai@4` SDK's `responses.create` with the local answer + citations (capped at 20 entries) + structured tool trace as context. Throws are caught and the deterministic local answer is returned with `mode: "fallback"`.
-4. **Persist the exchange** — `startAssistantExchange` initiates the user-message DB write before `answerBibleQuestion` runs (parallelizing the user write with synthesis); `finishAssistantExchange` writes the assistant message with typed `AssistantMessageMetadata` JSON.
+3. **Optionally synthesize** (`synthesizeWithDefaultModel`) — when `OPENAI_API_KEY` is set, calls the official `openai@4` SDK's `responses.create` with the local answer + citations (capped at 20 entries) + structured tool trace as context. The model returns structured JSON (`answer` + `claims[]`) via a strict json\_schema output format. Throws are caught and the deterministic local answer is returned with `mode: "fallback"`.
+4. **Verify grounding** (`verifyGrounding` in `lib/ai/grounding.ts`) — each claim's cited reference is resolved and the quoted text is fuzzy-matched against the real DB verse. SBLGNT is the citation authority: a Greek-quote score below 0.90 or an unresolvable reference fails the claim and `answerBibleQuestion` returns a structured refusal (`grounded: false`) instead of the draft — the withheld answer is what gets stored, never the draft. WEB is a non-authoritative display aid: a WEB mismatch or missing verse appends an alignment caveat but does not refuse. The `grounded` boolean and optional `groundingReport` are recorded in `AssistantMessageMetadata`; `AiAssistant` renders a "Withheld — insufficient evidence" banner when `grounded === false`. Deterministic fallback paths are grounded-by-construction; a verification infra-throw falls back deterministically.
+5. **Persist the exchange** — `startAssistantExchange` initiates the user-message DB write before `answerBibleQuestion` runs (parallelizing the user write with synthesis); `finishAssistantExchange` writes the assistant message with typed `AssistantMessageMetadata` JSON (including `grounded` + `groundingReport`).
 
 ### Test surfaces
 
-- **200 unit tests across 28 files** (vitest 4 + jsdom + RTL). Coverage gate via v8 over `app/api/`** + `lib/**`: lines 84.73%, statements 81.53%, functions 77.48%, branches 66.53%. Major additions over the Phase 3.0 sprints:
+- **322 unit tests across 40 files** (vitest 4 + jsdom + RTL). Coverage gate via v8 over `app/api/**` + `lib/**`: lines 87.41%, statements 84.40%, functions 83.33%, branches 72.97%. Major additions from Phase 2 (grounding + Silence Protocol):
+  - `tests/unit/lib/ai/grounding.test.ts` — `verifyGrounding`: SBLGNT authority (refuse on mismatch/unresolved), WEB strip-and-caveat, threshold 0.90, cache behavior, infra-error propagation
+  - `tests/unit/lib/text/similarity.test.ts` — `levenshtein`, `normalizeGreek`, `normalizeEnglish`, `containmentScore`
+  - `tests/unit/lib/references.test.ts` — `parseReference` (book aliases, chapter:verse, edge cases)
+  - `tests/unit/lib/ai/synthesis.test.ts` — structured JSON output format (`answer` + `claims[]`), `buildRefusalAnswer`
+  - `tests/unit/lib/ai/assistant.test.ts` — grounding gate: ungrounded draft → withheld refusal stored; `grounded` flag on answer
+  - `tests/unit/components/AiAssistant-grounding.test.tsx` — "Withheld — insufficient evidence" banner renders when `grounded === false`
+  - `tests/unit/api/assistant-route.test.ts` (extended) — `grounded` + `groundingReport` persisted in `AssistantMessageMetadata`
+
+  Earlier additions (Phase 3.0 sprints):
   - `tests/unit/api/assistant-route.test.ts` — prompt cap, oversize 413, malformed 400, rate-limit 429 with `Retry-After`, 401 unauthenticated, AiSession user-scoping
   - `tests/unit/api/generated-study-notes.test.ts`, `tests/unit/api/import-runs.test.ts` — full route coverage (auth + validation + scoping)
   - `tests/unit/lib/auth.test.ts` — `requireAuth`/`requirePageAuth`/`getOptionalUserId`
@@ -149,7 +159,7 @@ reconciliation/gap analysis, and the Docker→Neon hosting plan live in
    a user-confirmed `escalate` flag on `POST /api/assistant`, and a "Use scholarly model" affordance
    in `AiAssistant`. This subsumes the old "Step 3". Unit/tsc/lint/build/coverage all green; DB
    integration + Playwright acceptance to be run against a Neon test branch.
-2. **Grounding + Silence Protocol** — post-synthesis citation verification; refuse below a 0.90 match.
+2. **Grounding + Silence Protocol** — ✅ **done** (branch `milestone-3/phase-2-grounding`). SBLGNT citation spine; WEB display-aid with strip-and-caveat (non-fatal); structured synthesis `claims[]`; verification before persistence (withheld refusal stored, never the draft); `grounded` flag + withheld banner in `AiAssistant`. New: `lib/ai/grounding.ts`, `lib/text/similarity.ts`, `lib/references.ts`.
 3. **Lexical FTS** — `tsvector` + GIN, ranked keyword search.
 4. **Vector + hybrid retrieval** — pgvector, embeddings, RRF, cross-encoder rerank, V±2 windows (heaviest).
 5. **Louw-Nida enrichment** — import the `domain`/`ln` columns already in the MACULA TSV.

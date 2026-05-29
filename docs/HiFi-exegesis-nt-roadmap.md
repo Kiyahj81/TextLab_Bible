@@ -166,7 +166,18 @@ dispatch table with the deterministic-first pipeline from
 >   gains a hybrid-search call alongside (or replacing) the current keyword/lemma searches. So the
 >   specs and the doc are complementary layers, not alternatives.
 
-**Phase 2 — Grounding + Silence Protocol.** Post-synthesis verifier: extract cited references, fetch
+**Phase 2 — Grounding + Silence Protocol. ✅ DONE (branch `milestone-3/phase-2-grounding`).** SBLGNT
+is the authoritative citation spine: a Greek-quote mismatch (fuzzy score < 0.90) or an unresolvable
+reference fails the claim and the answer is withheld. WEB is a non-authoritative display aid — a WEB
+mismatch or missing verse sets an alignment caveat but does NOT refuse ("strip-and-caveat"). Synthesis
+now returns structured JSON (`answer` + `claims[]`) via a strict json\_schema output format. The
+verifier runs between synthesis and persistence: the withheld refusal is what gets stored, never the
+draft. A `grounded` boolean (+ optional `groundingReport`) is recorded in `AssistantMessageMetadata`
+and surfaced as a "Withheld — insufficient evidence" banner in `AiAssistant`. New files:
+`lib/ai/grounding.ts`, `lib/text/similarity.ts`, `lib/references.ts` (`parseReference`). Original
+plan below.
+
+**Phase 2 — Grounding + Silence Protocol (original plan).** Post-synthesis verifier: extract cited references, fetch
 the real DB verse text, fuzzy-match (Levenshtein/substring ≥0.90), and refuse with a structured
 "insufficient textual evidence" message on failure. New: `lib/ai/grounding.ts`, invoked at the API
 boundary in `app/api/assistant/route.ts`. This is the single biggest fidelity win and uses only the

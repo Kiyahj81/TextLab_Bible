@@ -3,8 +3,11 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  // Runtime queries use the pooled connection (Neon -pooler host / PgBouncer).
+  url       = env("DATABASE_URL")
+  // Migrations bypass the pooler and use a direct connection.
+  directUrl = env("DIRECT_URL")
 }
 
 model Corpus {

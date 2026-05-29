@@ -16,7 +16,8 @@ Milestone 2.5 of the TextLab Bible MVP: a single full-stack Next.js app deliveri
 - **Notes** index with keyword search, tag dropdown, reference filter, sort, and server-side pagination
 - Highlights, notes, saved searches, and assistant sessions scoped to the signed-in user — verse-level on Greek tokens, word-level on English text
 - **AI Study Assistant** at `/assistant`:
-  - Retrieval-first dispatch over local corpus (important-words, lemma, morphology, passage, keyword fallback)
+  - Deterministic-first retrieval: signal extraction (references, Greek words, topics, morphology, intent) → parallel corpus search → model synthesis with a single `getPassage` refinement step
+  - User-confirmed **scholarly-model escalation** — a "Use scholarly model" affordance re-runs the prompt on `gpt-5.4` (never automatic)
   - Live OpenAI synthesis when `OPENAI_API_KEY` is set; deterministic local fallback otherwise
   - Structured citations and `ToolTraceEntry[]` retrieval trace visible in the UI
   - Q&A history persisted to `AiSession` / `AiMessage` with typed JSON `metadata`
@@ -26,7 +27,7 @@ Milestone 2.5 of the TextLab Bible MVP: a single full-stack Next.js app deliveri
 ### Design
 The Reader uses an editorial-scholar aesthetic: Spectral display serif, Inter Tight UI sans, Gentium Plus for polytonic Greek (purpose-built diacritic positioning), a derived accent palette (`accent.50`–`900` from `#365f7e`), codex-style left-rule pattern, paper-grain background.
 
-Not included yet: NET import, Hebrew Bible, LXX, cloud sync, scholarly-model escalation (Step 3), or PDF/DOCX/PPTX export.
+Not included yet: NET import, Hebrew Bible, LXX, cloud sync, or PDF/DOCX/PPTX export.
 
 ## Setup
 
@@ -78,13 +79,19 @@ npm run test:unit
 # Same suite with the v8 coverage gate (80% lines/statements over app/api + lib)
 npm run test:coverage
 
-# 7 real-Prisma integration tests for ownership + FK cascade (needs Docker / Postgres)
+# Real-Prisma integration tests for ownership + FK cascade.
+# These write/delete data, so they run against an isolated test database —
+# configure .env.test (cp .env.test.example .env.test) pointing at a Neon branch.
 npm run test:integration
 
 # Playwright end-to-end suite — signs in via dev credentials provider,
-# then exercises reader/search/assistant/notes (~30s, needs Docker / Postgres)
+# then exercises reader/search/assistant/notes (~30s). Also uses .env.test.
 npm run test:acceptance
 ```
+
+> **Test database:** `npm run test:integration` and `npm run test:acceptance` load `.env.test`
+> (gitignored) instead of `.env`, so they hit a throwaway **Neon branch** rather than your working
+> database. Copy `.env.test.example` to `.env.test` and fill in the branch connection strings.
 
 Verification gate (matches the `verify` npm script, runs lint + tsc + build + coverage):
 

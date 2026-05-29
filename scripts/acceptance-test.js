@@ -24,7 +24,7 @@ function assert(condition, message) {
 async function preflightDatabase() {
   const raw = process.env.DATABASE_URL;
   if (!raw) {
-    throw new Error("DATABASE_URL is not set. Configure it in .env before running the acceptance test.");
+    throw new Error("DATABASE_URL is not set. Configure it in .env.test (a Neon test branch) before running the acceptance test.");
   }
 
   let parsed;
@@ -42,10 +42,10 @@ async function preflightDatabase() {
     socket.once("connect", () => { socket.end(); resolve(); });
     socket.once("timeout", () => {
       socket.destroy();
-      reject(new Error(`PostgreSQL preflight failed: timed out connecting to ${host}:${port} after 3000ms. Is Docker running?`));
+      reject(new Error(`PostgreSQL preflight failed: timed out connecting to ${host}:${port} after 3000ms. Is the test database reachable?`));
     });
     socket.once("error", (err) => {
-      reject(new Error(`PostgreSQL preflight failed: cannot reach ${host}:${port} (${err.code ?? err.message}). Is Docker running?`));
+      reject(new Error(`PostgreSQL preflight failed: cannot reach ${host}:${port} (${err.code ?? err.message}). Is the test database reachable?`));
     });
   });
 }
@@ -200,9 +200,11 @@ async function run() {
     await page.getByRole("heading", { name: "Assistant", exact: true }).waitFor();
     await page.locator("textarea").first().fill("Show me every use of λόγος in John 1 and summarize the pattern.");
     await page.getByRole("button", { name: "Ask assistant" }).click();
-    await page.locator("pre").filter({ hasText: "Textual observations: I found 40 occurrences" }).waitFor({
-      timeout: 30000
-    });
+    // Paradigm C deterministic-first answer: three-section text whose evidence
+    // block reports the lemma hit count from the retrieval planner.
+    const answerPre = page.locator("pre").filter({ hasText: "Textual observations:" });
+    await answerPre.waitFor({ timeout: 30000 });
+    await answerPre.filter({ hasText: "40 hit(s)" }).waitFor();
     await page.getByText("Local fallback").waitFor();
     await page.getByText("gpt-5.3-chat-latest").waitFor();
     await page.getByText('searchLemma({"lemma":"λόγος","book":"John"})').waitFor();
@@ -213,7 +215,7 @@ async function run() {
     result.interactions.push("Saved the assistant answer as generated study-note history.");
 
     const markdownValue = await page.locator("textarea[readonly]").inputValue();
-    assert(markdownValue.includes("# Lemma Study"), "markdown export text area did not include Lemma Study");
+    assert(markdownValue.includes("# TextLab Assistant"), "markdown export text area did not include the assistant title");
     result.interactions.push("Assistant returned retrieval-first answer, trace, citations, and Markdown content.");
     await screenshot("04-assistant-answer");
 
@@ -223,7 +225,7 @@ async function run() {
     const downloadPath = path.join(screenshotsDir, "textlab-study-note.md");
     await download.saveAs(downloadPath);
     const markdown = await fs.readFile(downloadPath, "utf8");
-    assert(markdown.includes("# Lemma Study"), "downloaded markdown missing title");
+    assert(markdown.includes("# TextLab Assistant"), "downloaded markdown missing title");
     assert(markdown.includes("John 1:1, SBLGNT"), "downloaded markdown missing citation");
     result.interactions.push("Export Markdown downloaded a study note with title and citation.");
 

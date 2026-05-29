@@ -24,7 +24,9 @@ const assistantSchema = z.object({
     ASSISTANT_MAX_PROMPT_CHARS,
     `Prompt must be ${ASSISTANT_MAX_PROMPT_CHARS} characters or fewer.`
   ),
-  sessionId: z.string().trim().max(200).optional()
+  sessionId: z.string().trim().max(200).optional(),
+  // User-confirmed escalation to the scholarly model. Never set automatically.
+  escalate: z.boolean().optional()
 });
 
 export async function POST(request: Request) {
@@ -52,14 +54,14 @@ export async function POST(request: Request) {
     }
   }
 
-  const { prompt, sessionId: requestedSessionId = "" } = valid.data;
+  const { prompt, sessionId: requestedSessionId = "", escalate = false } = valid.data;
 
   const { sessionId, userMessagePromise } = await startAssistantExchange({
     userId,
     requestedSessionId,
     prompt
   });
-  const answer = await answerBibleQuestion(prompt);
+  const answer = await answerBibleQuestion(prompt, { escalate });
   await finishAssistantExchange({ sessionId, userMessagePromise, answer });
 
   return NextResponse.json({ ...answer, sessionId });

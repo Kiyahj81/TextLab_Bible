@@ -56,9 +56,8 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
   // error stays persistent — user retries before it should clear.
   useAutoDismissString(saveStatus, setSaveStatus);
 
-  async function submit(event: SubmitEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (loading) return;
+  async function runPrompt(promptText: string, escalate: boolean) {
+    if (loading || !promptText.trim()) return;
 
     setLoading(true);
     setError(null);
@@ -68,10 +67,10 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          prompt,
-          // Server schema rejects null on optional string fields — only
-          // attach sessionId when we actually have one.
-          ...(response?.sessionId ? { sessionId: response.sessionId } : {})
+          prompt: promptText,
+          // Server schema rejects null on optional fields — only attach when set.
+          ...(response?.sessionId ? { sessionId: response.sessionId } : {}),
+          ...(escalate ? { escalate: true } : {})
         })
       });
 
@@ -82,14 +81,20 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
 
       const body = (await result.json()) as AssistantResponse;
       setResponse(body);
-      setResponsePrompt(prompt);
-      setPrompt("");
+      setResponsePrompt(promptText);
+      // Escalation re-asks the already-displayed question; keep the input untouched.
+      if (!escalate) setPrompt("");
       setSaveStatus(null);
     } catch {
       setError("Network error. Try again.");
     } finally {
       setLoading(false);
     }
+  }
+
+  function submit(event: SubmitEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void runPrompt(prompt, false);
   }
 
   function downloadMarkdown() {
@@ -203,7 +208,14 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
                       Saved
                     </span>
                   ) : response ? (
-                    <ModeBadge mode={response.mode} />
+                    <>
+                      <ModeBadge mode={response.mode} />
+                      {response.modelRole === "scholarly" ? (
+                        <span className="inline-flex items-center rounded-full bg-accent-100 px-2 py-0.5 text-xs font-medium text-accent-800">
+                          Scholarly
+                        </span>
+                      ) : null}
+                    </>
                   ) : null}
                 </div>
                 {restoredView ? (
@@ -256,11 +268,27 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
                 <div className="mt-2">{response.routingDecision}</div>
                 {response.recommendedUpgrade ? (
                   <div className="mt-2 text-slate-600">
-                    Scholarly mode recommended later: {response.recommendedUpgrade.model} —{" "}
+                    Scholarly model available: {response.recommendedUpgrade.model} —{" "}
                     {response.recommendedUpgrade.reason}
                   </div>
                 ) : null}
               </details>
+            ) : null}
+            {!restoredView && response?.recommendedUpgrade && response.modelRole !== "scholarly" ? (
+              <div className="mb-4 flex flex-wrap items-center gap-3 rounded-md border border-accent-300 bg-accent-50 p-3 text-sm">
+                <span className="text-slate-700">
+                  This question may benefit from the scholarly model ({response.recommendedUpgrade.model}).
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void runPrompt(responsePrompt, true)}
+                  disabled={loading}
+                  className="inline-flex items-center gap-2 rounded-md bg-accent-700 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-accent-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Sparkles size={14} aria-hidden />
+                  Use scholarly model
+                </button>
+              </div>
             ) : null}
             {saveStatus ? <p className="mb-3 text-sm text-slate-600">{saveStatus}</p> : null}
             <pre className="whitespace-pre-wrap break-words text-sm leading-7 text-slate-800">{answerText}</pre>

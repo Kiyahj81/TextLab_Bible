@@ -45,12 +45,14 @@ const REFINEMENT_TOOL = {
       chapter: { type: "integer", minimum: 1 },
       verseStart: { type: "integer", minimum: 1 },
       verseEnd: {
-        type: "integer",
+        // OpenAI strict mode requires every property in `required`; express
+        // "optional" as a nullable type rather than omitting it.
+        type: ["integer", "null"],
         minimum: 1,
-        description: "Inclusive end verse. Omit to fetch a single verse."
+        description: "Inclusive end verse. Pass null to fetch a single verse."
       }
     },
-    required: ["corpus", "book", "chapter", "verseStart"]
+    required: ["corpus", "book", "chapter", "verseStart", "verseEnd"]
   }
 };
 
@@ -94,14 +96,29 @@ async function executeGetPassage(call: FunctionCallItem): Promise<{
   citations: AssistantCitation[];
   trace: ToolTraceEntry;
 }> {
-  let args: { corpus: "SBLGNT" | "WEB"; book: string; chapter: number; verseStart: number; verseEnd?: number };
+  let args: { corpus: "SBLGNT" | "WEB"; book: string; chapter: number; verseStart: number; verseEnd?: number | null };
   try {
     args = JSON.parse(call.arguments);
   } catch {
     return { output: { error: "Invalid tool arguments" }, citations: [], trace: { tool: "getPassage", error: "Invalid tool arguments" } };
   }
 
-  const res = await getPassage(args);
+  let res: Awaited<ReturnType<typeof getPassage>>;
+  try {
+    res = await getPassage({
+      corpus: args.corpus,
+      book: args.book,
+      chapter: args.chapter,
+      verseStart: args.verseStart,
+      verseEnd: args.verseEnd ?? undefined
+    });
+  } catch (err) {
+    // Attribute DB failures to getPassage (not the model call) and let the
+    // remaining refinement complete rather than aborting synthesis.
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return { output: { error: message }, citations: [], trace: { tool: "getPassage", args, error: message } };
+  }
+
   const citations = res.references.map((r) => ({
     reference: r.reference,
     corpus: res.corpus,
@@ -146,12 +163,13 @@ export async function synthesizeWithRefinement(input: SynthesisInput): Promise<S
   // Execute every getPassage call from this round, then make exactly one more
   // synthesis call with NO tools registered — this hard-caps refinement.
   inputItems.push(...calls);
-  for (const call of calls) {
-    const { output, citations: newCitations, trace } = await executeGetPassage(call);
-    toolTrace.push(trace);
-    citations.push(...newCitations);
-    inputItems.push({ type: "function_call_output", call_id: call.call_id, output: JSON.stringify(output) });
-  }
+  // executeGetPassage never throws, so these DB round-trips can run in parallel.
+  const callResults = await Promise.all(calls.map((call) => executeGetPassage(call)));
+  callResults.forEach((result, index) => {
+    toolTrace.push(result.trace);
+    citations.push(...result.citations);
+    inputItems.push({ type: "function_call_output", call_id: calls[index].call_id, output: JSON.stringify(result.output) });
+  });
 
   const second = await client.responses.create({
     model: routing.modelUsed,

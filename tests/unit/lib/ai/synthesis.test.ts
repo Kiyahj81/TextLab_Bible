@@ -122,6 +122,73 @@ describe("synthesizeWithRefinement", () => {
     expect(responsesCreate).toHaveBeenCalledTimes(2);
   });
 
+  it("registers verseEnd as required + nullable so the strict tool schema is valid", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "key");
+    responsesCreate.mockResolvedValue({ output: [], output_text: "ok" });
+
+    const { synthesizeWithRefinement } = await import("@/lib/ai/synthesis");
+    await synthesizeWithRefinement({ prompt: "x", evidence, routing });
+
+    const tool = responsesCreate.mock.calls[0][0].tools[0];
+    expect(tool.strict).toBe(true);
+    // OpenAI strict mode requires every property to appear in `required`.
+    expect(tool.parameters.required).toEqual(
+      expect.arrayContaining(["corpus", "book", "chapter", "verseStart", "verseEnd"])
+    );
+    expect(tool.parameters.properties.verseEnd.type).toEqual(expect.arrayContaining(["integer", "null"]));
+  });
+
+  it("coerces a null verseEnd to a single-verse fetch", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "key");
+    responsesCreate
+      .mockResolvedValueOnce({
+        output: [
+          {
+            type: "function_call",
+            name: "getPassage",
+            arguments: JSON.stringify({ corpus: "SBLGNT", book: "Rom", chapter: 7, verseStart: 2, verseEnd: null }),
+            call_id: "c1"
+          }
+        ],
+        output_text: ""
+      })
+      .mockResolvedValueOnce({ output: [], output_text: "done" });
+    getPassage.mockResolvedValue({
+      corpus: "SBLGNT",
+      references: [{ book: "Rom", chapter: 7, verse: 2, reference: "Rom 7:2", text: "x" }]
+    });
+
+    const { synthesizeWithRefinement } = await import("@/lib/ai/synthesis");
+    await synthesizeWithRefinement({ prompt: "Romans 7", evidence, routing });
+
+    expect(getPassage.mock.calls[0][0].verseEnd).toBeUndefined();
+  });
+
+  it("attributes a getPassage DB failure to getPassage and still completes synthesis", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "key");
+    responsesCreate
+      .mockResolvedValueOnce({
+        output: [
+          {
+            type: "function_call",
+            name: "getPassage",
+            arguments: JSON.stringify({ corpus: "SBLGNT", book: "Rom", chapter: 7, verseStart: 2 }),
+            call_id: "c1"
+          }
+        ],
+        output_text: ""
+      })
+      .mockResolvedValueOnce({ output: [], output_text: "Refined despite DB error" });
+    getPassage.mockRejectedValue(new Error("db connection lost"));
+
+    const { synthesizeWithRefinement } = await import("@/lib/ai/synthesis");
+    const result = await synthesizeWithRefinement({ prompt: "Romans 7", evidence, routing });
+
+    expect(result?.answer).toBe("Refined despite DB error");
+    expect(result?.toolTrace.some((t) => t.tool === "getPassage" && t.error === "db connection lost")).toBe(true);
+    expect(result?.toolTrace.some((t) => t.tool === "openai.responses.create" && t.error)).toBe(false);
+  });
+
   it("returns null without calling the SDK when OPENAI_API_KEY is missing", async () => {
     vi.stubEnv("OPENAI_API_KEY", "");
 

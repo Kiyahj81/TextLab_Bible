@@ -79,13 +79,19 @@ npm run test:unit
 # Same suite with the v8 coverage gate (80% lines/statements over app/api + lib)
 npm run test:coverage
 
-# 7 real-Prisma integration tests for ownership + FK cascade (needs Docker / Postgres)
+# Real-Prisma integration tests for ownership + FK cascade.
+# These write/delete data, so they run against an isolated test database —
+# configure .env.test (cp .env.test.example .env.test) pointing at a Neon branch.
 npm run test:integration
 
 # Playwright end-to-end suite — signs in via dev credentials provider,
-# then exercises reader/search/assistant/notes (~30s, needs Docker / Postgres)
+# then exercises reader/search/assistant/notes (~30s). Also uses .env.test.
 npm run test:acceptance
 ```
+
+> **Test database:** `npm run test:integration` and `npm run test:acceptance` load `.env.test`
+> (gitignored) instead of `.env`, so they hit a throwaway **Neon branch** rather than your working
+> database. Copy `.env.test.example` to `.env.test` and fill in the branch connection strings.
 
 Verification gate (matches the `verify` npm script, runs lint + tsc + build + coverage):
 

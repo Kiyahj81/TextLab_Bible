@@ -24,7 +24,7 @@ function assert(condition, message) {
 async function preflightDatabase() {
   const raw = process.env.DATABASE_URL;
   if (!raw) {
-    throw new Error("DATABASE_URL is not set. Configure it in .env before running the acceptance test.");
+    throw new Error("DATABASE_URL is not set. Configure it in .env.test (a Neon test branch) before running the acceptance test.");
   }
 
   let parsed;
@@ -42,10 +42,10 @@ async function preflightDatabase() {
     socket.once("connect", () => { socket.end(); resolve(); });
     socket.once("timeout", () => {
       socket.destroy();
-      reject(new Error(`PostgreSQL preflight failed: timed out connecting to ${host}:${port} after 3000ms. Is Docker running?`));
+      reject(new Error(`PostgreSQL preflight failed: timed out connecting to ${host}:${port} after 3000ms. Is the test database reachable?`));
     });
     socket.once("error", (err) => {
-      reject(new Error(`PostgreSQL preflight failed: cannot reach ${host}:${port} (${err.code ?? err.message}). Is Docker running?`));
+      reject(new Error(`PostgreSQL preflight failed: cannot reach ${host}:${port} (${err.code ?? err.message}). Is the test database reachable?`));
     });
   });
 }

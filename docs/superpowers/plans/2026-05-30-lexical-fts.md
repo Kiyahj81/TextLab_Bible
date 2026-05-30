@@ -25,7 +25,7 @@
 | `tests/unit/lib/ai/retrievalPlanner.test.ts` | Assert planner passes `orderBy: "rank"` | Modify |
 | `scripts/evidence-diff.mjs` | Tier-1 evidence-diff harness | Create |
 | `scripts/acceptance-test.js` | Re-derive any FTS-affected assertions | Modify (verify) |
-| `docs/PROJECT_STATE.md`, `ReadMe.md`, `docs/security-register.md` | Doc updates | Modify |
+| `docs/PROJECT_STATE.md`, `README.md`, `docs/security-register.md` | Doc updates | Modify |
 
 **Naming locked across tasks:**
 - New column: `textSearch` (camelCase, matches Prisma convention; quoted `"textSearch"` in SQL).
@@ -645,7 +645,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 7: Update documentation
 
 **Files:**
-- Modify: `docs/PROJECT_STATE.md`, `ReadMe.md`, `docs/security-register.md`, `docs/HiFi-exegesis-nt-roadmap.md`
+- Modify: `docs/PROJECT_STATE.md`, `README.md`, `docs/security-register.md`, `docs/HiFi-exegesis-nt-roadmap.md`
 
 - [ ] **Step 1: Mark Phase 3 done in the roadmap and project state**
 
@@ -653,9 +653,9 @@ In `docs/HiFi-exegesis-nt-roadmap.md`, update the Phase 3 entry (line 186) to a 
 
 In `docs/PROJECT_STATE.md`, update the Milestone 3 status section: Phase 3 → done; note the new `$queryRaw` surface and the deferred English-stemming follow-up.
 
-- [ ] **Step 2: Update ReadMe.md**
+- [ ] **Step 2: Update README.md**
 
-In `ReadMe.md`, update the search description to reflect FTS (accent-insensitive Greek, whole-word lexeme matching, ranked results) replacing substring search.
+In `README.md`, update the search description to reflect FTS (accent-insensitive Greek, whole-word lexeme matching, ranked results) replacing substring search.
 
 - [ ] **Step 3: Add a security-register entry**
 
@@ -664,7 +664,7 @@ In `docs/security-register.md`, add an entry: Phase 3 introduces the first `$que
 - [ ] **Step 4: Commit**
 
 ```bash
-git add docs/PROJECT_STATE.md ReadMe.md docs/security-register.md docs/HiFi-exegesis-nt-roadmap.md
+git add docs/PROJECT_STATE.md README.md docs/security-register.md docs/HiFi-exegesis-nt-roadmap.md
 git commit -m "docs: record Phase 3 lexical FTS (config, column, raw-query surface)
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"

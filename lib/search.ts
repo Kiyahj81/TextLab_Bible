@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { bookName, formatReference, normalizeBook } from "@/lib/references";
 
@@ -239,6 +239,7 @@ export async function searchKeyword(input: {
   query: string;
   book?: string;
   chapter?: number;
+  orderBy?: "canonical" | "rank";
 } & PaginationInput) {
   const book = normalizeBook(input.book);
   const query = input.query.trim();
@@ -248,31 +249,60 @@ export async function searchKeyword(input: {
     return { query, results: [], pagination: { ...pagination, total: 0, pageCount: 0 } };
   }
 
-  const where: Prisma.VerseWhereInput = {
-    text: { contains: query, mode: "insensitive" },
-    corpus: input.corpus ? { abbreviation: input.corpus } : { abbreviation: { not: "NET" } },
-    book: book ? { osisId: book } : undefined,
-    chapter: input.chapter
-  };
+  // websearch_to_tsquery never throws on arbitrary user/assistant input (stray
+  // punctuation, quotes, -exclusion all tolerated). All values are bound as
+  // parameters — no string interpolation into SQL.
+  const tsquery = Prisma.sql`websearch_to_tsquery('bible_simple', ${query})`;
 
-  const [total, verses] = await Promise.all([
-    prisma.verse.count({ where }),
-    prisma.verse.findMany({
-      where,
-      include: { corpus: true, book: true },
-      orderBy: [{ book: { order: "asc" } }, { chapter: "asc" }, { verse: "asc" }],
-      skip: (pagination.page - 1) * pagination.pageSize,
-      take: pagination.pageSize
-    })
+  // Corpus filter mirrors the prior Prisma behavior: explicit corpus, else any
+  // corpus except NET.
+  const corpusFilter = input.corpus
+    ? Prisma.sql`c."abbreviation" = ${input.corpus}`
+    : Prisma.sql`c."abbreviation" <> 'NET'`;
+
+  const filters: Prisma.Sql[] = [Prisma.sql`v."textSearch" @@ ${tsquery}`, corpusFilter];
+  if (book) filters.push(Prisma.sql`b."osisId" = ${book}`);
+  if (input.chapter !== undefined) filters.push(Prisma.sql`v."chapter" = ${input.chapter}`);
+  const whereSql = Prisma.sql`WHERE ${Prisma.join(filters, " AND ")}`;
+
+  const orderSql =
+    input.orderBy === "rank"
+      ? Prisma.sql`ORDER BY ts_rank(v."textSearch", ${tsquery}) DESC, b."order" ASC, v."chapter" ASC, v."verse" ASC`
+      : Prisma.sql`ORDER BY b."order" ASC, v."chapter" ASC, v."verse" ASC`;
+
+  const offset = (pagination.page - 1) * pagination.pageSize;
+
+  const [countRows, rows] = await Promise.all([
+    prisma.$queryRaw<{ count: bigint }[]>(Prisma.sql`
+      SELECT count(*)::bigint AS count
+      FROM "Verse" v
+      JOIN "Corpus" c ON c."id" = v."corpusId"
+      JOIN "Book" b ON b."id" = v."bookId"
+      ${whereSql}
+    `),
+    prisma.$queryRaw<
+      { corpus: string; osisId: string; chapter: number; verse: number; text: string }[]
+    >(Prisma.sql`
+      SELECT c."abbreviation" AS corpus, b."osisId" AS "osisId",
+             v."chapter" AS chapter, v."verse" AS verse, v."text" AS text
+      FROM "Verse" v
+      JOIN "Corpus" c ON c."id" = v."corpusId"
+      JOIN "Book" b ON b."id" = v."bookId"
+      ${whereSql}
+      ${orderSql}
+      LIMIT ${pagination.pageSize} OFFSET ${offset}
+    `)
   ]);
+
+  const total = Number(countRows[0]?.count ?? BigInt(0));
 
   return {
     query,
     pagination: paginationResult(pagination, total),
-    results: verses.map((verse) => ({
-      corpus: verse.corpus.abbreviation,
-      reference: formatReference(verse.book.osisId, verse.chapter, verse.verse),
-      text: verse.text
+    results: rows.map((row) => ({
+      corpus: row.corpus,
+      reference: formatReference(row.osisId, row.chapter, row.verse),
+      text: row.text
     }))
   };
 }

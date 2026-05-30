@@ -209,4 +209,74 @@ describe("runRetrievalPlan", () => {
     expect(getPassage).not.toHaveBeenCalled();
     expect(searchLemma).not.toHaveBeenCalled();
   });
+
+  it("scopes a word search to a single named chapter", async () => {
+    await runRetrievalPlan({
+      ...emptySignals,
+      references: [{ book: "John", chapter: 1 }],
+      greekWords: ["λόγος"],
+      intent: "word-study",
+      book: "John"
+    });
+
+    expect(searchLemma).toHaveBeenCalledWith(expect.objectContaining({ lemma: "λόγος", book: "John", chapter: 1 }));
+  });
+
+  it("does not chapter-scope a word search when only a book is named", async () => {
+    await runRetrievalPlan({ ...emptySignals, greekWords: ["λόγος"], intent: "word-study", book: "John" });
+
+    expect(searchLemma.mock.calls[0][0].chapter).toBeUndefined();
+  });
+
+  it("does not chapter-scope across a cross-chapter reference", async () => {
+    await runRetrievalPlan({
+      ...emptySignals,
+      references: [{ book: "2Cor", chapter: 4, verseStart: 16, chapterEnd: 5, verseEnd: 10 }],
+      greekWords: ["λόγος"],
+      intent: "word-study",
+      book: "2Cor"
+    });
+
+    expect(searchLemma.mock.calls[0][0].chapter).toBeUndefined();
+    expect(searchLemma.mock.calls[0][0].book).toBe("2Cor");
+  });
+
+  it("returns all word hits when the count is at or below the sample size", async () => {
+    searchLemma.mockResolvedValueOnce({
+      lemma: "λόγος",
+      count: 2,
+      results: [
+        { tokenId: "t1", corpus: "SBLGNT", reference: "John 1:1", surface: "λόγος", lemma: "λόγος", morphCode: "N-NSM", verseText: "Ἐν ἀρχῇ" },
+        { tokenId: "t2", corpus: "SBLGNT", reference: "John 1:14", surface: "λόγος", lemma: "λόγος", morphCode: "N-NSM", verseText: "ὁ λόγος σὰρξ" }
+      ],
+      pagination: {}
+    });
+
+    const packet = await runRetrievalPlan({
+      ...emptySignals, references: [{ book: "John", chapter: 1 }], greekWords: ["λόγος"], intent: "word-study", book: "John"
+    });
+
+    expect(packet.formattedEvidence).toContain("John 1:1");
+    expect(packet.formattedEvidence).toContain("John 1:14");
+    expect(packet.formattedEvidence).not.toContain("more)");
+  });
+
+  it("samples a large word search to 25 lines and shows the true total", async () => {
+    const results = Array.from({ length: 25 }, (_, i) => ({
+      tokenId: `t${i}`, corpus: "SBLGNT", reference: `John ${i + 1}:1`, surface: "ἀγάπη", lemma: "ἀγάπη", morphCode: "N-NSF", verseText: "x"
+    }));
+    searchLemma.mockResolvedValueOnce({ lemma: "ἀγάπη", count: 116, results, pagination: {} });
+
+    const packet = await runRetrievalPlan({ ...emptySignals, greekWords: ["ἀγάπη"], intent: "word-study" });
+
+    expect(packet.formattedEvidence).toContain("116 hit(s)");
+    expect(packet.formattedEvidence).toContain("…(91 more)");
+    // 25 table rows present (one per result)
+    expect((packet.formattedEvidence.match(/\| John /g) ?? []).length).toBe(25);
+  });
+
+  it("requests a page size of at least 25 for word searches", async () => {
+    await runRetrievalPlan({ ...emptySignals, greekWords: ["λόγος"], intent: "word-study" });
+    expect(searchLemma.mock.calls[0][0].pageSize).toBeGreaterThanOrEqual(25);
+  });
 });

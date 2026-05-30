@@ -18,11 +18,32 @@ export type EvidencePacket = {
 
 // Bounds the number of DB-backed tool calls a single prompt can trigger.
 const MAX_PLANNED_CALLS = 8;
+// Per-call CITATION sample. Citations stay bounded (save-note caps at 50, the
+// synthesis payload slices to 20) even when the evidence text is complete.
 const MAX_SECTION_LINES = 10;
-// Each call cites a bounded sample (mirrors the displayed lines), and the whole
-// packet is capped so downstream consumers (the save-note schema caps at 50, the
-// synthesis payload slices to 20) never overflow.
+// Word-search evidence lines + page size: show all hits when count <= this, else
+// this many + the true total count.
+const MAX_WORD_SAMPLE = 25;
+// Hard ceiling on passage evidence lines per corpus (no real NT chapter/pericope
+// approaches this; it only stops a pathological whole-book range).
+const MAX_PASSAGE_LINES = 120;
+// Each call cites a bounded sample; the whole packet is capped so downstream
+// consumers never overflow.
 const MAX_TOTAL_CITATIONS = 40;
+
+type Scope = { book?: string; chapter?: number };
+
+// A single, single-chapter reference scopes word searches to that chapter. A
+// cross-chapter reference, multiple references, or none falls back to book scope
+// (or corpus-wide if no book is detected).
+function scopeFor(signals: Signals): Scope {
+  if (signals.references.length === 1) {
+    const ref = signals.references[0];
+    const singleChapter = ref.chapterEnd === undefined || ref.chapterEnd === ref.chapter;
+    if (singleChapter) return { book: ref.book, chapter: ref.chapter };
+  }
+  return signals.book ? { book: signals.book } : {};
+}
 
 type CallResult = { citations: AssistantCitation[]; section: string; traces: ToolTraceEntry[] };
 
@@ -73,13 +94,16 @@ function passageCall(corpus: "SBLGNT" | "WEB", ref: ParsedReference): PlannedCal
   };
 }
 
-function lemmaCall(lemma: string, book?: string): PlannedCall {
-  const args = book ? { lemma, book } : { lemma };
+function lemmaCall(lemma: string, scope: Scope): PlannedCall {
+  const args: { lemma: string; book?: string; chapter?: number } = { lemma };
+  if (scope.book) args.book = scope.book;
+  if (scope.chapter !== undefined) args.chapter = scope.chapter;
+  const label = `${lemma}${scope.book ? `, ${scope.book}` : ""}${scope.chapter !== undefined ? ` ${scope.chapter}` : ""}`;
   return {
-    key: `lemma:${lemma}|${book ?? ""}`,
+    key: `lemma:${lemma}|${scope.book ?? ""}|${scope.chapter ?? ""}`,
     errorTrace: { tool: "searchLemma", args },
     run: async () => {
-      const res = await searchLemma({ ...args, pageSize: 20 });
+      const res = await searchLemma({ ...args, pageSize: MAX_WORD_SAMPLE });
       const citations = res.results.slice(0, MAX_SECTION_LINES).map((r) => ({
         reference: r.reference,
         corpus: r.corpus,
@@ -88,47 +112,56 @@ function lemmaCall(lemma: string, book?: string): PlannedCall {
         tokenId: r.tokenId
       }));
       const lines = res.results
-        .slice(0, MAX_SECTION_LINES)
+        .slice(0, MAX_WORD_SAMPLE)
         .map((r) => `| ${r.reference} | ${r.surface} | ${r.morphCode} | ${r.verseText} |`);
       return {
         citations,
-        section: sectionBlock(`searchLemma(${lemma}${book ? `, ${book}` : ""}) — ${res.count} hit(s)`, lines, res.results.length),
+        section: sectionBlock(`searchLemma(${label}) — ${res.count} hit(s)`, lines, res.count),
         traces: [{ tool: "searchLemma", args }]
       };
     }
   };
 }
 
-function keywordCall(word: string, book?: string): PlannedCall {
-  const args = book ? { query: word, book } : { query: word };
+function keywordCall(word: string, scope: Scope): PlannedCall {
+  const args: { query: string; book?: string; chapter?: number } = { query: word };
+  if (scope.book) args.book = scope.book;
+  if (scope.chapter !== undefined) args.chapter = scope.chapter;
+  const label = `${word}${scope.book ? `, ${scope.book}` : ""}${scope.chapter !== undefined ? ` ${scope.chapter}` : ""}`;
   return {
-    key: `keyword:${word}|${book ?? ""}`,
+    key: `keyword:${word}|${scope.book ?? ""}|${scope.chapter ?? ""}`,
     errorTrace: { tool: "searchKeyword", args },
     run: async () => {
-      const res = await searchKeyword({ ...args, pageSize: 10 });
+      const res = await searchKeyword({ ...args, pageSize: MAX_WORD_SAMPLE });
+      const total = res.pagination?.total ?? res.results.length;
       const citations = res.results.slice(0, MAX_SECTION_LINES).map((r) => ({
         reference: r.reference,
         corpus: r.corpus,
         searchQuery: `keyword:${word}`,
         toolName: "searchKeyword"
       }));
-      const lines = res.results.slice(0, MAX_SECTION_LINES).map((r) => `- ${r.reference}, ${r.corpus}: ${r.text}`);
+      const lines = res.results.slice(0, MAX_WORD_SAMPLE).map((r) => `- ${r.reference}, ${r.corpus}: ${r.text}`);
       return {
         citations,
-        section: sectionBlock(`searchKeyword(${word}${book ? `, ${book}` : ""})`, lines, res.results.length),
+        section: sectionBlock(`searchKeyword(${label})`, lines, total),
         traces: [{ tool: "searchKeyword", args }]
       };
     }
   };
 }
 
-function morphCall(code: string, mode: "exact" | "prefix", book?: string): PlannedCall {
-  const args = book ? { morphCode: code, matchMode: mode, book } : { morphCode: code, matchMode: mode };
+function morphCall(code: string, mode: "exact" | "prefix", scope: Scope): PlannedCall {
+  const args: { morphCode: string; matchMode: "exact" | "prefix"; book?: string; chapter?: number } = {
+    morphCode: code,
+    matchMode: mode
+  };
+  if (scope.book) args.book = scope.book;
+  if (scope.chapter !== undefined) args.chapter = scope.chapter;
   return {
-    key: `morph:${code}|${mode}|${book ?? ""}`,
+    key: `morph:${code}|${mode}|${scope.book ?? ""}|${scope.chapter ?? ""}`,
     errorTrace: { tool: "searchMorphology", args },
     run: async () => {
-      const res = await searchMorphology({ ...args, pageSize: 20 });
+      const res = await searchMorphology({ ...args, pageSize: MAX_WORD_SAMPLE });
       const citations = res.results.slice(0, MAX_SECTION_LINES).map((r) => ({
         reference: r.reference,
         corpus: r.corpus,
@@ -137,11 +170,11 @@ function morphCall(code: string, mode: "exact" | "prefix", book?: string): Plann
         tokenId: r.tokenId
       }));
       const lines = res.results
-        .slice(0, MAX_SECTION_LINES)
+        .slice(0, MAX_WORD_SAMPLE)
         .map((r) => `| ${r.reference} | ${r.surface} | ${r.lemma} | ${r.morphCode} |`);
       return {
         citations,
-        section: sectionBlock(`searchMorphology(${code}, ${mode}) — ${res.count} hit(s)`, lines, res.results.length),
+        section: sectionBlock(`searchMorphology(${code}, ${mode}) — ${res.count} hit(s)`, lines, res.count),
         traces: [{ tool: "searchMorphology", args }]
       };
     }
@@ -185,7 +218,7 @@ function buildPlan(signals: Signals): PlannedCall[] {
     seen.add(call.key);
     calls.push(call);
   };
-  const book = signals.book;
+  const scope = scopeFor(signals);
 
   for (const ref of signals.references) {
     add(passageCall("SBLGNT", ref));
@@ -193,21 +226,21 @@ function buildPlan(signals: Signals): PlannedCall[] {
   }
 
   for (const lemma of signals.greekWords) {
-    add(lemmaCall(lemma, book));
+    add(lemmaCall(lemma, scope));
   }
 
   for (const word of signals.topicWords) {
     const mapped = ENGLISH_TO_GREEK_LEMMA[word];
-    if (mapped) add(lemmaCall(mapped, book));
-    else add(keywordCall(word, book));
+    if (mapped) add(lemmaCall(mapped, scope));
+    else add(keywordCall(word, scope));
   }
 
   for (const morph of signals.morphCodes) {
-    add(morphCall(morph.code, morph.mode, book));
+    add(morphCall(morph.code, morph.mode, scope));
   }
 
-  if (signals.intent === "topic-survey" && book && calls.length === 0) {
-    add(topLemmasCall(book));
+  if (signals.intent === "topic-survey" && signals.book && calls.length === 0) {
+    add(topLemmasCall(signals.book));
   }
 
   return calls.slice(0, MAX_PLANNED_CALLS);

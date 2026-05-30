@@ -183,7 +183,23 @@ the real DB verse text, fuzzy-match (Levenshtein/substring ≥0.90), and refuse 
 boundary in `app/api/assistant/route.ts`. This is the single biggest fidelity win and uses only the
 NT data we already have.
 
-**Phase 3 — Lexical FTS.** Add a `tsvector` column + GIN index migration on `Verse.text`; replace the
+**Phase 3 — Lexical FTS. ✅ DONE (branch `milestone-3/phase-3-lexical-fts`).** Custom immutable
+text-search config `bible_simple` (clone of `simple` with `unaccent` wired in as a dictionary, making
+`to_tsvector` IMMUTABLE — required by the generated column). `Verse.textSearch` stored GENERATED
+`tsvector` column + `Verse_textSearch_idx` GIN index (migration
+`prisma/migrations/20260530120000_lexical_fts/`). `searchKeyword` in `lib/search.ts` rewritten from
+ILIKE substring to `$queryRaw` / `websearch_to_tsquery('bible_simple', …)` — the project's first raw
+SQL in the search layer; all user-supplied values bound via `Prisma.sql` tagged templates (no string
+interpolation). New `orderBy?: "canonical" | "rank"` param (default canonical; rank uses `ts_rank`
+DESC with canonical tiebreak); retrieval planner passes `orderBy: "rank"` so evidence truncation
+keeps the strongest verses. Behaviour: accent-insensitive Greek (λογος finds λόγος), whole-lexeme
+matching not substring ("log" no longer matches inside "logos"), multi-word AND queries ("grace
+truth" finds John 1:14). English Snowball stemming intentionally DEFERRED — a single unified
+accent-folded `simple` config covers both languages. New: 4 unit tests
+(`tests/unit/lib/search-keyword.test.ts`), 6 integration tests (`tests/integration/fts-search.test.ts`),
+evidence-diff harness (`scripts/evidence-diff.ts`). Original plan below.
+
+**Phase 3 — Lexical FTS (original plan).** Add a `tsvector` column + GIN index migration on `Verse.text`; replace the
 `ILIKE` substring match in `searchKeyword` (`lib/search.ts`) with ranked full-text search. Lexical
 half of hybrid retrieval; also improves the standalone search UI.
 

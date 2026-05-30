@@ -36,6 +36,19 @@ sprint and at every Next.js minor upgrade. Cross-check each open row.
 | Owner | Maintainer (kiyahj81) |
 | Opened | 2026-05-30 (retrieval-scoping branch) |
 
+### Phase 3 raw SQL surface in searchKeyword (`lib/search.ts`)
+
+| Field | Value |
+| --- | --- |
+| Severity | Low (SQL injection surface — mitigated) |
+| Change | Phase 3 Lexical FTS introduces the project's first `$queryRaw` in the search layer: `searchKeyword` in `lib/search.ts` now builds a parameterized PostgreSQL FTS query using `websearch_to_tsquery('bible_simple', …)`. |
+| Reason | The ILIKE `text: { contains }` path Prisma previously used was replaced by a raw query to enable `tsvector @@ tsquery` matching against the stored generated column. Prisma does not yet expose a first-class FTS API for generated columns. |
+| Status | Mitigated |
+| Mitigation | All user- and assistant-supplied values (query string, corpus, book, chapter, pagination offsets) are bound as Prisma.sql tagged template parameters or via `Prisma.join` — no string interpolation of user input into the SQL string. `websearch_to_tsquery` is documented to tolerate arbitrary/hostile input (including unbalanced quotes and special operators) without throwing or producing injection risk. Code reviewed at PR merge. |
+| Owner | Maintainer (kiyahj81) |
+| Opened | 2026-05-30 (Phase 3 Lexical FTS) |
+| Next review | Re-check if the raw query in `searchKeyword` is extended with new parameters. |
+
 ## Tooling notes
 
 - `npm audit` requires network access to the npm registry. If the

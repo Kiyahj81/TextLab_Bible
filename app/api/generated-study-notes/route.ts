@@ -7,12 +7,14 @@ import { assertSameOrigin } from "@/lib/http/security";
 import { readJsonLimited, validateBody } from "@/lib/http/validation";
 
 const MAX_PROMPT = 2_000;
-// A deterministic-fallback answer embeds the full retrieved evidence, which for a
-// whole chapter across both corpora (SBLGNT + WEB) runs ~13 KB and is hard-bounded
-// by the planner's MAX_PASSAGE_LINES ceiling (worst realistic case ~30 KB). Caps
-// sized to fit that completely while still rejecting pathological payloads.
-const MAX_ANSWER = 40_000;
-const MAX_MARKDOWN = 48_000;
+// A deterministic-fallback answer embeds the full retrieved evidence. This is
+// hard-bounded by the planner: at most MAX_PLANNED_CALLS (8) passage fetches, each
+// capped at MAX_PASSAGE_LINES, so the worst case is ~4 large chapters across both
+// corpora — measured at ~57 KB answer / ~58 KB markdown / ~167 KB request body on
+// the full corpus. Caps sized to fit that ceiling with margin while still rejecting
+// anything beyond the planner's reach.
+const MAX_ANSWER = 64_000;
+const MAX_MARKDOWN = 72_000;
 const MAX_CITATIONS = 50;
 
 const citationSchema = z
@@ -35,10 +37,11 @@ const generatedStudyNoteSchema = z.object({
   citations: z.array(citationSchema).max(MAX_CITATIONS).optional()
 });
 
-// Larger body cap than the default — generated notes embed a full-chapter
-// markdown document plus the answer text and citation array; 64 KB is too tight
-// once whole passages (answer ≤ 40 KB + markdown ≤ 48 KB) are returned in full.
-const NOTE_BODY_LIMIT = 128 * 1024;
+// Larger body cap than the default — generated notes embed full passages as both
+// answer text and markdown plus the citation array. A multi-reference prompt at the
+// planner's 8-call ceiling produces a ~167 KB request body, so 256 KB fits the
+// worst case (answer ≤ 64 KB + markdown ≤ 72 KB + citations) with margin.
+const NOTE_BODY_LIMIT = 256 * 1024;
 
 export async function GET() {
   const authResult = await requireAuth();

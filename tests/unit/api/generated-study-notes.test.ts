@@ -85,18 +85,19 @@ describe("POST /api/generated-study-notes", () => {
     expect(prismaMock.generatedStudyNote.create).not.toHaveBeenCalled();
   });
 
-  it("returns 413 when body exceeds the 128 KB cap", async () => {
-    const huge = "x".repeat(129 * 1024);
+  it("returns 413 when body exceeds the 256 KB cap", async () => {
+    const huge = "x".repeat(257 * 1024);
     const res = await POST(jsonRequest(validBody({ markdown: huge })));
     expect(res.status).toBe(413);
     expect(prismaMock.generatedStudyNote.create).not.toHaveBeenCalled();
   });
 
-  it("accepts a full-chapter-sized generated note (whole passage, both corpora)", async () => {
-    // A whole NT chapter across SBLGNT + WEB renders an ~13 KB fallback answer.
-    // This exceeded the previous 10 KB answer cap; raised so completeness persists.
+  it("accepts a multi-reference-sized generated note at the planner's call ceiling", async () => {
+    // Four large chapters across SBLGNT + WEB (the 8-passage-call ceiling) render
+    // ~57 KB answer / ~58 KB markdown — measured on the full corpus. Caps sized so
+    // a deterministic-fallback answer the app itself produced always persists.
     const res = await POST(
-      jsonRequest(validBody({ answer: "x".repeat(13_500), markdown: "x".repeat(14_000) }))
+      jsonRequest(validBody({ answer: "x".repeat(57_500), markdown: "x".repeat(58_500) }))
     );
     expect(res.status).toBe(201);
     expect(prismaMock.generatedStudyNote.create).toHaveBeenCalledTimes(1);
@@ -113,12 +114,12 @@ describe("POST /api/generated-study-notes", () => {
   });
 
   it("rejects an overlong answer with 400", async () => {
-    const res = await POST(jsonRequest(validBody({ answer: "x".repeat(40_001) })));
+    const res = await POST(jsonRequest(validBody({ answer: "x".repeat(64_001) })));
     expect(res.status).toBe(400);
   });
 
   it("rejects an overlong markdown with 400", async () => {
-    const res = await POST(jsonRequest(validBody({ markdown: "x".repeat(48_001) })));
+    const res = await POST(jsonRequest(validBody({ markdown: "x".repeat(72_001) })));
     expect(res.status).toBe(400);
   });
 

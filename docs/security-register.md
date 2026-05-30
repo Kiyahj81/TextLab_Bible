@@ -29,10 +29,10 @@ sprint and at every Next.js minor upgrade. Cross-check each open row.
 | Field | Value |
 | --- | --- |
 | Severity | Low (request-size / DoS-surface consideration) |
-| Change | `POST /api/generated-study-notes` caps raised: `NOTE_BODY_LIMIT` 64 KB → 128 KB, `MAX_ANSWER` 10 KB → 40 KB, `MAX_MARKDOWN` 12 KB → 48 KB (`app/api/generated-study-notes/route.ts`). |
-| Reason | The retrieval-scoping change returns whole passages in full, so a deterministic-fallback answer for a chapter across both corpora (~13 KB, hard-bounded by the planner's `MAX_PASSAGE_LINES` ceiling at ~30 KB worst case) overflowed the old caps and 400'd on save. |
+| Change | `POST /api/generated-study-notes` caps raised: `NOTE_BODY_LIMIT` 64 KB → 256 KB, `MAX_ANSWER` 10 KB → 64 KB, `MAX_MARKDOWN` 12 KB → 72 KB (`app/api/generated-study-notes/route.ts`). |
+| Reason | The retrieval-scoping change returns whole passages in full, so a deterministic-fallback answer overflowed the old caps and 400'd on save. A single chapter is ~13 KB; the true worst case is a multi-reference prompt at the planner's 8-passage-call ceiling (4 large chapters × 2 corpora), measured on the full corpus at ~57 KB answer / ~58 KB markdown / ~167 KB request body. Caps sized to that ceiling with margin. |
 | Status | Accepted — bounded |
-| Mitigation | Endpoint is behind auth (`requireAuth`) and same-origin (`assertSameOrigin`); `readJsonLimited` still rejects bodies over the new 128 KB cap with 413. The upstream answer/markdown sizes are bounded by `MAX_PASSAGE_LINES`, so payloads cannot grow unboundedly. |
+| Mitigation | Endpoint is behind auth (`requireAuth`) and same-origin (`assertSameOrigin`); `readJsonLimited` still rejects bodies over the 256 KB cap with 413. The upstream answer/markdown sizes are hard-bounded by `MAX_PLANNED_CALLS` (8) × `MAX_PASSAGE_LINES`, so payloads cannot grow unboundedly — a 6-reference prompt produces the same size as a 4-reference one. |
 | Owner | Maintainer (kiyahj81) |
 | Opened | 2026-05-30 (retrieval-scoping branch) |
 

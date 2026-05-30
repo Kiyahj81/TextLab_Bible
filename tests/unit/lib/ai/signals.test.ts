@@ -48,6 +48,24 @@ describe("detectReferences", () => {
     expect(detectReferences("romance languages")).toEqual([]);
     expect(detectReferences("from the start")).toEqual([]);
   });
+
+  it("parses a cross-chapter range", () => {
+    expect(detectReferences("2 Cor 4:16-5:10")).toEqual([
+      { book: "2Cor", chapter: 4, verseStart: 16, chapterEnd: 5, verseEnd: 10 }
+    ]);
+  });
+
+  it("parses a cross-chapter range with an en dash", () => {
+    expect(detectReferences("Rom 7:25–8:4")).toEqual([
+      { book: "Rom", chapter: 7, verseStart: 25, chapterEnd: 8, verseEnd: 4 }
+    ]);
+  });
+
+  it("keeps a same-chapter range free of chapterEnd", () => {
+    expect(detectReferences("Rom 8:1-4")).toEqual([
+      { book: "Rom", chapter: 8, verseStart: 1, verseEnd: 4 }
+    ]);
+  });
 });
 
 describe("detectGreekWords", () => {

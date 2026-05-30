@@ -102,20 +102,22 @@ function passageCall(corpus: "SBLGNT" | "WEB", ref: ParsedReference): PlannedCal
     : ref.verseStart === undefined
       ? `${ref.book} ${ref.chapter}`
       : `${ref.book} ${ref.chapter}:${ref.verseStart}${ref.verseEnd !== undefined ? `-${ref.verseEnd}` : ""}`;
-  const traces: ToolTraceEntry[] = segments.map((seg) => ({
-    tool: "getPassage",
-    args: { corpus, book: ref.book, chapter: seg.chapter, verseStart: seg.verseStart, verseEnd: seg.verseEnd }
-  }));
   return {
     key: `passage:${corpus}|${ref.book}|${ref.chapter}|${ref.verseStart ?? ""}|${ref.chapterEnd ?? ""}|${ref.verseEnd ?? ""}`,
     errorTrace: { tool: "getPassage", args: { corpus, book: ref.book, chapter: ref.chapter } },
     run: async () => {
       const all: Array<{ book: string; chapter: number; verse: number; reference: string; text: string }> = [];
+      // Build the trace lazily — one entry per segment we ACTUALLY fetch — so the
+      // early break below never leaves phantom getPassage entries in the tool
+      // trace, which is forwarded to the synthesis model as grounding context.
+      const traces: ToolTraceEntry[] = [];
       for (const seg of segments) {
         // Stop once we have enough to fill the ceiling — later segments would be
         // sliced off anyway, so don't pay for the DB round-trips.
         if (all.length >= MAX_PASSAGE_LINES) break;
-        const res = await getPassage({ corpus, book: ref.book, chapter: seg.chapter, verseStart: seg.verseStart, verseEnd: seg.verseEnd });
+        const args = { corpus, book: ref.book, chapter: seg.chapter, verseStart: seg.verseStart, verseEnd: seg.verseEnd };
+        const res = await getPassage(args);
+        traces.push({ tool: "getPassage", args });
         all.push(...res.references);
       }
       const shown = all.slice(0, MAX_PASSAGE_LINES);

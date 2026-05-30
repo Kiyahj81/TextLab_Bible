@@ -351,6 +351,10 @@ describe("runRetrievalPlan", () => {
     // fetch loop breaks once the line ceiling is reached (≤2 fetches per corpus).
     expect(getPassage.mock.calls.length).toBeLessThanOrEqual(8);
     expect(packet.formattedEvidence).toContain("more)");
+    // No phantom traces: the tool trace lists only chapters actually fetched, so
+    // the synthesis model is never told about chapters absent from the evidence.
+    const passageTraces = packet.toolTrace.filter((t) => t.tool === "getPassage");
+    expect(passageTraces.length).toBe(getPassage.mock.calls.length);
   });
 
   it("labels a same-chapter verse-range passage with the range, not just the chapter", async () => {

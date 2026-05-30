@@ -7,8 +7,12 @@ import { assertSameOrigin } from "@/lib/http/security";
 import { readJsonLimited, validateBody } from "@/lib/http/validation";
 
 const MAX_PROMPT = 2_000;
-const MAX_ANSWER = 10_000;
-const MAX_MARKDOWN = 12_000;
+// A deterministic-fallback answer embeds the full retrieved evidence, which for a
+// whole chapter across both corpora (SBLGNT + WEB) runs ~13 KB and is hard-bounded
+// by the planner's MAX_PASSAGE_LINES ceiling (worst realistic case ~30 KB). Caps
+// sized to fit that completely while still rejecting pathological payloads.
+const MAX_ANSWER = 40_000;
+const MAX_MARKDOWN = 48_000;
 const MAX_CITATIONS = 50;
 
 const citationSchema = z
@@ -31,9 +35,10 @@ const generatedStudyNoteSchema = z.object({
   citations: z.array(citationSchema).max(MAX_CITATIONS).optional()
 });
 
-// Larger body cap than the default — generated notes embed a markdown
-// document plus citation array; 16 KB is too tight.
-const NOTE_BODY_LIMIT = 64 * 1024;
+// Larger body cap than the default — generated notes embed a full-chapter
+// markdown document plus the answer text and citation array; 64 KB is too tight
+// once whole passages (answer ≤ 40 KB + markdown ≤ 48 KB) are returned in full.
+const NOTE_BODY_LIMIT = 128 * 1024;
 
 export async function GET() {
   const authResult = await requireAuth();

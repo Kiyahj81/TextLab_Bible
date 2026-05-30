@@ -330,4 +330,36 @@ describe("runRetrievalPlan", () => {
 
     expect(packet.formattedEvidence).toContain("more)");
   });
+
+  it("bounds a pathological cross-chapter span instead of expanding every chapter", async () => {
+    getPassage.mockImplementation(async (input: { corpus: string; book: string; chapter: number }) => ({
+      corpus: input.corpus,
+      references: Array.from({ length: 70 }, (_, i) => ({
+        book: input.book, chapter: input.chapter, verse: i + 1,
+        reference: `${input.book} ${input.chapter}:${i + 1}`, text: "t"
+      }))
+    }));
+
+    const packet = await runRetrievalPlan({
+      ...emptySignals,
+      // An unvalidated end chapter from a user prompt ("John 1:1-999999999:1").
+      references: [{ book: "John", chapter: 1, verseStart: 1, chapterEnd: 999_999_999, verseEnd: 1 }],
+      intent: "passage-study"
+    });
+
+    // Must NOT fan out into ~1e9 segments/fetches: the span is clamped and the
+    // fetch loop breaks once the line ceiling is reached (≤2 fetches per corpus).
+    expect(getPassage.mock.calls.length).toBeLessThanOrEqual(8);
+    expect(packet.formattedEvidence).toContain("more)");
+  });
+
+  it("labels a same-chapter verse-range passage with the range, not just the chapter", async () => {
+    const packet = await runRetrievalPlan({
+      ...emptySignals,
+      references: [{ book: "Rom", chapter: 8, verseStart: 1, verseEnd: 4 }],
+      intent: "passage-study"
+    });
+
+    expect(packet.formattedEvidence).toContain("getPassage(Rom 8:1-4");
+  });
 });

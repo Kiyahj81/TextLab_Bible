@@ -67,7 +67,12 @@ type PassageSegment = { chapter: number; verseStart: number; verseEnd: number };
 // Expand a (possibly cross-chapter) reference into single-chapter fetch segments.
 function passageSegments(ref: ParsedReference): PassageSegment[] {
   const startChapter = ref.chapter;
-  const endChapter = ref.chapterEnd ?? ref.chapter;
+  // Clamp the end chapter so an unvalidated value from an (authenticated) user
+  // prompt — e.g. "John 1:1-999999999:1" — cannot allocate an unbounded segment
+  // array or fan out into unbounded getPassage calls. No segment beyond the line
+  // ceiling can survive the MAX_PASSAGE_LINES slice, so capping the span there is
+  // safe and loses nothing for any real NT passage.
+  const endChapter = Math.min(ref.chapterEnd ?? startChapter, startChapter + MAX_PASSAGE_LINES);
 
   // Malformed inverted range (end before start) → no segments; caller's parser
   // should not emit these, but stay safe rather than fetch chapters out of order.
@@ -94,7 +99,9 @@ function passageCall(corpus: "SBLGNT" | "WEB", ref: ParsedReference): PlannedCal
   const endVersePart = ref.verseEnd !== undefined ? `:${ref.verseEnd}` : "";
   const label = crossChapter
     ? `${ref.book} ${ref.chapter}:${ref.verseStart ?? 1}-${ref.chapterEnd}${endVersePart}`
-    : `${ref.book} ${ref.chapter}`;
+    : ref.verseStart === undefined
+      ? `${ref.book} ${ref.chapter}`
+      : `${ref.book} ${ref.chapter}:${ref.verseStart}${ref.verseEnd !== undefined ? `-${ref.verseEnd}` : ""}`;
   const traces: ToolTraceEntry[] = segments.map((seg) => ({
     tool: "getPassage",
     args: { corpus, book: ref.book, chapter: seg.chapter, verseStart: seg.verseStart, verseEnd: seg.verseEnd }
@@ -105,6 +112,9 @@ function passageCall(corpus: "SBLGNT" | "WEB", ref: ParsedReference): PlannedCal
     run: async () => {
       const all: Array<{ book: string; chapter: number; verse: number; reference: string; text: string }> = [];
       for (const seg of segments) {
+        // Stop once we have enough to fill the ceiling — later segments would be
+        // sliced off anyway, so don't pay for the DB round-trips.
+        if (all.length >= MAX_PASSAGE_LINES) break;
         const res = await getPassage({ corpus, book: ref.book, chapter: seg.chapter, verseStart: seg.verseStart, verseEnd: seg.verseEnd });
         all.push(...res.references);
       }

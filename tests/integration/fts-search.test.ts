@@ -34,11 +34,15 @@ describe.skipIf(!enabled)("FTS keyword search", () => {
     expect(both.results.some((r) => r.reference === "John 1:14")).toBe(true);
   });
 
-  it("rank ordering returns results and differs from canonical where applicable", async () => {
+  it("rank ordering returns results in a different order than canonical", async () => {
     const ranked = await searchKeyword({ query: "love", corpus: "WEB", orderBy: "rank", pageSize: 5 });
     const canonical = await searchKeyword({ query: "love", corpus: "WEB", orderBy: "canonical", pageSize: 5 });
     expect(ranked.results.length).toBeGreaterThan(0);
     expect(canonical.results.length).toBeGreaterThan(0);
+    // "love" is densest in late-canon books (1 John, 1 Cor), so ts_rank must
+    // surface a different top-5 than canonical (Matthew-first) order. This makes
+    // the assertion a real signal for the rank feature, not just a non-empty check.
+    expect(ranked.results).not.toEqual(canonical.results);
   });
 
   it("scopes by book and chapter", async () => {

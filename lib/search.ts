@@ -265,6 +265,9 @@ export async function searchKeyword(input: {
   if (input.chapter !== undefined) filters.push(Prisma.sql`v."chapter" = ${input.chapter}`);
   const whereSql = Prisma.sql`WHERE ${Prisma.join(filters, " AND ")}`;
 
+  // In rank mode the tsquery is embedded twice (the @@ filter and ts_rank), so
+  // Postgres evaluates websearch_to_tsquery once per use — negligible at NT-corpus
+  // scale. If profiling ever shows overhead, compute the tsquery once in a CTE.
   const orderSql =
     input.orderBy === "rank"
       ? Prisma.sql`ORDER BY ts_rank(v."textSearch", ${tsquery}) DESC, b."order" ASC, v."chapter" ASC, v."verse" ASC`

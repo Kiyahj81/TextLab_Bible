@@ -157,6 +157,7 @@ function morphCall(code: string, mode: "exact" | "prefix", scope: Scope): Planne
   };
   if (scope.book) args.book = scope.book;
   if (scope.chapter !== undefined) args.chapter = scope.chapter;
+  const label = `${code}, ${mode}${scope.book ? `, ${scope.book}` : ""}${scope.chapter !== undefined ? ` ${scope.chapter}` : ""}`;
   return {
     key: `morph:${code}|${mode}|${scope.book ?? ""}|${scope.chapter ?? ""}`,
     errorTrace: { tool: "searchMorphology", args },
@@ -174,7 +175,7 @@ function morphCall(code: string, mode: "exact" | "prefix", scope: Scope): Planne
         .map((r) => `| ${r.reference} | ${r.surface} | ${r.lemma} | ${r.morphCode} |`);
       return {
         citations,
-        section: sectionBlock(`searchMorphology(${code}, ${mode}) — ${res.count} hit(s)`, lines, res.count),
+        section: sectionBlock(`searchMorphology(${label}) — ${res.count} hit(s)`, lines, res.count),
         traces: [{ tool: "searchMorphology", args }]
       };
     }

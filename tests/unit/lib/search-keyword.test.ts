@@ -42,17 +42,36 @@ describe("searchKeyword FTS", () => {
   });
 
   it("uses ts_rank ordering SQL when orderBy is rank, canonical otherwise", async () => {
-    prismaMock.$queryRaw.mockResolvedValue([{ count: BigInt(0) }]);
+    // rank branch: count call returns count shape; rows call returns empty rows
+    prismaMock.$queryRaw
+      .mockResolvedValueOnce([{ count: BigInt(0) }])
+      .mockResolvedValueOnce([]);
     await searchKeyword({ query: "grace", orderBy: "rank" });
     const rankSql = sqlTextFrom(prismaMock.$queryRaw.mock.calls.at(-1));
     expect(rankSql).toContain("ts_rank");
 
     vi.clearAllMocks();
-    prismaMock.$queryRaw.mockResolvedValue([{ count: BigInt(0) }]);
+    // canonical branch: count call returns count shape; rows call returns empty rows
+    prismaMock.$queryRaw
+      .mockResolvedValueOnce([{ count: BigInt(0) }])
+      .mockResolvedValueOnce([]);
     await searchKeyword({ query: "grace", orderBy: "canonical" });
     const canonicalSql = sqlTextFrom(prismaMock.$queryRaw.mock.calls.at(-1));
     expect(canonicalSql).not.toContain("ts_rank");
     expect(canonicalSql).toContain("order");
+  });
+
+  it("propagates book and chapter filters into the SQL", async () => {
+    prismaMock.$queryRaw
+      .mockResolvedValueOnce([{ count: BigInt(0) }])
+      .mockResolvedValueOnce([]);
+
+    await searchKeyword({ query: "grace", book: "John", chapter: 3 });
+
+    expect(prismaMock.$queryRaw).toHaveBeenCalledTimes(2);
+    const sql = sqlTextFrom(prismaMock.$queryRaw.mock.calls[0]);
+    expect(sql).toContain("osisid");
+    expect(sql).toContain("chapter");
   });
 });
 

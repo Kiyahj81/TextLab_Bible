@@ -59,36 +59,65 @@ function sectionBlock(heading: string, lines: string[], total: number): string {
   return `### ${heading}\n${body}${more}`;
 }
 
+// "to end of chapter" upper bound (no NT chapter exceeds this).
+const PASSAGE_CHAPTER_END = 200;
+
+type PassageSegment = { chapter: number; verseStart: number; verseEnd: number };
+
+// Expand a (possibly cross-chapter) reference into single-chapter fetch segments.
+function passageSegments(ref: ParsedReference): PassageSegment[] {
+  const startChapter = ref.chapter;
+  const endChapter = ref.chapterEnd ?? ref.chapter;
+
+  if (endChapter === startChapter) {
+    const verseStart = ref.verseStart ?? 1;
+    // bare chapter → whole chapter; explicit range → that range; single verse → that verse
+    const verseEnd = ref.verseEnd ?? (ref.verseStart === undefined ? PASSAGE_CHAPTER_END : verseStart);
+    return [{ chapter: startChapter, verseStart, verseEnd }];
+  }
+
+  const segments: PassageSegment[] = [{ chapter: startChapter, verseStart: ref.verseStart ?? 1, verseEnd: PASSAGE_CHAPTER_END }];
+  for (let ch = startChapter + 1; ch < endChapter; ch++) {
+    segments.push({ chapter: ch, verseStart: 1, verseEnd: PASSAGE_CHAPTER_END });
+  }
+  segments.push({ chapter: endChapter, verseStart: 1, verseEnd: ref.verseEnd ?? PASSAGE_CHAPTER_END });
+  return segments;
+}
+
 function passageCall(corpus: "SBLGNT" | "WEB", ref: ParsedReference): PlannedCall {
-  const verseStart = ref.verseStart ?? 1;
-  // A bare chapter reference (no verse) fetches the whole chapter via a high upper bound.
-  const verseEnd = ref.verseEnd ?? (ref.verseStart === undefined ? 200 : undefined);
-  const args = {
-    corpus,
-    book: ref.book,
-    chapter: ref.chapter,
-    verseStart,
-    ...(verseEnd !== undefined ? { verseEnd } : {})
-  };
+  const segments = passageSegments(ref);
+  const crossChapter = ref.chapterEnd !== undefined && ref.chapterEnd !== ref.chapter;
+  const label = crossChapter
+    ? `${ref.book} ${ref.chapter}:${ref.verseStart ?? 1}-${ref.chapterEnd}:${ref.verseEnd ?? ""}`
+    : `${ref.book} ${ref.chapter}`;
+  const traces: ToolTraceEntry[] = segments.map((seg) => ({
+    tool: "getPassage",
+    args: { corpus, book: ref.book, chapter: seg.chapter, verseStart: seg.verseStart, verseEnd: seg.verseEnd }
+  }));
   return {
-    key: `passage:${corpus}|${ref.book}|${ref.chapter}|${verseStart}|${ref.verseEnd ?? ""}`,
-    errorTrace: { tool: "getPassage", args },
+    key: `passage:${corpus}|${ref.book}|${ref.chapter}|${ref.verseStart ?? ""}|${ref.chapterEnd ?? ""}|${ref.verseEnd ?? ""}`,
+    errorTrace: { tool: "getPassage", args: { corpus, book: ref.book, chapter: ref.chapter } },
     run: async () => {
-      const res = await getPassage(args);
-      const citations = res.references.slice(0, MAX_SECTION_LINES).map((r) => ({
+      const all: Array<{ book: string; chapter: number; verse: number; reference: string; text: string }> = [];
+      for (const seg of segments) {
+        const res = await getPassage({ corpus, book: ref.book, chapter: seg.chapter, verseStart: seg.verseStart, verseEnd: seg.verseEnd });
+        all.push(...res.references);
+      }
+      const shown = all.slice(0, MAX_PASSAGE_LINES);
+      const citations = shown.slice(0, MAX_SECTION_LINES).map((r) => ({
         reference: r.reference,
-        corpus: res.corpus,
+        corpus,
         searchQuery: "passage",
         toolName: "getPassage",
         book: r.book,
         chapter: r.chapter,
         verse: r.verse
       }));
-      const lines = res.references.slice(0, MAX_SECTION_LINES).map((r) => `- ${r.reference}, ${res.corpus}: ${r.text}`);
+      const lines = shown.map((r) => `- ${r.reference}, ${corpus}: ${r.text}`);
       return {
         citations,
-        section: sectionBlock(`getPassage(${ref.book} ${ref.chapter}, ${corpus})`, lines, res.references.length),
-        traces: [{ tool: "getPassage", args }]
+        section: sectionBlock(`getPassage(${label}, ${corpus})`, lines, all.length),
+        traces
       };
     }
   };

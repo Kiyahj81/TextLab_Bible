@@ -27,6 +27,13 @@ const MAX_WORD_SAMPLE = 25;
 // Hard ceiling on passage evidence lines per corpus (no real NT chapter/pericope
 // approaches this; it only stops a pathological whole-book range).
 const MAX_PASSAGE_LINES = 120;
+// Ceiling on the TOTAL assembled evidence text. The deterministic fallback embeds
+// this verbatim into the answer it returns (and the user may save), so it must stay
+// within the generated-study-note persistence caps by construction. The planner can
+// otherwise emit up to MAX_PLANNED_CALLS × MAX_PASSAGE_LINES lines (~960 verses ×
+// two corpora ≈ 124 KB) for a multi-range prompt. Sized so a realistic single/few-
+// reference answer is never trimmed; only a pathological multi-range prompt is.
+const MAX_EVIDENCE_CHARS = 58_000;
 // Each call cites a bounded sample; the whole packet is capped so downstream
 // consumers never overflow.
 const MAX_TOTAL_CITATIONS = 40;
@@ -57,6 +64,29 @@ function sectionBlock(heading: string, lines: string[], total: number): string {
   const body = lines.length > 0 ? lines.join("\n") : "(no matches)";
   const more = total > lines.length ? `\n…(${total - lines.length} more)` : "";
   return `### ${heading}\n${body}${more}`;
+}
+
+// Join sections into the evidence text, but stop once the total would exceed
+// MAX_EVIDENCE_CHARS so the fallback answer (which embeds this) stays within the
+// persisted-note caps. At least one section is always kept; if any are dropped, an
+// honest marker is appended.
+function assembleEvidence(sections: string[]): string {
+  if (sections.length === 0) return "No retrieval signals produced evidence from the corpus.";
+  const kept: string[] = [];
+  let chars = 0;
+  let truncated = false;
+  for (const section of sections) {
+    if (kept.length > 0 && chars + section.length > MAX_EVIDENCE_CHARS) {
+      truncated = true;
+      break;
+    }
+    kept.push(section);
+    chars += section.length + 2; // separator
+  }
+  const marker = truncated
+    ? "\n\n…(further evidence omitted to keep the answer within the saved-note limit; narrow the request for the rest)"
+    : "";
+  return kept.join("\n\n") + marker;
 }
 
 // "to end of chapter" upper bound (no NT chapter exceeds this).
@@ -337,7 +367,6 @@ export async function runRetrievalPlan(signals: Signals): Promise<EvidencePacket
   return {
     citations: citations.slice(0, MAX_TOTAL_CITATIONS),
     toolTrace,
-    formattedEvidence:
-      sections.length > 0 ? sections.join("\n\n") : "No retrieval signals produced evidence from the corpus."
+    formattedEvidence: assembleEvidence(sections)
   };
 }

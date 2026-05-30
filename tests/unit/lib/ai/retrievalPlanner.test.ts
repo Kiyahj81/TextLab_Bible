@@ -381,6 +381,42 @@ describe("runRetrievalPlan", () => {
     expect(getPassage.mock.calls.length).toBeLessThanOrEqual(4);
   });
 
+  it("caps total assembled evidence so the fallback answer stays within save limits", async () => {
+    // Each passage section is large; four references' worth together exceed the
+    // evidence budget, so the assembled text must be bounded with a marker.
+    getPassage.mockImplementation(async (input: { corpus: string; book: string; chapter: number }) => ({
+      corpus: input.corpus,
+      references: Array.from({ length: 120 }, (_, i) => ({
+        book: input.book, chapter: input.chapter, verse: i + 1,
+        reference: `${input.book} ${input.chapter}:${i + 1}`, text: "x".repeat(200)
+      }))
+    }));
+
+    const packet = await runRetrievalPlan({
+      ...emptySignals,
+      references: [
+        { book: "John", chapter: 1 },
+        { book: "Rom", chapter: 8 },
+        { book: "Matt", chapter: 5 },
+        { book: "Luke", chapter: 1 }
+      ],
+      intent: "passage-study"
+    });
+
+    // Bounded well under the 64K answer cap, with an honest omission marker.
+    expect(packet.formattedEvidence.length).toBeLessThanOrEqual(60_000);
+    expect(packet.formattedEvidence).toContain("further evidence omitted");
+  });
+
+  it("does not trim evidence that fits within the budget", async () => {
+    const packet = await runRetrievalPlan({
+      ...emptySignals,
+      references: [{ book: "John", chapter: 1 }],
+      intent: "passage-study"
+    });
+    expect(packet.formattedEvidence).not.toContain("further evidence omitted");
+  });
+
   it("scans past an empty starting segment to reach a valid later chapter", async () => {
     // An out-of-range starting verse makes the first chapter come back empty, but
     // the later chapter in the range is valid and must not be dropped.

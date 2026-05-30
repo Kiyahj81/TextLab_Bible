@@ -564,7 +564,7 @@ function passageCall(corpus: "SBLGNT" | "WEB", ref: ParsedReference): PlannedCal
 
 - [ ] **Step 5: Update the stale comment in the existing citation-cap test**
 
-In `tests/unit/lib/ai/retrievalPlanner.test.ts`, the test "caps citations per call and overall so consumers' limits are respected" still passes (citations remain capped at `MAX_CITATION_LINES`), but its inline comment is now misleading. Replace:
+In `tests/unit/lib/ai/retrievalPlanner.test.ts`, the test "caps citations per call and overall so consumers' limits are respected" still passes (citations remain capped at `MAX_SECTION_LINES`), but its inline comment is now misleading. Replace:
 
 ```ts
     // Each getPassage call contributes a bounded sample, not all 60 verses.

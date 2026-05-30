@@ -195,7 +195,7 @@ describe("runRetrievalPlan", () => {
       intent: "passage-study"
     });
 
-    // Each getPassage call contributes a bounded sample, not all 60 verses.
+    // Evidence lines may include the full passage, but citations stay capped per call.
     expect(packet.citations.filter((c) => c.corpus === "SBLGNT").length).toBeLessThanOrEqual(10);
     expect(packet.citations.length).toBeLessThanOrEqual(40);
     // The first verse is still cited.
@@ -208,5 +208,243 @@ describe("runRetrievalPlan", () => {
     expect(packet.citations).toEqual([]);
     expect(getPassage).not.toHaveBeenCalled();
     expect(searchLemma).not.toHaveBeenCalled();
+  });
+
+  it("scopes a word search to a single named chapter", async () => {
+    await runRetrievalPlan({
+      ...emptySignals,
+      references: [{ book: "John", chapter: 1 }],
+      greekWords: ["λόγος"],
+      intent: "word-study",
+      book: "John"
+    });
+
+    expect(searchLemma).toHaveBeenCalledWith(expect.objectContaining({ lemma: "λόγος", book: "John", chapter: 1 }));
+  });
+
+  it("does not chapter-scope a word search when only a book is named", async () => {
+    await runRetrievalPlan({ ...emptySignals, greekWords: ["λόγος"], intent: "word-study", book: "John" });
+
+    expect(searchLemma.mock.calls[0][0].chapter).toBeUndefined();
+  });
+
+  it("does not chapter-scope across a cross-chapter reference", async () => {
+    await runRetrievalPlan({
+      ...emptySignals,
+      references: [{ book: "2Cor", chapter: 4, verseStart: 16, chapterEnd: 5, verseEnd: 10 }],
+      greekWords: ["λόγος"],
+      intent: "word-study",
+      book: "2Cor"
+    });
+
+    expect(searchLemma.mock.calls[0][0].chapter).toBeUndefined();
+    expect(searchLemma.mock.calls[0][0].book).toBe("2Cor");
+  });
+
+  it("returns all word hits when the count is at or below the sample size", async () => {
+    searchLemma.mockResolvedValueOnce({
+      lemma: "λόγος",
+      count: 2,
+      results: [
+        { tokenId: "t1", corpus: "SBLGNT", reference: "John 1:1", surface: "λόγος", lemma: "λόγος", morphCode: "N-NSM", verseText: "Ἐν ἀρχῇ" },
+        { tokenId: "t2", corpus: "SBLGNT", reference: "John 1:14", surface: "λόγος", lemma: "λόγος", morphCode: "N-NSM", verseText: "ὁ λόγος σὰρξ" }
+      ],
+      pagination: {}
+    });
+
+    const packet = await runRetrievalPlan({
+      ...emptySignals, references: [{ book: "John", chapter: 1 }], greekWords: ["λόγος"], intent: "word-study", book: "John"
+    });
+
+    expect(packet.formattedEvidence).toContain("John 1:1");
+    expect(packet.formattedEvidence).toContain("John 1:14");
+    expect(packet.formattedEvidence).not.toContain("more)");
+  });
+
+  it("samples a large word search to 25 lines and shows the true total", async () => {
+    const results = Array.from({ length: 25 }, (_, i) => ({
+      tokenId: `t${i}`, corpus: "SBLGNT", reference: `John ${i + 1}:1`, surface: "ἀγάπη", lemma: "ἀγάπη", morphCode: "N-NSF", verseText: "x"
+    }));
+    searchLemma.mockResolvedValueOnce({ lemma: "ἀγάπη", count: 116, results, pagination: {} });
+
+    const packet = await runRetrievalPlan({ ...emptySignals, greekWords: ["ἀγάπη"], intent: "word-study" });
+
+    expect(packet.formattedEvidence).toContain("116 hit(s)");
+    expect(packet.formattedEvidence).toContain("…(91 more)");
+    // 25 table rows present (one per result)
+    expect((packet.formattedEvidence.match(/\| John /g) ?? []).length).toBe(25);
+  });
+
+  it("requests a page size of at least 25 for word searches", async () => {
+    await runRetrievalPlan({ ...emptySignals, greekWords: ["λόγος"], intent: "word-study" });
+    expect(searchLemma.mock.calls[0][0].pageSize).toBeGreaterThanOrEqual(25);
+  });
+
+  it("returns the full chapter for a passage, not a 10-verse slice", async () => {
+    getPassage.mockImplementation(async (input: { corpus: string; book: string; chapter: number }) => ({
+      corpus: input.corpus,
+      references: Array.from({ length: 51 }, (_, i) => ({
+        book: input.book, chapter: input.chapter, verse: i + 1,
+        reference: `${input.book} ${input.chapter}:${i + 1}`, text: `v${i + 1}`
+      }))
+    }));
+
+    const packet = await runRetrievalPlan({ ...emptySignals, references: [{ book: "John", chapter: 1 }], intent: "passage-study" });
+
+    expect(packet.formattedEvidence).toContain("John 1:14");
+    expect(packet.formattedEvidence).toContain("John 1:51");
+  });
+
+  it("assembles a cross-chapter passage from per-chapter fetches", async () => {
+    getPassage.mockImplementation(async (input: { corpus: string; book: string; chapter: number; verseStart: number }) => ({
+      corpus: input.corpus,
+      references: [{
+        book: input.book, chapter: input.chapter, verse: input.verseStart,
+        reference: `${input.book} ${input.chapter}:${input.verseStart}`, text: "t"
+      }]
+    }));
+
+    const packet = await runRetrievalPlan({
+      ...emptySignals,
+      references: [{ book: "2Cor", chapter: 4, verseStart: 16, chapterEnd: 5, verseEnd: 10 }],
+      intent: "passage-study"
+    });
+
+    // Both chapters fetched (per corpus): 4:16 and 5:1
+    expect(getPassage).toHaveBeenCalledWith(expect.objectContaining({ corpus: "SBLGNT", book: "2Cor", chapter: 4, verseStart: 16 }));
+    expect(getPassage).toHaveBeenCalledWith(expect.objectContaining({ corpus: "SBLGNT", book: "2Cor", chapter: 5, verseStart: 1 }));
+    expect(packet.formattedEvidence).toContain("2Cor 4:16");
+    expect(packet.formattedEvidence).toContain("2Cor 5:1");
+  });
+
+  it("caps a pathological passage at the line ceiling with a more-marker", async () => {
+    getPassage.mockImplementation(async (input: { corpus: string; book: string; chapter: number }) => ({
+      corpus: input.corpus,
+      references: Array.from({ length: 200 }, (_, i) => ({
+        book: input.book, chapter: input.chapter, verse: i + 1,
+        reference: `${input.book} ${input.chapter}:${i + 1}`, text: "t"
+      }))
+    }));
+
+    const packet = await runRetrievalPlan({ ...emptySignals, references: [{ book: "Ps", chapter: 119 }], intent: "passage-study" });
+
+    expect(packet.formattedEvidence).toContain("more)");
+  });
+
+  it("bounds a pathological cross-chapter span instead of expanding every chapter", async () => {
+    getPassage.mockImplementation(async (input: { corpus: string; book: string; chapter: number }) => ({
+      corpus: input.corpus,
+      references: Array.from({ length: 70 }, (_, i) => ({
+        book: input.book, chapter: input.chapter, verse: i + 1,
+        reference: `${input.book} ${input.chapter}:${i + 1}`, text: "t"
+      }))
+    }));
+
+    const packet = await runRetrievalPlan({
+      ...emptySignals,
+      // An unvalidated end chapter from a user prompt ("John 1:1-999999999:1").
+      references: [{ book: "John", chapter: 1, verseStart: 1, chapterEnd: 999_999_999, verseEnd: 1 }],
+      intent: "passage-study"
+    });
+
+    // Must NOT fan out into ~1e9 segments/fetches: the span is clamped and the
+    // fetch loop breaks once the line ceiling is reached (≤2 fetches per corpus).
+    expect(getPassage.mock.calls.length).toBeLessThanOrEqual(8);
+    // The ceiling cut the span short, so an explicit truncation marker is shown
+    // (not a fetched-prefix "(N more)" count that could imply completeness).
+    expect(packet.formattedEvidence).toContain("truncated at");
+    // No phantom traces: the tool trace lists only chapters actually fetched, so
+    // the synthesis model is never told about chapters absent from the evidence.
+    const passageTraces = packet.toolTrace.filter((t) => t.tool === "getPassage");
+    expect(passageTraces.length).toBe(getPassage.mock.calls.length);
+  });
+
+  it("stops fetching once a chapter past the book end returns no rows", async () => {
+    // Only chapter 1 exists (e.g. a single-chapter book like 2 John); later
+    // chapters in a pathological span come back empty.
+    getPassage.mockImplementation(async (input: { corpus: string; book: string; chapter: number }) => ({
+      corpus: input.corpus,
+      references:
+        input.chapter === 1
+          ? [{ book: input.book, chapter: 1, verse: 1, reference: `${input.book} 1:1`, text: "t" }]
+          : []
+    }));
+
+    await runRetrievalPlan({
+      ...emptySignals,
+      references: [{ book: "2John", chapter: 1, verseStart: 1, chapterEnd: 999_999_999, verseEnd: 1 }],
+      intent: "passage-study"
+    });
+
+    // ch1 (rows) then ch2 (empty → stop): ~2 fetches per corpus, NOT one empty
+    // query per clamped segment. The verse ceiling never trips when rows are empty.
+    expect(getPassage.mock.calls.length).toBeLessThanOrEqual(4);
+  });
+
+  it("caps total assembled evidence so the fallback answer stays within save limits", async () => {
+    // Each passage section is large; four references' worth together exceed the
+    // evidence budget, so the assembled text must be bounded with a marker.
+    getPassage.mockImplementation(async (input: { corpus: string; book: string; chapter: number }) => ({
+      corpus: input.corpus,
+      references: Array.from({ length: 120 }, (_, i) => ({
+        book: input.book, chapter: input.chapter, verse: i + 1,
+        reference: `${input.book} ${input.chapter}:${i + 1}`, text: "x".repeat(200)
+      }))
+    }));
+
+    const packet = await runRetrievalPlan({
+      ...emptySignals,
+      references: [
+        { book: "John", chapter: 1 },
+        { book: "Rom", chapter: 8 },
+        { book: "Matt", chapter: 5 },
+        { book: "Luke", chapter: 1 }
+      ],
+      intent: "passage-study"
+    });
+
+    // Bounded well under the 64K answer cap, with an honest omission marker.
+    expect(packet.formattedEvidence.length).toBeLessThanOrEqual(60_000);
+    expect(packet.formattedEvidence).toContain("further evidence omitted");
+  });
+
+  it("does not trim evidence that fits within the budget", async () => {
+    const packet = await runRetrievalPlan({
+      ...emptySignals,
+      references: [{ book: "John", chapter: 1 }],
+      intent: "passage-study"
+    });
+    expect(packet.formattedEvidence).not.toContain("further evidence omitted");
+  });
+
+  it("scans past an empty starting segment to reach a valid later chapter", async () => {
+    // An out-of-range starting verse makes the first chapter come back empty, but
+    // the later chapter in the range is valid and must not be dropped.
+    getPassage.mockImplementation(async (input: { corpus: string; book: string; chapter: number }) => ({
+      corpus: input.corpus,
+      references:
+        input.chapter >= 2
+          ? [{ book: input.book, chapter: input.chapter, verse: 3, reference: `${input.book} ${input.chapter}:3`, text: "valid tail" }]
+          : []
+    }));
+
+    const packet = await runRetrievalPlan({
+      ...emptySignals,
+      references: [{ book: "John", chapter: 1, verseStart: 999, chapterEnd: 2, verseEnd: 3 }],
+      intent: "passage-study"
+    });
+
+    expect(packet.formattedEvidence).toContain("John 2:3");
+    expect(packet.formattedEvidence).not.toContain("(no matches)");
+  });
+
+  it("labels a same-chapter verse-range passage with the range, not just the chapter", async () => {
+    const packet = await runRetrievalPlan({
+      ...emptySignals,
+      references: [{ book: "Rom", chapter: 8, verseStart: 1, verseEnd: 4 }],
+      intent: "passage-study"
+    });
+
+    expect(packet.formattedEvidence).toContain("getPassage(Rom 8:1-4");
   });
 });

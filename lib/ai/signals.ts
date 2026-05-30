@@ -5,6 +5,7 @@ export type ParsedReference = {
   chapter: number;
   verseStart?: number;
   verseEnd?: number;
+  chapterEnd?: number;
 };
 
 export type MorphSignal = { code: string; mode: "exact" | "prefix" };
@@ -119,9 +120,10 @@ export function detectBookFromPrompt(prompt: string): string | undefined {
 
 const REFERENCE_REGEX = (() => {
   const aliases = [...ALIAS_TO_OSIS.keys()].sort((a, b) => b.length - a.length).map(escapeRegExp);
+  // Groups: 1=alias 2=chapter 3=verseStart 4=endChapter(optional) 5=endVerse
   // (?<![a-z0-9]) avoids matching aliases embedded in larger words (e.g. "rom" in "from").
   return new RegExp(
-    `(?<![a-z0-9])(${aliases.join("|")})\\s+(\\d+)(?::(\\d+)(?:\\s*[-\\u2013\\u2014]\\s*(\\d+))?)?`,
+    `(?<![a-z0-9])(${aliases.join("|")})\\s+(\\d+)(?::(\\d+)(?:\\s*[-\\u2013\\u2014]\\s*(?:(\\d+):)?(\\d+))?)?`,
     "gi"
   );
 })();
@@ -134,7 +136,8 @@ export function detectReferences(prompt: string): ParsedReference[] {
     if (!book) continue;
     const reference: ParsedReference = { book, chapter: Number.parseInt(match[2], 10) };
     if (match[3] !== undefined) reference.verseStart = Number.parseInt(match[3], 10);
-    if (match[4] !== undefined) reference.verseEnd = Number.parseInt(match[4], 10);
+    if (match[5] !== undefined) reference.verseEnd = Number.parseInt(match[5], 10);
+    if (match[4] !== undefined) reference.chapterEnd = Number.parseInt(match[4], 10);
     out.push(reference);
   }
   return out;

@@ -85,11 +85,22 @@ describe("POST /api/generated-study-notes", () => {
     expect(prismaMock.generatedStudyNote.create).not.toHaveBeenCalled();
   });
 
-  it("returns 413 when body exceeds the 64 KB cap", async () => {
-    const huge = "x".repeat(65 * 1024);
+  it("returns 413 when body exceeds the 256 KB cap", async () => {
+    const huge = "x".repeat(257 * 1024);
     const res = await POST(jsonRequest(validBody({ markdown: huge })));
     expect(res.status).toBe(413);
     expect(prismaMock.generatedStudyNote.create).not.toHaveBeenCalled();
+  });
+
+  it("accepts a multi-reference-sized generated note at the planner's call ceiling", async () => {
+    // Four large chapters across SBLGNT + WEB (the 8-passage-call ceiling) render
+    // ~57 KB answer / ~58 KB markdown — measured on the full corpus. Caps sized so
+    // a deterministic-fallback answer the app itself produced always persists.
+    const res = await POST(
+      jsonRequest(validBody({ answer: "x".repeat(57_500), markdown: "x".repeat(58_500) }))
+    );
+    expect(res.status).toBe(201);
+    expect(prismaMock.generatedStudyNote.create).toHaveBeenCalledTimes(1);
   });
 
   it("rejects an empty prompt with 400", async () => {
@@ -103,12 +114,12 @@ describe("POST /api/generated-study-notes", () => {
   });
 
   it("rejects an overlong answer with 400", async () => {
-    const res = await POST(jsonRequest(validBody({ answer: "x".repeat(10_001) })));
+    const res = await POST(jsonRequest(validBody({ answer: "x".repeat(64_001) })));
     expect(res.status).toBe(400);
   });
 
   it("rejects an overlong markdown with 400", async () => {
-    const res = await POST(jsonRequest(validBody({ markdown: "x".repeat(12_001) })));
+    const res = await POST(jsonRequest(validBody({ markdown: "x".repeat(72_001) })));
     expect(res.status).toBe(400);
   });
 

@@ -61,6 +61,10 @@ function sectionBlock(heading: string, lines: string[], total: number): string {
 
 // "to end of chapter" upper bound (no NT chapter exceeds this).
 const PASSAGE_CHAPTER_END = 200;
+// How many leading empty chapters to probe before giving up. Lets an out-of-range
+// starting verse (empty first segment) still reach a valid later chapter, while
+// keeping a fully out-of-range span to a small, bounded number of DB calls.
+const MAX_PASSAGE_EMPTY_PROBES = 2;
 
 type PassageSegment = { chapter: number; verseStart: number; verseEnd: number };
 
@@ -112,6 +116,8 @@ function passageCall(corpus: "SBLGNT" | "WEB", ref: ParsedReference): PlannedCal
       // forwarded to the synthesis model as grounding context.
       const traces: ToolTraceEntry[] = [];
       let truncatedByCeiling = false;
+      let hasContent = false;
+      let emptyProbes = 0;
       for (const seg of segments) {
         // Stop once we have enough to fill the ceiling — later segments would be
         // sliced off anyway, so don't pay for the DB round-trips.
@@ -122,10 +128,15 @@ function passageCall(corpus: "SBLGNT" | "WEB", ref: ParsedReference): PlannedCal
         const args = { corpus, book: ref.book, chapter: seg.chapter, verseStart: seg.verseStart, verseEnd: seg.verseEnd };
         const res = await getPassage(args);
         traces.push({ tool: "getPassage", args });
-        // A chapter past the book's end (or an out-of-range start) returns nothing.
-        // Stop here so a pathological span can't fire one empty query per clamped
-        // segment — the verse ceiling never trips when chapters come back empty.
-        if (res.references.length === 0) break;
+        if (res.references.length === 0) {
+          // Empty AFTER we already have verses → past the book end, stop. Empty
+          // BEFORE any content (e.g. an out-of-range starting verse) → probe a
+          // bounded number of later chapters so a valid tail isn't silently
+          // dropped, without firing one query per clamped segment.
+          if (hasContent || ++emptyProbes >= MAX_PASSAGE_EMPTY_PROBES) break;
+          continue;
+        }
+        hasContent = true;
         all.push(...res.references);
       }
       const shown = all.slice(0, MAX_PASSAGE_LINES);

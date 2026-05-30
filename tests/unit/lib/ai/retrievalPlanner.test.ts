@@ -381,6 +381,27 @@ describe("runRetrievalPlan", () => {
     expect(getPassage.mock.calls.length).toBeLessThanOrEqual(4);
   });
 
+  it("scans past an empty starting segment to reach a valid later chapter", async () => {
+    // An out-of-range starting verse makes the first chapter come back empty, but
+    // the later chapter in the range is valid and must not be dropped.
+    getPassage.mockImplementation(async (input: { corpus: string; book: string; chapter: number }) => ({
+      corpus: input.corpus,
+      references:
+        input.chapter >= 2
+          ? [{ book: input.book, chapter: input.chapter, verse: 3, reference: `${input.book} ${input.chapter}:3`, text: "valid tail" }]
+          : []
+    }));
+
+    const packet = await runRetrievalPlan({
+      ...emptySignals,
+      references: [{ book: "John", chapter: 1, verseStart: 999, chapterEnd: 2, verseEnd: 3 }],
+      intent: "passage-study"
+    });
+
+    expect(packet.formattedEvidence).toContain("John 2:3");
+    expect(packet.formattedEvidence).not.toContain("(no matches)");
+  });
+
   it("labels a same-chapter verse-range passage with the range, not just the chapter", async () => {
     const packet = await runRetrievalPlan({
       ...emptySignals,

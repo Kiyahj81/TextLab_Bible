@@ -57,6 +57,10 @@ model Verse {
   chapter  Int
   verse    Int
   text     String
+  /// FTS vector maintained by Postgres (generated column, bible_simple config).
+  /// Never read through the typed client — matching uses $queryRaw. Declared so
+  /// Prisma drift detection accounts for the column.
+  textSearch Unsupported("tsvector")?
 
   corpus     Corpus      @relation(fields: [corpusId], references: [id])
   book       Book        @relation(fields: [bookId], references: [id])
@@ -65,6 +69,7 @@ model Verse {
 
   @@unique([corpusId, bookId, chapter, verse])
   @@index([bookId, chapter, verse])
+  @@index([textSearch], type: Gin)
 }
 
 model Token {

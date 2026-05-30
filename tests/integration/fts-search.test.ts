@@ -1,10 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { searchKeyword } from "@/lib/search";
 
-// FTS behavior against the real corpus. Skips when no DB is configured, like
-// db-ownership.test.ts. Requires the lexical_fts migration applied and the full
-// NT corpus seeded on the target branch.
-const enabled = Boolean(process.env.DATABASE_URL_TEST ?? process.env.DATABASE_URL);
+// FTS behavior against the real corpus. Skips when no DB is configured.
+// Requires the lexical_fts migration applied and the full NT corpus seeded on
+// the target branch.
+//
+// Unlike db-ownership.test.ts (which builds its own PrismaClient pointed at
+// DATABASE_URL_TEST), this suite calls the real `searchKeyword`, which uses the
+// shared prisma singleton (@/lib/db). That client reads DATABASE_URL only, so we
+// gate on the same variable — otherwise setting only DATABASE_URL_TEST would
+// enable the suite but run queries against the wrong DB (or crash with no URL).
+// `npm run test:integration` loads .env.test, pointing DATABASE_URL at the
+// integration-acceptance test branch.
+const enabled = Boolean(process.env.DATABASE_URL);
 
 describe.skipIf(!enabled)("FTS keyword search", () => {
   it("matches Greek accent-insensitively (unaccented query finds accented text)", async () => {

@@ -350,11 +350,35 @@ describe("runRetrievalPlan", () => {
     // Must NOT fan out into ~1e9 segments/fetches: the span is clamped and the
     // fetch loop breaks once the line ceiling is reached (≤2 fetches per corpus).
     expect(getPassage.mock.calls.length).toBeLessThanOrEqual(8);
-    expect(packet.formattedEvidence).toContain("more)");
+    // The ceiling cut the span short, so an explicit truncation marker is shown
+    // (not a fetched-prefix "(N more)" count that could imply completeness).
+    expect(packet.formattedEvidence).toContain("truncated at");
     // No phantom traces: the tool trace lists only chapters actually fetched, so
     // the synthesis model is never told about chapters absent from the evidence.
     const passageTraces = packet.toolTrace.filter((t) => t.tool === "getPassage");
     expect(passageTraces.length).toBe(getPassage.mock.calls.length);
+  });
+
+  it("stops fetching once a chapter past the book end returns no rows", async () => {
+    // Only chapter 1 exists (e.g. a single-chapter book like 2 John); later
+    // chapters in a pathological span come back empty.
+    getPassage.mockImplementation(async (input: { corpus: string; book: string; chapter: number }) => ({
+      corpus: input.corpus,
+      references:
+        input.chapter === 1
+          ? [{ book: input.book, chapter: 1, verse: 1, reference: `${input.book} 1:1`, text: "t" }]
+          : []
+    }));
+
+    await runRetrievalPlan({
+      ...emptySignals,
+      references: [{ book: "2John", chapter: 1, verseStart: 1, chapterEnd: 999_999_999, verseEnd: 1 }],
+      intent: "passage-study"
+    });
+
+    // ch1 (rows) then ch2 (empty → stop): ~2 fetches per corpus, NOT one empty
+    // query per clamped segment. The verse ceiling never trips when rows are empty.
+    expect(getPassage.mock.calls.length).toBeLessThanOrEqual(4);
   });
 
   it("labels a same-chapter verse-range passage with the range, not just the chapter", async () => {

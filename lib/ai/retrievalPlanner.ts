@@ -107,17 +107,25 @@ function passageCall(corpus: "SBLGNT" | "WEB", ref: ParsedReference): PlannedCal
     errorTrace: { tool: "getPassage", args: { corpus, book: ref.book, chapter: ref.chapter } },
     run: async () => {
       const all: Array<{ book: string; chapter: number; verse: number; reference: string; text: string }> = [];
-      // Build the trace lazily — one entry per segment we ACTUALLY fetch — so the
-      // early break below never leaves phantom getPassage entries in the tool
-      // trace, which is forwarded to the synthesis model as grounding context.
+      // Build the trace lazily — one entry per chapter we ACTUALLY fetch — so neither
+      // break below leaves phantom getPassage entries in the tool trace, which is
+      // forwarded to the synthesis model as grounding context.
       const traces: ToolTraceEntry[] = [];
+      let truncatedByCeiling = false;
       for (const seg of segments) {
         // Stop once we have enough to fill the ceiling — later segments would be
         // sliced off anyway, so don't pay for the DB round-trips.
-        if (all.length >= MAX_PASSAGE_LINES) break;
+        if (all.length >= MAX_PASSAGE_LINES) {
+          truncatedByCeiling = true;
+          break;
+        }
         const args = { corpus, book: ref.book, chapter: seg.chapter, verseStart: seg.verseStart, verseEnd: seg.verseEnd };
         const res = await getPassage(args);
         traces.push({ tool: "getPassage", args });
+        // A chapter past the book's end (or an out-of-range start) returns nothing.
+        // Stop here so a pathological span can't fire one empty query per clamped
+        // segment — the verse ceiling never trips when chapters come back empty.
+        if (res.references.length === 0) break;
         all.push(...res.references);
       }
       const shown = all.slice(0, MAX_PASSAGE_LINES);
@@ -131,11 +139,15 @@ function passageCall(corpus: "SBLGNT" | "WEB", ref: ParsedReference): PlannedCal
         verse: r.verse
       }));
       const lines = shown.map((r) => `- ${r.reference}, ${corpus}: ${r.text}`);
-      return {
-        citations,
-        section: sectionBlock(`getPassage(${label}, ${corpus})`, lines, all.length),
-        traces
-      };
+      const heading = `getPassage(${label}, ${corpus})`;
+      // When the ceiling cut the fetch short, `all` only counts the fetched prefix,
+      // so the usual "(N more)" count would understate the omission and could vanish
+      // if the prefix lands exactly on the ceiling. Emit an explicit truncation
+      // marker instead, so the synthesis model never reads it as complete.
+      const section = truncatedByCeiling
+        ? `### ${heading}\n${lines.join("\n")}\n…(truncated at ${MAX_PASSAGE_LINES}-line ceiling; request a narrower range for the full passage)`
+        : sectionBlock(heading, lines, all.length);
+      return { citations, section, traces };
     }
   };
 }

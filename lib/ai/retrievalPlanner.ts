@@ -231,7 +231,7 @@ function keywordCall(word: string, scope: Scope): PlannedCall {
     key: `keyword:${word}|${scope.book ?? ""}|${scope.chapter ?? ""}`,
     errorTrace: { tool: "searchKeyword", args },
     run: async () => {
-      const res = await searchKeyword({ ...args, pageSize: MAX_WORD_SAMPLE });
+      const res = await searchKeyword({ ...args, pageSize: MAX_WORD_SAMPLE, orderBy: "rank" });
       const total = res.pagination?.total ?? res.results.length;
       const citations = res.results.slice(0, MAX_SECTION_LINES).map((r) => ({
         reference: r.reference,

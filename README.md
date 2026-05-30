@@ -16,7 +16,7 @@ Milestone 2.5 of the TextLab Bible MVP: a single full-stack Next.js app deliveri
 - **Notes** index with keyword search, tag dropdown, reference filter, sort, and server-side pagination
 - Highlights, notes, saved searches, and assistant sessions scoped to the signed-in user — verse-level on Greek tokens, word-level on English text
 - **AI Study Assistant** at `/assistant`:
-  - Deterministic-first retrieval: signal extraction (references, Greek words, topics, morphology, intent) → parallel corpus search → model synthesis with a single `getPassage` refinement step
+  - Deterministic-first retrieval: signal extraction (references, Greek words, topics, morphology, intent) → parallel corpus search → model synthesis with a single `getPassage` refinement step; the planner scopes word searches to the named book/chapter, returns whole chapters and cross-chapter passages in full (assembled from per-chapter fetches), and samples large corpus surveys with a true-count marker (e.g. `116 hit(s) … (91 more)`)
   - User-confirmed **scholarly-model escalation** — a "Use scholarly model" affordance re-runs the prompt on `gpt-5.4` (never automatic)
   - Live OpenAI synthesis when `OPENAI_API_KEY` is set; deterministic local fallback otherwise
   - **Grounding / Silence Protocol** — before any answer is returned or stored, the assistant verifies its citations against the SBLGNT. If a Greek quote falls below the 0.90 similarity threshold or a reference cannot be resolved, the answer is withheld and the UI displays "Withheld — insufficient textual evidence" rather than risk an unsupported claim. WEB (English) citations are a display aid only: a WEB mismatch appends a caveat but does not withhold.

@@ -103,6 +103,16 @@ beforeEach(() => {
 });
 
 describe("runRetrievalPlan", () => {
+  it("requests rank ordering for keyword evidence so truncation keeps the strongest verses", async () => {
+    await runRetrievalPlan({
+      ...emptySignals,
+      topicWords: ["donkey"],
+      intent: "word-study"
+    });
+
+    expect(searchKeyword).toHaveBeenCalledWith(expect.objectContaining({ orderBy: "rank" }));
+  });
+
   it("fetches both corpora for a reference and searches detected Greek words", async () => {
     const packet = await runRetrievalPlan({
       ...emptySignals,

@@ -11,6 +11,7 @@ Milestone 2.5 of the TextLab Bible MVP: a single full-stack Next.js app deliveri
   - Greek / English / Parallel mode toggle (persisted to localStorage)
   - Last-visited passage automatically restored on bare `/read` visits
 - **Search** in three modes (keyword / lemma / morphology)
+  - **Keyword search uses full-text search** (PostgreSQL `tsvector`/GIN, `bible_simple` unaccent config): accent-insensitive Greek (λογος finds λόγος), whole-word lexeme matching rather than substring, multi-word AND queries, optional rank ordering
   - Match terms bolded inside result verses
   - In-input Search and Clear buttons; pagination; saved-search persistence (rename, delete)
 - **Notes** index with keyword search, tag dropdown, reference filter, sort, and server-side pagination

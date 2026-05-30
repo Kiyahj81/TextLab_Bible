@@ -1,6 +1,6 @@
 # TextLab Bible — Project State
 
-*Snapshot: 2026-05-29 (post Milestone 3 Phase 2 — Grounding + Silence Protocol)*
+*Snapshot: 2026-05-30 (post Milestone 3 Phase 3 — Lexical FTS)*
 
 ## Where the project stands
 
@@ -59,7 +59,7 @@ Two latent client bugs surfaced during the acceptance-test wiring: `SearchPanel`
 | Route | Purpose |
 |---|---|
 | `/read` | Passage reader; clickable Greek tokens with morphology popover; **per-word English highlighting** with color palette popover; verse-jump input, prev/next chapter (top + bottom), Greek/English/Parallel mode toggle, last-passage restore |
-| `/search` | Three modes (lemma / keyword / morphology) with **match highlighting** on result verses, in-input Search + Clear, pagination, saved-search persistence |
+| `/search` | Three modes (lemma / keyword / morphology) with **match highlighting** on result verses, in-input Search + Clear, pagination, saved-search persistence. Keyword mode uses FTS (`bible_simple` unaccent config, `websearch_to_tsquery`): accent-insensitive Greek, whole-lexeme (not substring), multi-word AND, optional rank ordering. |
 | `/assistant` | AI Study Assistant — retrieval-first with live/fallback mode indicator, codex-gutter sidebar (trace + citations + generated notes) |
 | `/notes` | Notes index with **keyword search**, tag dropdown filter, reference filter, sort (Most recent / Canonical / Title), server-side pagination |
 | `/api/assistant` | POST endpoint: auth-gated, prompt cap, rate-limited (10/min, `Retry-After`); dispatches local retrieval and optionally synthesizes via OpenAI Responses API |
@@ -79,7 +79,11 @@ The assistant route follows a clear retrieval-first contract:
 
 ### Test surfaces
 
-- **345 unit tests across 40 files** (vitest 4 + jsdom + RTL). Coverage gate via v8 over `app/api/**` + `lib/**`: lines 88.11%, statements 84.93%, functions 84.15%, branches 73.79%. Major additions from Phase 2 (grounding + Silence Protocol):
+- **350 unit tests across 41 files** (vitest 4 + jsdom + RTL). Coverage gate via v8 over `app/api/**` + `lib/**`: lines 89.15%, statements 85.85%, functions 85.14%, branches 74.66%. Additions from Phase 3 (Lexical FTS):
+  - `tests/unit/lib/search-keyword.test.ts` (4 tests) — `searchKeyword` FTS behaviour: accent folding, lexeme-not-substring, multi-word AND, rank ordering
+  - `tests/integration/fts-search.test.ts` (6 tests) — end-to-end FTS against the seeded test branch
+
+  Major additions from Phase 2 (grounding + Silence Protocol):
   - `tests/unit/lib/ai/grounding.test.ts` — `verifyGrounding`: SBLGNT authority (refuse on mismatch/unresolved), WEB strip-and-caveat, threshold 0.90, cache behavior, infra-error propagation
   - `tests/unit/lib/text/similarity.test.ts` — `levenshtein`, `normalizeGreek`, `normalizeEnglish`, `containmentScore`
   - `tests/unit/lib/references.test.ts` — `parseReference` (book aliases, chapter:verse, edge cases)
@@ -110,13 +114,14 @@ The assistant route follows a clear retrieval-first contract:
 ### Database
 
 - Prisma 6 over PostgreSQL on `localhost:5433`
-- 6 migrations on disk:
+- 7 migrations on disk:
   - `0_init` — baseline reflecting pre-rename schema
   - `20260521162527_assistant_message_metadata` — `AiMessage.citations → metadata`
   - `20260522193249_token_lemma_index` — composite `(corpusId, bookId, partOfSpeech, lemma)` for `getTopLemmas`
   - `20260524083541_add_english_word_index_to_highlight` — `Highlight.englishWordIndex Int?` + index on `(userId, verseId, englishWordIndex)` (PR 14)
   - `20260526022206_auth_user_models` — Sprint 2: `User` / `Account` / `Session` / `VerificationToken` + FK relations from `Note` / `Highlight` / `SavedSearch` / `GeneratedStudyNote` / `AiSession` to `User.id` (`onDelete: Cascade`)
   - `20260526200447_session_revocation` — Sprint 4: `User.sessionsValidFrom DateTime?` watermark that rejects replayed JWTs after sign-out
+  - `20260530120000_lexical_fts` — Phase 3: `CREATE EXTENSION unaccent`; custom immutable `bible_simple` FTS config; `Verse.textSearch` stored GENERATED `tsvector` column; `Verse_textSearch_idx` GIN index; all ~15.9 k rows backfilled
 
 ### Tech stack
 
@@ -173,7 +178,14 @@ reconciliation/gap analysis, and the Docker→Neon hosting plan live in
    in `AiAssistant`. This subsumes the old "Step 3". Unit/tsc/lint/build/coverage all green; DB
    integration + Playwright acceptance to be run against a Neon test branch.
 2. **Grounding + Silence Protocol** — ✅ **done** (branch `milestone-3/phase-2-grounding`). SBLGNT citation spine; WEB display-aid with strip-and-caveat (non-fatal); structured synthesis `claims[]`; verification before persistence (withheld refusal stored, never the draft); `grounded` flag + withheld banner in `AiAssistant`. New: `lib/ai/grounding.ts`, `lib/text/similarity.ts`, `lib/references.ts`.
-3. **Lexical FTS** — `tsvector` + GIN, ranked keyword search.
+3. **Lexical FTS** — ✅ **done** (branch `milestone-3/phase-3-lexical-fts`). `bible_simple` unaccent
+   config (immutable); `Verse.textSearch` stored GENERATED `tsvector` + `Verse_textSearch_idx` GIN
+   index; `searchKeyword` rewritten to `$queryRaw` / `websearch_to_tsquery('bible_simple', …)` —
+   the project's first raw SQL in the search layer (all user input bound as `Prisma.sql` parameters);
+   new `orderBy: "canonical" | "rank"` param; retrieval planner passes `orderBy: "rank"`. Behaviour:
+   accent-insensitive Greek, whole-lexeme (not substring) matching, multi-word AND queries. English
+   Snowball stemming deferred — follow-up tracked. Evidence-diff harness added
+   (`scripts/evidence-diff.ts`). Unit + integration tests all green.
 4. **Vector + hybrid retrieval** — pgvector, embeddings, RRF, cross-encoder rerank, V±2 windows (heaviest).
 5. **Louw-Nida enrichment** — import the `domain`/`ln` columns already in the MACULA TSV.
 6. **Evaluation harness** — RAGAS-style faithfulness/context-precision gates.

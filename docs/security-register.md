@@ -24,7 +24,7 @@ sprint and at every Next.js minor upgrade. Cross-check each open row.
 | Opened | 2026-05-25 (Sprint 3) |
 | Next review | Re-check after each Next.js minor release. |
 
-### Generated-study-notes request body limit raised to 128 KB
+### Generated-study-notes request body limit raised to 256 KB
 
 | Field | Value |
 | --- | --- |

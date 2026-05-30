@@ -24,6 +24,18 @@ sprint and at every Next.js minor upgrade. Cross-check each open row.
 | Opened | 2026-05-25 (Sprint 3) |
 | Next review | Re-check after each Next.js minor release. |
 
+### Generated-study-notes request body limit raised to 128 KB
+
+| Field | Value |
+| --- | --- |
+| Severity | Low (request-size / DoS-surface consideration) |
+| Change | `POST /api/generated-study-notes` caps raised: `NOTE_BODY_LIMIT` 64 KB → 128 KB, `MAX_ANSWER` 10 KB → 40 KB, `MAX_MARKDOWN` 12 KB → 48 KB (`app/api/generated-study-notes/route.ts`). |
+| Reason | The retrieval-scoping change returns whole passages in full, so a deterministic-fallback answer for a chapter across both corpora (~13 KB, hard-bounded by the planner's `MAX_PASSAGE_LINES` ceiling at ~30 KB worst case) overflowed the old caps and 400'd on save. |
+| Status | Accepted — bounded |
+| Mitigation | Endpoint is behind auth (`requireAuth`) and same-origin (`assertSameOrigin`); `readJsonLimited` still rejects bodies over the new 128 KB cap with 413. The upstream answer/markdown sizes are bounded by `MAX_PASSAGE_LINES`, so payloads cannot grow unboundedly. |
+| Owner | Maintainer (kiyahj81) |
+| Opened | 2026-05-30 (retrieval-scoping branch) |
+
 ## Tooling notes
 
 - `npm audit` requires network access to the npm registry. If the

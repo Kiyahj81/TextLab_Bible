@@ -79,7 +79,7 @@ The assistant route follows a clear retrieval-first contract:
 
 ### Test surfaces
 
-- **349 unit tests across 41 files** (vitest 4 + jsdom + RTL). Coverage gate via v8 over `app/api/**` + `lib/**`: lines 88.11%, statements 84.93%, functions 84.15%, branches 73.79%. Additions from Phase 3 (Lexical FTS):
+- **350 unit tests across 41 files** (vitest 4 + jsdom + RTL). Coverage gate via v8 over `app/api/**` + `lib/**`: lines 89.15%, statements 85.85%, functions 85.14%, branches 74.66%. Additions from Phase 3 (Lexical FTS):
   - `tests/unit/lib/search-keyword.test.ts` (4 tests) — `searchKeyword` FTS behaviour: accent folding, lexeme-not-substring, multi-word AND, rank ordering
   - `tests/integration/fts-search.test.ts` (6 tests) — end-to-end FTS against the seeded test branch
 

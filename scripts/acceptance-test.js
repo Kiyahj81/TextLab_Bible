@@ -201,13 +201,17 @@ async function run() {
     await page.locator("textarea").first().fill("Show me every use of λόγος in John 1 and summarize the pattern.");
     await page.getByRole("button", { name: "Ask assistant" }).click();
     // Paradigm C deterministic-first answer: three-section text whose evidence
-    // block reports the lemma hit count from the retrieval planner.
+    // block reports the lemma hit count from the retrieval planner. The planner
+    // scopes "λόγος in John 1" to the named chapter, so the search returns the 4
+    // chapter-1 occurrences (three in 1:1, one in 1:14) — not the 40 across the
+    // whole book — and 1:14 ("the Word became flesh") is now surfaced.
     const answerPre = page.locator("pre").filter({ hasText: "Textual observations:" });
     await answerPre.waitFor({ timeout: 30000 });
-    await answerPre.filter({ hasText: "40 hit(s)" }).waitFor();
+    await answerPre.filter({ hasText: "4 hit(s)" }).waitFor();
+    await answerPre.filter({ hasText: "John 1:14" }).waitFor();
     await page.getByText("Local fallback").waitFor();
     await page.getByText("gpt-5.3-chat-latest").waitFor();
-    await page.getByText('searchLemma({"lemma":"λόγος","book":"John"})').waitFor();
+    await page.getByText('searchLemma({"lemma":"λόγος","book":"John","chapter":1})').waitFor();
     await page.getByText("John 1:1, SBLGNT").first().waitFor();
     // Live mode is disabled in acceptance, so this answer comes from the
     // deterministic fallback (grounded by construction) — assert the withheld

@@ -69,6 +69,10 @@ function passageSegments(ref: ParsedReference): PassageSegment[] {
   const startChapter = ref.chapter;
   const endChapter = ref.chapterEnd ?? ref.chapter;
 
+  // Malformed inverted range (end before start) → no segments; caller's parser
+  // should not emit these, but stay safe rather than fetch chapters out of order.
+  if (endChapter < startChapter) return [];
+
   if (endChapter === startChapter) {
     const verseStart = ref.verseStart ?? 1;
     // bare chapter → whole chapter; explicit range → that range; single verse → that verse
@@ -87,8 +91,9 @@ function passageSegments(ref: ParsedReference): PassageSegment[] {
 function passageCall(corpus: "SBLGNT" | "WEB", ref: ParsedReference): PlannedCall {
   const segments = passageSegments(ref);
   const crossChapter = ref.chapterEnd !== undefined && ref.chapterEnd !== ref.chapter;
+  const endVersePart = ref.verseEnd !== undefined ? `:${ref.verseEnd}` : "";
   const label = crossChapter
-    ? `${ref.book} ${ref.chapter}:${ref.verseStart ?? 1}-${ref.chapterEnd}:${ref.verseEnd ?? ""}`
+    ? `${ref.book} ${ref.chapter}:${ref.verseStart ?? 1}-${ref.chapterEnd}${endVersePart}`
     : `${ref.book} ${ref.chapter}`;
   const traces: ToolTraceEntry[] = segments.map((seg) => ({
     tool: "getPassage",

@@ -64,8 +64,8 @@ describe("getModelForRole", () => {
 });
 
 describe("getMaxOutputTokens", () => {
-  it("defaults to 1200", () => {
-    expect(getMaxOutputTokens()).toBe(1200);
+  it("defaults to 2400", () => {
+    expect(getMaxOutputTokens()).toBe(2400);
   });
 
   it("honors a valid env override", () => {
@@ -75,7 +75,7 @@ describe("getMaxOutputTokens", () => {
 
   it("falls back to the default for invalid values", () => {
     vi.stubEnv("OPENAI_MAX_OUTPUT_TOKENS", "not-a-number");
-    expect(getMaxOutputTokens()).toBe(1200);
+    expect(getMaxOutputTokens()).toBe(2400);
   });
 });
 

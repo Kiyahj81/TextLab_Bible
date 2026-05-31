@@ -45,6 +45,36 @@ describe("verifyGrounding", () => {
     expect(report.verdicts[0].status).toBe("quote-mismatch");
   });
 
+  it("verifies an ellipsis-joined quote whose fragments are all in the verse", async () => {
+    // The model often summarizes several non-adjacent occurrences in one claim,
+    // joining them with an ellipsis. Each fragment is a real substring even
+    // though the spliced whole is not — it must still verify.
+    mockVerses({
+      SBLGNT: { "Rom 7:25": "ἄρα οὖν αὐτὸς ἐγὼ τῷ μὲν νοῒ δουλεύω νόμῳ θεοῦ τῇ δὲ σαρκὶ νόμῳ ἁμαρτίας" }
+    });
+    const ellipsis = await verifyGrounding([
+      claim({ reference: "Rom 7:25", greekQuote: "νόμῳ θεοῦ … νόμῳ ἁμαρτίας" })
+    ]);
+    expect(ellipsis.grounded).toBe(true);
+    expect(ellipsis.verdicts[0].status).toBe("verified");
+
+    const dots = await verifyGrounding([
+      claim({ reference: "Rom 7:25", greekQuote: "νόμῳ θεοῦ ... νόμῳ ἁμαρτίας" })
+    ]);
+    expect(dots.grounded).toBe(true);
+  });
+
+  it("fails an ellipsis-joined quote when any fragment is absent from the verse", async () => {
+    mockVerses({
+      SBLGNT: { "Rom 7:25": "ἄρα οὖν αὐτὸς ἐγὼ τῷ μὲν νοῒ δουλεύω νόμῳ θεοῦ τῇ δὲ σαρκὶ νόμῳ ἁμαρτίας" }
+    });
+    const report = await verifyGrounding([
+      claim({ reference: "Rom 7:25", greekQuote: "νόμῳ θεοῦ … πῦρ καὶ θεῖον" })
+    ]);
+    expect(report.grounded).toBe(false);
+    expect(report.verdicts[0].status).toBe("quote-mismatch");
+  });
+
   it("fails when the reference resolves to no SBL verse", async () => {
     mockVerses({ SBLGNT: {} });
     const report = await verifyGrounding([claim({ reference: "John 99:99", greekQuote: "x" })]);

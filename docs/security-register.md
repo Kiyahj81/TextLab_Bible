@@ -36,6 +36,19 @@ sprint and at every Next.js minor upgrade. Cross-check each open row.
 | Owner | Maintainer (kiyahj81) |
 | Opened | 2026-05-30 (retrieval-scoping branch) |
 
+### OpenAI client request timeout raised to 120 s
+
+| Field | Value |
+| --- | --- |
+| Severity | Low (resource-holding / DoS-surface consideration) |
+| Change | Default OpenAI client `timeout` raised 25 s → 120 s in `lib/ai/openaiClient.ts` (override via `OPENAI_REQUEST_TIMEOUT_MS`); `maxRetries: 1` unchanged. |
+| Reason | A full grounded answer (~`OPENAI_MAX_OUTPUT_TOKENS`=2400 of structured JSON with Greek) routinely takes longer than 25 s to generate, so the client abandoned responses the model had already completed server-side and surfaced "Request timed out" → the local fallback. |
+| Status | Accepted — bounded |
+| Mitigation | The only caller (`POST /api/assistant`) is behind auth (`requireAuth`), same-origin (`assertSameOrigin`), and per-user/IP rate-limited (`rateLimitKey` scope `assistant`). A live request can now hold a worker up to ~120 s (≤ ~240 s across the single retry); concurrency is bounded by the rate limiter, not unbounded. On serverless hosts, function `maxDuration` must be ≥ this timeout or the platform terminates the request first. |
+| Path to resolve | Stream the response so partial output is consumed as it arrives instead of an all-or-nothing wait, allowing a shorter hard timeout. |
+| Owner | Maintainer (kiyahj81) |
+| Opened | 2026-05-31 (assistant timeout/grounding fix) |
+
 ### Phase 3 raw SQL surface in searchKeyword (`lib/search.ts`)
 
 | Field | Value |

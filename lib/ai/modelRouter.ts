@@ -17,7 +17,7 @@ export type RoutingDecision = {
 const DEFAULT_MODEL = "gpt-5.3-chat-latest";
 const SCHOLARLY_MODEL = "gpt-5.4";
 
-const DEFAULT_MAX_OUTPUT_TOKENS = 1_200;
+const DEFAULT_MAX_OUTPUT_TOKENS = 2_400;
 
 export function getMaxOutputTokens(): number {
   const raw = Number.parseInt(process.env.OPENAI_MAX_OUTPUT_TOKENS?.trim() ?? "", 10);

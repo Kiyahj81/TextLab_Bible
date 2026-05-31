@@ -26,6 +26,25 @@ export type GroundingReport = {
 
 type ParsedReference = NonNullable<ReturnType<typeof parseReference>>;
 
+// A single claim often summarizes several non-adjacent occurrences, joining the
+// quoted fragments with an ellipsis (e.g. "νόμῳ θεοῦ … νόμῳ ἁμαρτίας" or the
+// ASCII "..."). The spliced whole is never a contiguous substring of the verse,
+// so scoring it as one string produces a false mismatch. Split on the ellipsis
+// and require EVERY fragment to match; the claim's score is its weakest
+// fragment. A quote with no ellipsis yields a single fragment, so this is a
+// no-op for the common case.
+const ELLIPSIS_SEPARATOR = /\s*(?:…|\.{2,})\s*/;
+
+function fragmentContainment(quote: string, verseText: string, normalize: (s: string) => string): number {
+  const normVerse = normalize(verseText);
+  const fragments = quote
+    .split(ELLIPSIS_SEPARATOR)
+    .map((fragment) => normalize(fragment))
+    .filter((fragment) => fragment.length > 0);
+  if (fragments.length === 0) return 0;
+  return Math.min(...fragments.map((fragment) => containmentScore(fragment, normVerse)));
+}
+
 function cacheKey(corpus: "SBLGNT" | "WEB", ref: ParsedReference): string {
   return `${corpus}|${ref.book}|${ref.chapter}|${ref.verse}|${ref.verseEnd ?? ""}`;
 }
@@ -85,7 +104,7 @@ export async function verifyGrounding(claims: GroundingClaim[]): Promise<Groundi
     const verdict: ClaimVerdict = { claim, status: "verified", resolvedText: sblText };
 
     if (claim.greekQuote) {
-      const score = containmentScore(normalizeGreek(claim.greekQuote), normalizeGreek(sblText));
+      const score = fragmentContainment(claim.greekQuote, sblText, normalizeGreek);
       if (score < QUOTE_MATCH_THRESHOLD) {
         verdicts.push({ claim, status: "quote-mismatch", matchScore: score, resolvedText: sblText });
         return;
@@ -99,7 +118,7 @@ export async function verifyGrounding(claims: GroundingClaim[]): Promise<Groundi
         verdict.alignmentCaveat =
           "WEB has no verse at this reference; treat any English rendering as unverified against the Greek.";
       } else {
-        const englishScore = containmentScore(normalizeEnglish(claim.englishQuote), normalizeEnglish(webText));
+        const englishScore = fragmentContainment(claim.englishQuote, webText, normalizeEnglish);
         if (englishScore < QUOTE_MATCH_THRESHOLD) {
           verdict.alignmentCaveat =
             "The WEB display translation does not align with the SBLGNT evidence here; treat the English rendering as unverified.";

@@ -32,11 +32,11 @@ describe("getOpenAi", () => {
     );
   });
 
-  it("falls back to a 25000ms timeout when unset or invalid", () => {
+  it("falls back to a 120000ms timeout when unset or invalid", () => {
     vi.stubEnv("OPENAI_API_KEY", "test-key");
     vi.stubEnv("OPENAI_REQUEST_TIMEOUT_MS", "not-a-number");
     getOpenAi();
-    expect(ctor).toHaveBeenCalledWith(expect.objectContaining({ timeout: 25_000 }));
+    expect(ctor).toHaveBeenCalledWith(expect.objectContaining({ timeout: 120_000 }));
   });
 
   it("caches the client across calls and rebuilds after reset", () => {

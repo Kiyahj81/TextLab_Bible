@@ -3,13 +3,13 @@
 *Status:* Approved 2026-05-28 · *Scope:* NT-Greek subset · *Successor to:* Milestone 2.5 (shipped on `main`)
 
 This is **Milestone 3**: bringing the mechanisms from
-`docs/Technical Architecture for High-Fidelity Biblical Exegesis.md` to the existing NT corpus,
+`docs/archived/Technical Architecture for High-Fidelity Biblical Exegesis.md` to the existing NT corpus,
 delivered in **6 phases**. It also reconciles that aspirational architecture against what is built
 today and records the scope and hosting decisions made during planning.
 
 ## Context
 
-`docs/Technical Architecture for High-Fidelity Biblical Exegesis.md` is a NotebookLM-sourced
+`docs/archived/Technical Architecture for High-Fidelity Biblical Exegesis.md` is a NotebookLM-sourced
 *aspirational* blueprint (dated 2026-05-27). It describes a dual-layer system: a deterministic
 PostgreSQL "source of truth" (word-level Greek/Hebrew/Aramaic alignment, Strong's, morphology,
 Louw-Nida, speaker metadata, RAG chunks + pgvector) and a TypeScript orchestration layer doing
@@ -52,6 +52,11 @@ enforced grounding verification** — are **not implemented**. Several data asse
 
 ## Side-by-side reconciliation
 
+> **Note:** the "Current state" column below is the **Milestone 2.5 baseline snapshot**
+> (the starting point for this roadmap). Several rows have since been closed by completed
+> phases — see the phase list further down. In particular, the FTS / `ILIKE` rows were
+> addressed by **Phase 3 (Lexical FTS, ✅ done)**.
+
 ### A. Database / data layer
 
 | Target (doc) | Current state | Gap |
@@ -65,13 +70,13 @@ enforced grounding verification** — are **not implemented**. Several data asse
 | `word_alignments` table | ❌ implicit only (paired by book/ch/verse in `lib/search.ts`) | **Moderate** — no token↔English-word alignment table |
 | `speaker_quotations` (gender/age/divinity/depth) | ❌ none | **Major** — Clear-Bible data not ingested |
 | `chunks` + `pgvector` embeddings | ❌ no extension, no column, no table | **Major** — entire RAG tier missing |
-| FTS `tsvector` + GIN | ❌ uses `ILIKE` substring | **Moderate** |
+| FTS `tsvector` + GIN | ⚠️ M2.5 used `ILIKE` substring → ✅ **closed in Phase 3** (`bible_simple` FTS + GIN) | Was Moderate; now closed |
 
 ### B. Retrieval pipeline
 
 | Target (doc) | Current state | Gap |
 |---|---|---|
-| Hybrid lexical + vector search | ❌ deterministic dispatch table + `ILIKE`/lemma/morph lookups (`lib/search.ts`, `lib/ai/assistant.ts`) | **Major** |
+| Hybrid lexical + vector search | ❌ deterministic dispatch table + lemma/morph lookups plus keyword FTS (Phase 3; was `ILIKE` at M2.5) in `lib/search.ts` / `lib/ai/retrievalPlanner.ts`; no vector half yet | **Major** (vector half outstanding) |
 | Reciprocal Rank Fusion (k=60) | ❌ none | **Major** |
 | Cross-encoder rerank (top-30→top-5) | ❌ none | **Major** |
 | Query expansion (synonyms/lemmas) | ⚠️ only a hardcoded 3-lemma alias branch | **Moderate** |
@@ -169,7 +174,8 @@ dispatch table with the deterministic-first pipeline from
 **Phase 2 — Grounding + Silence Protocol. ✅ DONE (branch `milestone-3/phase-2-grounding`).** SBLGNT
 is the authoritative citation spine: a Greek-quote mismatch (fuzzy score < 0.90) or an unresolvable
 reference fails the claim and the answer is withheld. WEB is a non-authoritative display aid — a WEB
-mismatch or missing verse sets an alignment caveat but does NOT refuse ("strip-and-caveat"). Synthesis
+mismatch or missing verse sets an alignment caveat but does NOT refuse ("caveat-only" — the caveat is
+appended; the English aid is not yet stripped from the prose, tracked as a follow-up). Synthesis
 now returns structured JSON (`answer` + `claims[]`) via a strict json\_schema output format. The
 verifier runs between synthesis and persistence: the withheld refusal is what gets stored, never the
 draft. A `grounded` boolean (+ optional `groundingReport`) is recorded in `AssistantMessageMetadata`
@@ -296,5 +302,5 @@ over TLS, and Prisma 6 connects with no driver-adapter required for a Next.js No
   `lib/ai/systemPrompt.ts` (vestigial), `app/api/assistant/route.ts`
 - Specs (orchestration designs): `docs/superpowers/specs/2026-05-27-hybrid-assistant-retrieval-design.md`,
   `docs/superpowers/specs/2026-05-27-agentic-assistant-tool-calling-design.md`
-- Source architecture: `docs/Technical Architecture for High-Fidelity Biblical Exegesis.md`
+- Source architecture: `docs/archived/Technical Architecture for High-Fidelity Biblical Exegesis.md`
 - Status: `docs/PROJECT_STATE.md`

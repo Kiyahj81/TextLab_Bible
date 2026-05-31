@@ -4,11 +4,12 @@
 // Requires DATABASE_URL in the environment (uses the real corpus). No OpenAI call.
 //
 // Working invocation (loads .env automatically):
-//   node --env-file=.env --import=tsx/esm scripts/evidence-diff.ts
-// Alternative via tsx directly:
 //   npx tsx --env-file=.env scripts/evidence-diff.ts
-// Or pre-load .env in PowerShell then:
+// Or pre-load .env in the shell, then:
 //   npx tsx scripts/evidence-diff.ts
+// NOTE: `node --env-file=.env --import=tsx/esm scripts/evidence-diff.ts` does NOT
+// work — under that loader the imported modules' `@/…` path aliases fail to
+// resolve ("Cannot find module '../lib/ai/signals'"). Use `npx tsx` as above.
 
 import { extractSignals } from "../lib/ai/signals";
 import { runRetrievalPlan } from "../lib/ai/retrievalPlanner";

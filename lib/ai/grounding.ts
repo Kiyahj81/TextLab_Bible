@@ -97,12 +97,12 @@ export async function verifyGrounding(claims: GroundingClaim[]): Promise<Groundi
       const webText = cache.get(cacheKey("WEB", parsed)) ?? null;
       if (webText === null) {
         verdict.alignmentCaveat =
-          "WEB has no verse at this reference; the English display aid was withheld.";
+          "WEB has no verse at this reference; treat any English rendering as unverified against the Greek.";
       } else {
         const englishScore = containmentScore(normalizeEnglish(claim.englishQuote), normalizeEnglish(webText));
         if (englishScore < QUOTE_MATCH_THRESHOLD) {
           verdict.alignmentCaveat =
-            "The WEB display translation does not align with the SBLGNT evidence here; the English aid was withheld.";
+            "The WEB display translation does not align with the SBLGNT evidence here; treat the English rendering as unverified.";
         }
       }
     }

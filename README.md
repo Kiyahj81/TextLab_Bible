@@ -62,7 +62,7 @@ npm run db:migrate
 npm run db:seed
 ```
 
-(`npm run db:push` is also available for throwaway dev databases that skip migrations.)
+> **Use `db:migrate`, not `db:push`.** The Lexical FTS feature lives in a hand-written migration that creates the `unaccent` extension, the `bible_simple` text-search config, and the **generated** `Verse.textSearch` column. `npm run db:push` only syncs the Prisma schema — it skips that SQL, so `textSearch` is created as a plain (never-populated) column and `bible_simple` is absent, leaving keyword search broken. `db:push` is therefore not a safe shortcut for this project.
 
 4. **Start the app:**
 

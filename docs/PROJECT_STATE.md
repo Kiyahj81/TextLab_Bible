@@ -84,7 +84,7 @@ The assistant route follows a clear retrieval-first contract:
   - `tests/integration/fts-search.test.ts` (6 tests) — end-to-end FTS against the seeded test branch
 
   Major additions from Phase 2 (grounding + Silence Protocol):
-  - `tests/unit/lib/ai/grounding.test.ts` — `verifyGrounding`: SBLGNT authority (refuse on mismatch/unresolved), WEB strip-and-caveat, threshold 0.90, cache behavior, infra-error propagation
+  - `tests/unit/lib/ai/grounding.test.ts` — `verifyGrounding`: SBLGNT authority (refuse on mismatch/unresolved), WEB caveat-only, threshold 0.90, cache behavior, infra-error propagation
   - `tests/unit/lib/text/similarity.test.ts` — `levenshtein`, `normalizeGreek`, `normalizeEnglish`, `containmentScore`
   - `tests/unit/lib/references.test.ts` — `parseReference` (book aliases, chapter:verse, edge cases)
   - `tests/unit/lib/ai/synthesis.test.ts` — structured JSON output format (`answer` + `claims[]`), `buildRefusalAnswer`
@@ -164,7 +164,7 @@ The lines/statements/functions thresholds are at 80/80/75 with comfortable headr
 ## Milestone 3 — High-Fidelity NT Exegesis (approved 2026-05-28)
 
 The next major arc is **Milestone 3**, which brings the mechanisms from
-`docs/Technical Architecture for High-Fidelity Biblical Exegesis.md` to the existing NT corpus.
+`docs/archived/Technical Architecture for High-Fidelity Biblical Exegesis.md` to the existing NT corpus.
 Scope is locked to an **NT-Greek subset** (no OT Hebrew/Aramaic, Strong's, or speaker data yet);
 Louw-Nida enrichment is in scope since the data already ships in the MACULA TSV. Full roadmap,
 reconciliation/gap analysis, and the Docker→Neon hosting plan live in
@@ -177,7 +177,7 @@ reconciliation/gap analysis, and the Docker→Neon hosting plan live in
    a user-confirmed `escalate` flag on `POST /api/assistant`, and a "Use scholarly model" affordance
    in `AiAssistant`. This subsumes the old "Step 3". Unit/tsc/lint/build/coverage all green; DB
    integration + Playwright acceptance to be run against a Neon test branch.
-2. **Grounding + Silence Protocol** — ✅ **done** (branch `milestone-3/phase-2-grounding`). SBLGNT citation spine; WEB display-aid with strip-and-caveat (non-fatal); structured synthesis `claims[]`; verification before persistence (withheld refusal stored, never the draft); `grounded` flag + withheld banner in `AiAssistant`. New: `lib/ai/grounding.ts`, `lib/text/similarity.ts`, `lib/references.ts`.
+2. **Grounding + Silence Protocol** — ✅ **done** (branch `milestone-3/phase-2-grounding`). SBLGNT citation spine; WEB display-aid is caveat-only (non-fatal — a misaligned English aid is flagged with an appended caveat but is not yet stripped from the prose; stripping tracked as a follow-up); structured synthesis `claims[]`; verification before persistence (withheld refusal stored, never the draft); `grounded` flag + withheld banner in `AiAssistant`. New: `lib/ai/grounding.ts`, `lib/text/similarity.ts`, `lib/references.ts`.
 3. **Lexical FTS** — ✅ **done** (branch `milestone-3/phase-3-lexical-fts`). `bible_simple` unaccent
    config (immutable); `Verse.textSearch` stored GENERATED `tsvector` + `Verse_textSearch_idx` GIN
    index; `searchKeyword` rewritten to `$queryRaw` / `websearch_to_tsquery('bible_simple', …)` —

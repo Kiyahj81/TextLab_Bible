@@ -8,15 +8,15 @@ sprint and at every Next.js minor upgrade. Cross-check each open row.
 
 ## Open
 
-### GHSA-qx2v-qp2m-jg93 — postcss line return parsing
+### GHSA-qx2v-qp2m-jg93 — postcss XSS via unescaped `</style>`
 
 | Field | Value |
 | --- | --- |
-| Severity | Moderate |
-| Advisory | https://github.com/advisories/GHSA-qx2v-qp2m-jg93 |
-| Affected package | `postcss@8.4.31`, bundled transitively under `next` |
+| Severity | Moderate (CVSS 6.1) |
+| Advisory | https://github.com/advisories/GHSA-qx2v-qp2m-jg93 (CVE-2026-41305) — "PostCSS has XSS via Unescaped `</style>` in its CSS Stringify Output" |
+| Affected package | `postcss <8.5.10`, bundled transitively under `next` (the repo's own direct `postcss@^8.5.3` is also below the fix) |
 | Direct dependency that pulls it in | `next` |
-| First fixed version | `postcss@8.4.31` is the vulnerable version; fix is in `postcss@8.4.32` and later |
+| First fixed version | `postcss@8.5.10`. Verified against `npm audit --json` on 2026-05-31 (range `<8.5.10`); earlier rows here mis-titled this as "line return parsing" with an `8.4.32` fix — that was a different/older advisory and is corrected here. |
 | Status | Accepted exception — upstream-blocked |
 | Mitigation | We do not feed untrusted PostCSS source to any build step. PostCSS only runs at build time over our own `app/globals.css` and Tailwind output. No user-controlled CSS reaches it. |
 | Path to resolve | Wait for a Next.js release that bundles a newer PostCSS, then upgrade Next and re-run `npm audit`. Do **not** run `npm audit fix --force` — it proposes a breaking Next downgrade. |

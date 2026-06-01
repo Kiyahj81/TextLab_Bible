@@ -14,15 +14,30 @@ export type RoutingDecision = {
   recommendedUpgrade?: RecommendedUpgrade;
 };
 
-const DEFAULT_MODEL = "gpt-5.3-chat-latest";
+// gpt-5-chat-latest (not gpt-5.3-chat-latest) because the synthesis calls pass a
+// `temperature`, which gpt-5.3-chat-latest rejects as an invalid parameter (the
+// 400 would throw and surface the local fallback). Both gpt-5-chat-latest and
+// the scholarly gpt-5.4 accept temperature.
+const DEFAULT_MODEL = "gpt-5-chat-latest";  // Testing different models for best answers. This may be changed.
 const SCHOLARLY_MODEL = "gpt-5.4";
 
 const DEFAULT_MAX_OUTPUT_TOKENS = 2_400;
+
+// Lower than the model default (~1.0) to curb sampling noise — including the
+// occasional foreign-language token leak in the prose. Tunable per-environment;
+// 0 (fully deterministic) is valid, so the guard accepts >= 0 (unlike tokens).
+const DEFAULT_TEMPERATURE = 0.3;  // Testing different temperatures for best answers. This may be changed.
 
 export function getMaxOutputTokens(): number {
   const raw = Number.parseInt(process.env.OPENAI_MAX_OUTPUT_TOKENS?.trim() ?? "", 10);
   if (Number.isFinite(raw) && raw > 0) return raw;
   return DEFAULT_MAX_OUTPUT_TOKENS;
+}
+
+export function getTemperature(): number {
+  const raw = Number.parseFloat(process.env.OPENAI_TEMPERATURE?.trim() ?? "");
+  if (Number.isFinite(raw) && raw >= 0 && raw <= 2) return raw;
+  return DEFAULT_TEMPERATURE;
 }
 
 export function getModelForRole(role: ModelRole) {

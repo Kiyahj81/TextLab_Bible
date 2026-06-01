@@ -45,7 +45,7 @@ beforeEach(() => {
     toolTrace: [],
     mode: "fallback",
     modelRole: "default",
-    modelUsed: "gpt-5.3-chat-latest",
+    modelUsed: "gpt-5-chat-latest",
     routingDecision: "Handled by the default model"
   });
 });
@@ -160,7 +160,7 @@ describe("POST /api/assistant", () => {
       grounded: false,
       groundingReport: { grounded: false, verdicts: [] },
       modelRole: "default",
-      modelUsed: "gpt-5.3-chat-latest",
+      modelUsed: "gpt-5-chat-latest",
       routingDecision: "..."
     });
 

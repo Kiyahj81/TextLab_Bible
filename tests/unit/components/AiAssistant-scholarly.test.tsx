@@ -12,7 +12,7 @@ const defaultResponse = {
   mode: "live",
   sessionId: "s1",
   modelRole: "default",
-  modelUsed: "gpt-5.3-chat-latest",
+  modelUsed: "gpt-5-chat-latest",
   routingDecision: "Handled by the default model; scholarly mode is available on user-confirmed escalation.",
   recommendedUpgrade: { modelRole: "scholarly", model: "gpt-5.4", reason: "deeper synthesis" }
 };

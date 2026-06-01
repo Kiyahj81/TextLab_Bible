@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import {
   getMaxOutputTokens,
   getModelForRole,
+  getTemperature,
   isLiveAssistantEnabled,
   recommendScholarlyUpgrade,
   routeAssistantPrompt
@@ -51,7 +52,7 @@ describe("recommendScholarlyUpgrade", () => {
 
 describe("getModelForRole", () => {
   it("returns the default model and honors the env override", () => {
-    expect(getModelForRole("default")).toBe("gpt-5.3-chat-latest");
+    expect(getModelForRole("default")).toBe("gpt-5-chat-latest");
     vi.stubEnv("OPENAI_DEFAULT_MODEL", "custom-default");
     expect(getModelForRole("default")).toBe("custom-default");
   });
@@ -76,6 +77,28 @@ describe("getMaxOutputTokens", () => {
   it("falls back to the default for invalid values", () => {
     vi.stubEnv("OPENAI_MAX_OUTPUT_TOKENS", "not-a-number");
     expect(getMaxOutputTokens()).toBe(2400);
+  });
+});
+
+describe("getTemperature", () => {
+  it("defaults to 0.3", () => {
+    expect(getTemperature()).toBe(0.3);
+  });
+
+  it("honors a valid env override, including 0", () => {
+    vi.stubEnv("OPENAI_TEMPERATURE", "0");
+    expect(getTemperature()).toBe(0);
+    vi.stubEnv("OPENAI_TEMPERATURE", "0.7");
+    expect(getTemperature()).toBe(0.7);
+  });
+
+  it("falls back to the default for non-numeric or out-of-range values", () => {
+    vi.stubEnv("OPENAI_TEMPERATURE", "not-a-number");
+    expect(getTemperature()).toBe(0.3);
+    vi.stubEnv("OPENAI_TEMPERATURE", "-1");
+    expect(getTemperature()).toBe(0.3);
+    vi.stubEnv("OPENAI_TEMPERATURE", "3");
+    expect(getTemperature()).toBe(0.3);
   });
 });
 

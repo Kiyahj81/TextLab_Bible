@@ -13,7 +13,7 @@ const withheldResponse = {
   grounded: false,
   sessionId: "s1",
   modelRole: "default",
-  modelUsed: "gpt-5.3-chat-latest",
+  modelUsed: "gpt-5-chat-latest",
   routingDecision: "..."
 };
 

@@ -210,7 +210,7 @@ async function run() {
     await answerPre.filter({ hasText: "4 hit(s)" }).waitFor();
     await answerPre.filter({ hasText: "John 1:14" }).waitFor();
     await page.getByText("Local fallback").waitFor();
-    await page.getByText("gpt-5.3-chat-latest").waitFor();
+    await page.getByText("gpt-5-chat-latest").waitFor();
     await page.getByText('searchLemma({"lemma":"λόγος","book":"John","chapter":1})').waitFor();
     await page.getByText("John 1:1, SBLGNT").first().waitFor();
     // Live mode is disabled in acceptance, so this answer comes from the

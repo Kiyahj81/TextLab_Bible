@@ -2,7 +2,7 @@ import type { AssistantCitation } from "@/lib/ai/assistant";
 import type { RoutingDecision } from "@/lib/ai/modelRouter";
 import type { EvidencePacket } from "@/lib/ai/retrievalPlanner";
 import type { GroundingClaim, GroundingReport } from "@/lib/ai/grounding";
-import { getMaxOutputTokens } from "@/lib/ai/modelRouter";
+import { getMaxOutputTokens, getTemperature } from "@/lib/ai/modelRouter";
 import { getOpenAi } from "@/lib/ai/openaiClient";
 import { type ToolTraceEntry } from "@/lib/ai/toolTrace";
 import { getPassage } from "@/lib/search";
@@ -12,7 +12,7 @@ import { getPassage } from "@/lib/search";
 // evidence and may call `getPassage` AT MOST once-per-round to pull a missing
 // adjacent passage. It must never be told to "call the relevant search tool" —
 // that instruction makes the model emit tool-call syntax as prose.
-export const SYNTHESIS_SYSTEM_PROMPT = `You are an AI Bible study assistant inside TextLab Bible.
+export const SYNTHESIS_SYSTEM_PROMPT = `You are an AI Bible study assistant inside an app called TextLab Bible.
 
 Retrieval has already been performed. Below the user prompt you will see a
 "Retrieved evidence" block containing the verses, lemmas, and tokens that
@@ -202,6 +202,7 @@ export async function synthesizeWithRefinement(input: SynthesisInput): Promise<S
     model: routing.modelUsed,
     instructions: SYNTHESIS_SYSTEM_PROMPT,
     max_output_tokens: getMaxOutputTokens(),
+    temperature: getTemperature(),
     tools: [REFINEMENT_TOOL],
     tool_choice: "auto",
     text: { format: SYNTHESIS_OUTPUT_FORMAT },
@@ -231,6 +232,7 @@ export async function synthesizeWithRefinement(input: SynthesisInput): Promise<S
     model: routing.modelUsed,
     instructions: SYNTHESIS_SYSTEM_PROMPT,
     max_output_tokens: getMaxOutputTokens(),
+    temperature: getTemperature(),
     text: { format: SYNTHESIS_OUTPUT_FORMAT },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     input: inputItems as any

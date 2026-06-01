@@ -27,7 +27,7 @@ const evidence: EvidencePacket = {
 
 const routing = {
   modelRole: "default" as const,
-  modelUsed: "gpt-5.3-chat-latest",
+  modelUsed: "gpt-5-chat-latest",
   routingDecision: ""
 };
 

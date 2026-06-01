@@ -26,7 +26,7 @@ const answer: AssistantAnswer = {
   mode: "fallback",
   grounded: true,
   modelRole: "default",
-  modelUsed: "gpt-5.3-chat-latest",
+  modelUsed: "gpt-5-chat-latest",
   routingDecision: "Handled by the default model"
 };
 
@@ -56,7 +56,7 @@ describe("assistant exchange persistence", () => {
       metadata: {
         mode: "fallback",
         modelRole: "default",
-        modelUsed: "gpt-5.3-chat-latest",
+        modelUsed: "gpt-5-chat-latest",
         routingDecision: "Handled by the default model",
         toolTrace: [{ tool: "getPassage", args: {} }],
         citations: [{ reference: "John 1:1", corpus: "SBLGNT", searchQuery: "lemma:λόγος" }]

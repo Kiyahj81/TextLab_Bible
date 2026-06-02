@@ -1,6 +1,8 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { bookName, formatReference, normalizeBook } from "@/lib/references";
+import { getOpenAi } from "@/lib/ai/openaiClient";
+import { reciprocalRankFusion, type RankedRef } from "@/lib/search/rrf";
 
 type PassageInput = {
   corpus: "SBLGNT" | "WEB";
@@ -58,6 +60,88 @@ export async function filterToSblSpine(
     select: { chapter: true, verse: true, book: { select: { osisId: true } } }
   });
   return new Set(rows.map((r) => spineKey(r.book.osisId, r.chapter, r.verse)));
+}
+
+export async function embedQuery(text: string): Promise<number[] | null> {
+  const client = getOpenAi();
+  const input = text.trim();
+  if (!client || !input) return null;
+  const res = await client.embeddings.create({ model: EMBEDDING_MODEL, input });
+  return res.data[0]?.embedding ?? null;
+}
+
+type SemanticRow = { osisId: string; chapter: number; verse: number; text: string };
+
+// Hybrid semantic search: vector KNN over the embedded WEB index fused with a
+// keyword FTS pass, then filtered to the SBLGNT spine. `query` is embedded (full
+// natural-language prompt); `keywords` drives the FTS half (distilled topic words —
+// bible_simple keeps stopwords, so the full prompt would AND to nothing). Returns
+// [] when no OpenAI client (embedQuery null).
+export async function searchSemantic(input: {
+  query: string;
+  keywords?: string;
+  book?: string;
+  limit?: number;
+}): Promise<RankedRef[]> {
+  const query = input.query.trim();
+  if (!query) return [];
+  const vector = await embedQuery(query);
+  if (!vector) return [];
+
+  const book = normalizeBook(input.book);
+  const limit = Math.max(1, Math.min(input.limit ?? 5, 25));
+  const POOL = 30;
+  const vec = formatVectorLiteral(vector);
+  const bookFilter = book ? Prisma.sql`AND b."osisId" = ${book}` : Prisma.empty;
+
+  const vectorRows = await prisma.$queryRaw<SemanticRow[]>(Prisma.sql`
+    SELECT b."osisId" AS "osisId", v."chapter" AS chapter, v."verse" AS verse, v."text" AS text
+    FROM "VerseEmbedding" e
+    JOIN "Verse" v ON v."id" = e."verseId"
+    JOIN "Book" b ON b."id" = v."bookId"
+    JOIN "Corpus" c ON c."id" = v."corpusId"
+    WHERE c."abbreviation" = ${SEMANTIC_INDEX_CORPUS} ${bookFilter}
+    ORDER BY e."embedding" <=> ${vec}::vector
+    LIMIT ${POOL}
+  `);
+
+  const keywords = input.keywords?.trim() ?? "";
+  let ftsRows: SemanticRow[] = [];
+  if (keywords) {
+    const tsquery = Prisma.sql`websearch_to_tsquery('bible_simple', ${keywords})`;
+    ftsRows = await prisma.$queryRaw<SemanticRow[]>(Prisma.sql`
+      SELECT b."osisId" AS "osisId", v."chapter" AS chapter, v."verse" AS verse, v."text" AS text
+      FROM "Verse" v
+      JOIN "Book" b ON b."id" = v."bookId"
+      JOIN "Corpus" c ON c."id" = v."corpusId"
+      WHERE c."abbreviation" = ${SEMANTIC_INDEX_CORPUS} ${bookFilter}
+        AND v."textSearch" @@ ${tsquery}
+      ORDER BY ts_rank(v."textSearch", ${tsquery}) DESC
+      LIMIT ${POOL}
+    `);
+  }
+
+  const toRanked = (rows: SemanticRow[]): RankedRef[] =>
+    rows.map((r) => ({
+      reference: formatReference(r.osisId, r.chapter, r.verse),
+      corpus: SEMANTIC_INDEX_CORPUS,
+      text: r.text
+    }));
+
+  const fused = reciprocalRankFusion([toRanked(vectorRows), toRanked(ftsRows)]);
+
+  // SBL-spine filter: keep only fused refs that exist in SBLGNT.
+  const allRows = [...vectorRows, ...ftsRows];
+  const spine = await filterToSblSpine(
+    allRows.map((r) => ({ book: r.osisId, chapter: r.chapter, verse: r.verse }))
+  );
+  const byRef = new Map(allRows.map((r) => [formatReference(r.osisId, r.chapter, r.verse), r]));
+  const onSpine = fused.filter((f) => {
+    const r = byRef.get(f.reference);
+    return r ? spine.has(spineKey(r.osisId, r.chapter, r.verse)) : false;
+  });
+
+  return onSpine.slice(0, limit);
 }
 
 export async function getAvailablePassages() {

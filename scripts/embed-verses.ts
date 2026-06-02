@@ -16,7 +16,9 @@ async function main() {
     console.error("OPENAI_API_KEY is required to embed verses.");
     process.exit(1);
   }
-  const client = new OpenAI({ apiKey });
+  // Bulk job over thousands of verses: raise maxRetries so the SDK's exponential
+  // backoff rides out transient 429/5xx bursts instead of aborting the whole run.
+  const client = new OpenAI({ apiKey, maxRetries: 6 });
 
   // Idempotent/resumable: only verses in the index corpus with no embedding row.
   const pending = await prisma.$queryRaw<{ id: string; text: string }[]>(Prisma.sql`

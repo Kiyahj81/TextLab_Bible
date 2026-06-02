@@ -28,10 +28,14 @@ async function main() {
     ORDER BY v."id"
   `);
 
-  console.log(`Embedding ${pending.length} ${SEMANTIC_INDEX_CORPUS} verses with ${MODEL}…`);
+  const embeddable = pending.filter((v) => v.text.trim().length > 0);
+  const skipped = pending.length - embeddable.length;
+  if (skipped > 0) console.log(`Skipping ${skipped} empty/whitespace-only verse(s).`);
 
-  for (let i = 0; i < pending.length; i += BATCH) {
-    const batch = pending.slice(i, i + BATCH);
+  console.log(`Embedding ${embeddable.length} ${SEMANTIC_INDEX_CORPUS} verses with ${MODEL}…`);
+
+  for (let i = 0; i < embeddable.length; i += BATCH) {
+    const batch = embeddable.slice(i, i + BATCH);
     const res = await client.embeddings.create({ model: MODEL, input: batch.map((b) => b.text) });
     for (let j = 0; j < batch.length; j++) {
       const vec = vectorLiteral(res.data[j].embedding);
@@ -42,7 +46,7 @@ async function main() {
           SET "embedding" = EXCLUDED."embedding", "model" = EXCLUDED."model", "createdAt" = now()
       `);
     }
-    console.log(`  ${Math.min(i + BATCH, pending.length)}/${pending.length}`);
+    console.log(`  ${Math.min(i + BATCH, embeddable.length)}/${embeddable.length}`);
   }
 
   await prisma.$disconnect();

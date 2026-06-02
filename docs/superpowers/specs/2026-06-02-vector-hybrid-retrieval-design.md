@@ -109,8 +109,10 @@ New `lib/search/rrf.ts`:
 In `lib/ai/retrievalPlanner.ts`:
 
 - **Topical gate** `shouldRunSemantic(signals): boolean` — fires only when the prompt is conceptual:
-  there are `topicWords` **and** there is no single exact verse reference (a bare-reference, pure-lemma,
-  or pure-morphology prompt skips it). Reuses the existing `Signals`; no new signal extraction.
+  there are `topicWords` **and** the prompt is not fully pinned to exact verses (i.e. skip when there is
+  at least one reference and *every* reference carries a `verseStart`). A bare-chapter reference,
+  pure-lemma, or pure-morphology prompt still runs; a single- or multi-verse pinpointed lookup skips.
+  Reuses the existing `Signals`; no new signal extraction.
 - **`semanticCall(query, scope)`** — a new `PlannedCall`, added by `buildPlan` only when
   `shouldRunSemantic` passes. Counts against the existing `MAX_PLANNED_CALLS` budget. Calls
   `searchSemantic`, then **expands each top hit to V±2 neighbors** for synthesis context, and emits an

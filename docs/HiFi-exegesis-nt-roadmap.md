@@ -209,7 +209,18 @@ evidence-diff harness (`scripts/evidence-diff.ts`). Original plan below.
 `ILIKE` substring match in `searchKeyword` (`lib/search.ts`) with ranked full-text search. Lexical
 half of hybrid retrieval; also improves the standalone search UI.
 
-**Phase 4 — Vector + hybrid retrieval (heaviest).** Enable `pgvector`; add a `chunks` table (or
+**Phase 4a — Vector + hybrid retrieval. ✅ DONE (branch `milestone-3/phase-4a-vector-hybrid`).** pgvector
+`VerseEmbedding` table (WEB per-verse, `text-embedding-3-small`, HNSW/cosine); `searchSemantic` fuses
+vector KNN + keyword FTS via Reciprocal Rank Fusion (`lib/search/rrf.ts`), filtered to the SBLGNT spine;
+a gated `semanticCall` in the planner fires only on topical prompts and expands each hit to an on-spine
+±2 window; `npm run embed:verses` ingestion script. Citations resolve to the SBLGNT spine; WEB-only
+verses are filtered out of both hits and ±2 neighbors so semantic retrieval cannot trigger a spurious
+withholding. New: `lib/search/rrf.ts`, `scripts/embed-verses.ts`, migration `20260602120000_add_verse_embeddings`.
+
+**Phase 4b — Cross-encoder rerank (DEFERRED).** Top-30→top-5 rerank. Deferred because it requires a new
+vendor (Cohere/Voyage) or an LLM-as-reranker outside the current OpenAI-only dependency set.
+
+**Phase 4 — Vector + hybrid retrieval (original plan).** Enable `pgvector`; add a `chunks` table (or
 embedding column) at verse / verse-window granularity; build an embedding ingestion script (likely
 OpenAI embeddings given existing integration, or a multilingual model for Greek); implement RRF
 fusion of FTS + vector results (k=60), then cross-encoder rerank (top-30→top-5) and sentence-window

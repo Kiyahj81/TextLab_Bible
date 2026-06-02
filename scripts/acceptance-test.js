@@ -230,6 +230,16 @@ async function run() {
     result.interactions.push("Assistant returned retrieval-first answer, trace, citations, and Markdown content.");
     await screenshot("04-assistant-answer");
 
+    // Phase 4a semantic path: topical prompt exercises the gated semanticCall in the
+    // retrieval planner (searchSemantic via pgvector + FTS RRF, SBLGNT-spine filtered).
+    // When OPENAI_API_KEY is unset on the runner, the planner gracefully no-ops to
+    // deterministic retrieval — the interaction passes either way.
+    await page.locator("textarea").first().fill("What does the New Testament teach about reconciliation?");
+    await page.getByRole("button", { name: "Ask assistant" }).click();
+    const topicalAnswerPre = page.locator("pre").filter({ hasText: "Textual observations:" });
+    await topicalAnswerPre.waitFor({ timeout: 30000 });
+    result.interactions.push("Topical prompt (Phase 4a semantic path) returned a retrieval-first answer.");
+
     const downloadPromise = page.waitForEvent("download");
     await page.getByRole("button", { name: "Export Markdown" }).click();
     const download = await downloadPromise;

@@ -29,6 +29,37 @@ export type Citation = {
   tokenId?: string;
 };
 
+// The single corpus whose verses are embedded for semantic search. Other English
+// translations added later are display-only, resolved by reference (see spec).
+export const SEMANTIC_INDEX_CORPUS = "WEB" as const;
+export const EMBEDDING_MODEL = "text-embedding-3-small";
+
+// Render a JS number[] as a pgvector text literal: "[0.1,0.2,...]".
+export function formatVectorLiteral(vector: number[]): string {
+  return `[${vector.join(",")}]`;
+}
+
+export function spineKey(book: string, chapter: number, verse: number): string {
+  return `${book}|${chapter}|${verse}`;
+}
+
+// Given candidate references, return the set of spineKeys that EXIST in SBLGNT.
+// Used to drop WEB-only verses (e.g. Acts 8:37) before they reach synthesis, so a
+// cited reference can never be unresolvable on the citation spine.
+export async function filterToSblSpine(
+  refs: { book: string; chapter: number; verse: number }[]
+): Promise<Set<string>> {
+  if (refs.length === 0) return new Set();
+  const rows = await prisma.verse.findMany({
+    where: {
+      corpus: { abbreviation: "SBLGNT" },
+      OR: refs.map((r) => ({ book: { osisId: r.book }, chapter: r.chapter, verse: r.verse }))
+    },
+    select: { chapter: true, verse: true, book: { select: { osisId: true } } }
+  });
+  return new Set(rows.map((r) => spineKey(r.book.osisId, r.chapter, r.verse)));
+}
+
 export async function getAvailablePassages() {
   const rows = await prisma.verse.findMany({
     where: { corpus: { abbreviation: "SBLGNT" } },

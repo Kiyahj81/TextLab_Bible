@@ -39,3 +39,17 @@ describe("searchLemma verse hydration", () => {
     ]);
   });
 });
+
+describe("searchLemma case-insensitivity", () => {
+  it("matches the lemma case-insensitively so mixed-case variants (e.g. Διάβολος) are included", async () => {
+    prismaMock.token.count.mockResolvedValue(0);
+    prismaMock.token.findMany.mockResolvedValue([]);
+    prismaMock.verse.findMany.mockResolvedValue([]);
+
+    await searchLemma({ lemma: "διάβολος" });
+
+    const expected = { equals: "διάβολος", mode: "insensitive" };
+    expect(prismaMock.token.findMany.mock.calls[0][0].where.lemma).toEqual(expected);
+    expect(prismaMock.token.count.mock.calls[0][0].where.lemma).toEqual(expected);
+  });
+});

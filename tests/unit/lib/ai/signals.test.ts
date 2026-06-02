@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  ENGLISH_TO_GREEK_LEMMA,
   detectGreekWords,
   detectIntent,
   detectMorphCodes,
+  detectPhraseLemmas,
   detectReferences,
   detectTopicWords,
   extractSignals
@@ -119,6 +121,46 @@ describe("detectTopicWords", () => {
   it("drops proper nouns and common verbs", () => {
     expect(detectTopicWords("How does Paul use πίστις?")).toEqual([]);
   });
+
+  it("keeps satan as a topic word so named-entity questions retrieve evidence", () => {
+    expect(detectTopicWords("what does the bible teach about satan")).toContain("satan");
+  });
+});
+
+describe("ENGLISH_TO_GREEK_LEMMA", () => {
+  it("maps satan and devil to their SBLGNT lemma forms", () => {
+    expect(ENGLISH_TO_GREEK_LEMMA.satan).toBe("Σατανᾶς");
+    expect(ENGLISH_TO_GREEK_LEMMA.devil).toBe("διάβολος");
+  });
+
+  it("contains no multi-word (underscore) keys, which can never match a topic word", () => {
+    expect(Object.keys(ENGLISH_TO_GREEK_LEMMA).some((key) => key.includes("_"))).toBe(false);
+  });
+
+  it("every key is reachable as a topic word (not shadowed by a stop word, proper noun, or book alias)", () => {
+    const unreachable = Object.keys(ENGLISH_TO_GREEK_LEMMA).filter(
+      (key) => !detectTopicWords(key).includes(key)
+    );
+    expect(unreachable).toEqual([]);
+  });
+});
+
+describe("detectPhraseLemmas", () => {
+  it("maps a known multi-word phrase to its Greek lemma", () => {
+    expect(detectPhraseLemmas("teaching on the second coming")).toEqual(["παρουσία"]);
+  });
+
+  it("matches case-insensitively and tolerates extra whitespace", () => {
+    expect(detectPhraseLemmas("The Second   Coming of Christ")).toEqual(["παρουσία"]);
+  });
+
+  it("does not match a phrase embedded in a larger word", () => {
+    expect(detectPhraseLemmas("secondhand comings")).toEqual([]);
+  });
+
+  it("returns nothing when no phrase is present", () => {
+    expect(detectPhraseLemmas("what does grace mean")).toEqual([]);
+  });
 });
 
 describe("detectIntent", () => {
@@ -158,5 +200,12 @@ describe("extractSignals", () => {
       intent: "word-study",
       book: "Rom"
     });
+  });
+
+  it("routes a phrase to a Greek lemma and drops its component words from topicWords", () => {
+    const signals = extractSignals("what does the bible teach about the second coming");
+    expect(signals.greekWords).toContain("παρουσία");
+    expect(signals.topicWords).not.toContain("second");
+    expect(signals.topicWords).not.toContain("coming");
   });
 });

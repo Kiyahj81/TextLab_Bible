@@ -158,6 +158,18 @@ describe("runRetrievalPlan", () => {
     expect(searchKeyword).toHaveBeenCalledWith(expect.objectContaining({ query: "donkey" }));
   });
 
+  it("maps satan and devil to their Greek lemmas instead of keyword search", async () => {
+    await runRetrievalPlan({
+      ...emptySignals,
+      topicWords: ["satan", "devil"],
+      intent: "general"
+    });
+
+    expect(searchKeyword).not.toHaveBeenCalled();
+    expect(searchLemma).toHaveBeenCalledWith(expect.objectContaining({ lemma: "Σατανᾶς" }));
+    expect(searchLemma).toHaveBeenCalledWith(expect.objectContaining({ lemma: "διάβολος" }));
+  });
+
   it("isolates a failing tool call and keeps the rest", async () => {
     searchLemma.mockRejectedValueOnce(new Error("db down"));
 

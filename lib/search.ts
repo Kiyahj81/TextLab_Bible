@@ -325,7 +325,10 @@ export async function searchLemma(input: {
   }
 
   const where: Prisma.TokenWhereInput = {
-    lemma,
+    // Case-insensitive so capitalized lemma variants in the corpus (e.g. both
+    // διάβολος and Διάβολος, or proper-noun lemmas like Σατανᾶς) are matched by a
+    // single search term regardless of the casing supplied by the caller/map.
+    lemma: { equals: lemma, mode: "insensitive" },
     corpus: { abbreviation: input.corpus ?? "SBLGNT" },
     book: book ? { osisId: book } : undefined,
     chapter: input.chapter

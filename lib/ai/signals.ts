@@ -37,30 +37,77 @@ export const ENGLISH_TO_GREEK_LEMMA: Readonly<Record<string, string>> = {
   grace: "χάρις",
   spirit: "πνεῦμα",
   flesh: "σάρξ",
-  word: "λόγος",
+  logos: "λόγος",
+  cross: "σταυρός",
+  resurrection: "ἀνάστασις",
   righteousness: "δικαιοσύνη",
+  sanctification: "ἁγιασμός",
+  reconciliation: "καταλλαγή",
   sin: "ἁμαρτία",
+  temptation: "πειρασμός",
+  repentance: "μετάνοια",
+  forgiveness: "ἄφεσις",
+  redemption: "ἀπολύτρωσις",
+  freedom: "ἐλευθερία",
+  adoption: "υἱοθεσία",
+  election: "ἐκλογή",
+  chosen: "ἐκλεκτός",
+  called: "κλητός",
+  holy: "ἅγιος",
   truth: "ἀλήθεια",
   life: "ζωή",
   light: "φῶς",
   glory: "δόξα",
   peace: "εἰρήνη",
   hope: "ἐλπίς",
+  mercy: "ἔλεος",
   power: "δύναμις",
+  authority: "ἐξουσία",
   kingdom: "βασιλεία",
   covenant: "διαθήκη",
+  promise: "ἐπαγγελία",
+  commandment: "ἐντολή",
   salvation: "σωτηρία",
   gospel: "εὐαγγέλιον",
   church: "ἐκκλησία",
+  baptism: "βάπτισμα",
+  prayer: "προσευχή",
+  thanksgiving: "εὐχαριστία",
+  fellowship: "κοινωνία",
+  prophecy: "προφητεία",
+  gifts: "χάρισμα",
   wisdom: "σοφία",
   knowledge: "γνῶσις",
   judgment: "κρίσις",
-  mercy: "ἔλεος",
-  hour: "ὥρα",
+  wrath: "ὀργή",
+  death: "θάνατος",
+  heaven: "οὐρανός",
+  hell: "γέεννα",
+  demon: "δαιμόνιον",
+  angel: "ἄγγελος",
+  creation: "κτίσις",
+  world: "κόσμος",
   blood: "αἷμα",
   fear: "φόβος",
   joy: "χαρά",
-  works: "ἔργον"
+  works: "ἔργον",
+  // Named adversary. Kept out of PROPER_NOUNS so named-entity questions ("what
+  // does the Bible teach about satan/the devil") route to a precise SBLGNT lemma
+  // search. searchLemma matches case-insensitively, so Σατανᾶς and the mixed-case
+  // διάβολος/Διάβολος forms are all caught.
+  satan: "Σατανᾶς",
+  devil: "διάβολος",
+};
+
+// English multi-word phrases → Greek lemma. The single-word ENGLISH_TO_GREEK_LEMMA
+// map can never match a phrase (topic words are split on non-letters, so the words
+// arrive separately and never as one underscore/space-joined token). Phrases are
+// detected against the raw prompt instead. Only worthwhile where neither component
+// word already maps to the intended lemma — e.g. "second coming" → παρουσία, which
+// "second" and "coming" never reach on their own.
+export const ENGLISH_PHRASE_TO_GREEK_LEMMA: Readonly<Record<string, string>> = {
+  "second coming": "παρουσία",
+  "sexual immorality": "πορνεία",
 };
 
 const STOP_WORDS: ReadonlySet<string> = new Set([
@@ -68,25 +115,24 @@ const STOP_WORDS: ReadonlySet<string> = new Set([
   "to", "for", "with", "by", "from", "into", "onto", "off", "out", "up", "down", "over",
   "under", "about", "between", "through", "during", "before", "after", "above", "below",
   "is", "are", "was", "were", "be", "been", "being", "am", "do", "does", "did", "done",
-  "have", "has", "had", "can", "could", "should", "would", "will", "shall", "may", "might",
-  "must", "this", "that", "these", "those", "it", "its", "he", "she", "they", "them", "his",
-  "her", "their", "you", "your", "yours", "i", "me", "my", "mine", "we", "our", "us", "who",
-  "whom", "whose", "what", "when", "where", "why", "how", "which", "there", "here",
-  "mean", "means", "meaning", "use", "used", "uses", "using", "show", "find", "tell", "read",
-  "give", "list", "explain", "compare", "difference", "between", "versus", "vs", "passage",
-  "passages", "verse", "verses", "word", "words", "lemma", "lemmas", "term", "terms",
-  "say", "says", "said", "talk", "talks", "about", "role", "way", "ways", "thing", "things",
-  "not", "no", "yes", "all", "any", "some", "more", "most", "much", "many", "few", "such",
-  "very", "just", "only", "also", "too", "than", "like", "different", "senses", "sense"
+  "have", "has", "had", "can", "could", "should", "would", "will", "shall", "may", "might", "like",
+  "must", "this", "that", "these", "those", "it", "its", "he", "she", "they", "them", "his", "hers",
+  "her", "him", "their", "theirs", "you", "your", "yours", "i", "me", "my", "mine", "we", "our", "us",
+  "who", "whom", "whose", "what", "when", "where", "why", "how", "which", "there", "here", "relate",
+  "mean", "means", "meaning", "use", "used", "uses", "using", "show", "find", "tell", "read", "related",
+  "give", "list", "explain", "compare", "difference", "between", "versus", "vs", "passage", "summary",
+  "passages", "verse", "verses", "word", "words", "lemma", "lemmas", "term", "terms", "summarize",
+  "say", "says", "said", "talk", "talks", "role", "way", "ways", "thing", "things", "every", "each",
+  "not", "no", "yes", "all", "any", "some", "more", "most", "much", "many", "few", "such", "other",
+  "very", "just", "only", "also", "too", "than", "like", "different", "senses", "sense", "bible",
 ]);
 
 // Proper nouns that should not be treated as topic search terms. Book names are
 // already excluded separately via the ntBooks alias set.
 const PROPER_NOUNS: ReadonlySet<string> = new Set([
-  "paul", "jesus", "christ", "peter", "james", "moses", "david", "abraham", "isaac",
-  "jacob", "mary", "joseph", "pilate", "herod", "caesar", "jerusalem", "israel", "egypt",
-  "rome", "babylon", "judah", "galilee", "nazareth", "bethlehem", "satan", "adam", "eve",
-  "noah", "timothy", "barnabas", "stephen", "judas", "thomas", "philip", "andrew"
+  "paul", "jesus", "christ", "peter", "simon", "moses", "david", "abraham", "isaac", "elijah",
+  "jacob", "mary", "joseph", "pilate", "herod", "caesar", "jerusalem", "israel", "egypt", "isaiah",
+  "judah", "judea", "galilee", "timothy", "barnabas", "judas", "philip", "lord", "god",
 ]);
 
 const BOOK_ALIASES: ReadonlySet<string> = new Set(
@@ -189,6 +235,39 @@ export function detectTopicWords(prompt: string): string[] {
   return out;
 }
 
+// Precompiled phrase matchers. Anchored so a phrase embedded in a larger word does
+// not match (no alphanumerics on either side); internal whitespace is flexible.
+const PHRASE_PATTERNS: ReadonlyArray<{ source: string; lemma: string }> = Object.entries(
+  ENGLISH_PHRASE_TO_GREEK_LEMMA
+).map(([phrase, lemma]) => ({
+  source: `(?<![a-z0-9])${phrase.split(/\s+/).map(escapeRegExp).join("\\s+")}(?![a-z0-9])`,
+  lemma
+}));
+
+type PhraseMatch = { lemmas: string[]; cleaned: string };
+
+// Scan the raw prompt for known multi-word phrases, returning the deduped Greek
+// lemmas and a copy of the prompt with matched phrases blanked out — so their
+// component words are not also picked up as standalone topic words.
+function matchPhrases(prompt: string): PhraseMatch {
+  const lemmas: string[] = [];
+  const seen = new Set<string>();
+  let cleaned = prompt;
+  for (const { source, lemma } of PHRASE_PATTERNS) {
+    if (!new RegExp(source, "i").test(prompt)) continue;
+    if (!seen.has(lemma)) {
+      seen.add(lemma);
+      lemmas.push(lemma);
+    }
+    cleaned = cleaned.replace(new RegExp(source, "gi"), " ");
+  }
+  return { lemmas, cleaned };
+}
+
+export function detectPhraseLemmas(prompt: string): string[] {
+  return matchPhrases(prompt).lemmas;
+}
+
 export function detectIntent(prompt: string): Intent {
   const lower = prompt.toLowerCase();
 
@@ -217,10 +296,15 @@ export function detectIntent(prompt: string): Intent {
 }
 
 export function extractSignals(prompt: string): Signals {
+  // Phrase lemmas join greekWords — the retrieval planner already routes that field
+  // to a precise lemma search. Topic words are extracted from the phrase-stripped
+  // prompt so a matched phrase's component words don't also fire as standalone
+  // keyword searches.
+  const phrases = matchPhrases(prompt);
   return {
     references: detectReferences(prompt),
-    greekWords: detectGreekWords(prompt),
-    topicWords: detectTopicWords(prompt),
+    greekWords: [...detectGreekWords(prompt), ...phrases.lemmas],
+    topicWords: detectTopicWords(phrases.cleaned),
     morphCodes: detectMorphCodes(prompt),
     intent: detectIntent(prompt),
     book: detectBookFromPrompt(prompt)

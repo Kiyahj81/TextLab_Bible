@@ -114,10 +114,14 @@ In `lib/ai/retrievalPlanner.ts`:
   pure-lemma, or pure-morphology prompt still runs; a single- or multi-verse pinpointed lookup skips.
   Reuses the existing `Signals`; no new signal extraction.
 - **`semanticCall(query, scope)`** — a new `PlannedCall`, added by `buildPlan` only when
-  `shouldRunSemantic` passes. Counts against the existing `MAX_PLANNED_CALLS` budget. Calls
-  `searchSemantic`, then **expands each top hit to V±2 neighbors** for synthesis context, and emits an
-  evidence section (`### semanticSearch(…)`) + citations in the same shape as the other calls (reference,
-  corpus, `searchQuery`, `toolName: "searchSemantic"`).
+  `shouldRunSemantic` passes. It runs in **addition to** the `MAX_PLANNED_CALLS` deterministic budget (at
+  most one extra call), never inside it: the deterministic calls are sliced to the budget first, then the
+  semantic call is appended. This avoids two opposite failure modes — being crowded out of the slice by
+  many topic words, or (when the embedding index is empty/partial) an empty semantic call displacing a
+  deterministic search. An empty result contributes no section. Total evidence stays bounded by
+  `MAX_EVIDENCE_CHARS`. Calls `searchSemantic`, then **expands each top hit to V±2 neighbors** for
+  synthesis context, and emits an evidence section (`### searchSemantic …`) + citations in the same shape
+  as the other calls (reference, corpus, `searchQuery`, `toolName: "searchSemantic"`).
   - **Per-verse lines, discrete references.** Each verse in the window is rendered on its own line with
     its own reference (same format as `passageCall`: `- <reference>, <corpus>: <text>`), so the model
     cites individual verses cleanly — no multi-verse blob to disambiguate. The **citation anchor is the
@@ -133,8 +137,9 @@ In `lib/ai/retrievalPlanner.ts`:
   `answerBibleQuestion` resolves live-mode once and passes it into `runRetrievalPlan(signals, prompt,
   semanticEnabled)`; `buildPlan` adds the `semanticCall` only when `semanticEnabled`. This ensures (a) no
   prompt is embedded via OpenAI when the kill switch is on (no egress/spend), and (b) a disabled semantic
-  call never consumes one of the `MAX_PLANNED_CALLS` slots, so the local-fallback path keeps all its
-  deterministic searches. `embedQuery` still also returns null when there is no client, as a backstop.
+  call is not added at all (and even when enabled it runs as a separate slot — see `semanticCall` above),
+  so the local-fallback path always keeps all its deterministic searches. `embedQuery` still also returns
+  null when there is no client, as a backstop.
 
 The V±2 expansion respects the existing `MAX_PASSAGE_LINES` / `MAX_EVIDENCE_CHARS` ceilings so a topical
 query cannot blow the evidence budget.
@@ -192,8 +197,10 @@ The architecture supports it, and the recommended path keeps it cheap:
     SBL-spine filter drops a WEB-only reference before returning.
   - planner `shouldRunSemantic` gate — topical prompt fires; bare-reference / pure-lemma / pure-morph skip.
   - `semanticCall` — V±2 expansion shape (per-verse lines with discrete references, hit as citation
-    anchor), on-spine window (a WEB-only neighbor in the ±2 range is omitted), citation shape, budget
-    (counts against `MAX_PLANNED_CALLS`, respects `MAX_EVIDENCE_CHARS`).
+    anchor), on-spine window (a WEB-only neighbor in the ±2 range is omitted), citation shape, SBL-only
+    fallback labeled SBLGNT, and slot behavior (runs as a separate slot beyond `MAX_PLANNED_CALLS`;
+    disabled → not added; enabled-but-empty → attempted, no section, no deterministic slot displaced;
+    respects `MAX_EVIDENCE_CHARS`).
 - **Integration (Neon branch):** real `VerseEmbedding` KNN returns expected verses for a known topical
   query; RRF blends with FTS.
 - **Acceptance:** `scripts/acceptance-test.js` assertions are pinned to exact corpus counts. Embeddings do

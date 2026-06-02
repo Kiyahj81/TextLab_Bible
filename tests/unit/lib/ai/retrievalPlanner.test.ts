@@ -623,6 +623,27 @@ describe("semanticCall via runRetrievalPlan", () => {
     expect(evidence.formattedEvidence).not.toContain("Acts 8:37"); // WEB-only neighbor dropped
   });
 
+  it("preserves all deterministic slots when semantic is enabled but returns no hits (degraded index)", async () => {
+    // Live mode on, but the embedding index yields nothing (empty/partial/rollout).
+    searchSemantic.mockResolvedValue([]);
+    const eightWords = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta"];
+
+    const evidence = await runRetrievalPlan(
+      { references: [], greekWords: [], topicWords: eightWords, morphCodes: [], intent: "general" },
+      "a long conceptual prompt",
+      true // semanticEnabled
+    );
+
+    expect(searchSemantic).toHaveBeenCalled(); // attempted
+    expect(evidence.formattedEvidence).not.toContain("(semantic hit)");
+    // Empty semantic result contributes no section (no "(no matches)" noise)…
+    expect(evidence.formattedEvidence).not.toContain("searchSemantic — top hits");
+    // …and crucially never displaces a deterministic search: all 8 keyword slots run.
+    for (const w of eightWords) {
+      expect(evidence.formattedEvidence).toContain(`searchKeyword(${w}`);
+    }
+  });
+
   it("does not call searchSemantic or consume a plan slot when semantic retrieval is disabled", async () => {
     // Even if searchSemantic WOULD return a hit, a disabled (no key / kill switch)
     // run must not call it (no embedding egress) and must not steal a deterministic slot.

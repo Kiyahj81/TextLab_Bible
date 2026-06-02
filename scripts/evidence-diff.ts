@@ -30,7 +30,12 @@ const PROMPTS = [
 async function main() {
   for (const prompt of PROMPTS) {
     const signals = extractSignals(prompt);
-    const packet = await runRetrievalPlan(signals);
+    // Disable semantic retrieval explicitly: this harness exists to diff the
+    // DETERMINISTIC lexical/planner layer and must stay OpenAI-free and reproducible.
+    // (semanticEnabled defaults to true for the production path; here we force it off
+    // so no embedding call can fire and no spurious "(no matches)" semantic section or
+    // consumed planner slot pollutes the diff against main.)
+    const packet = await runRetrievalPlan(signals, prompt, false);
     console.log("=".repeat(80));
     console.log("PROMPT:", prompt);
     console.log("-".repeat(80));

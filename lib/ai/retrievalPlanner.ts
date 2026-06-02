@@ -393,8 +393,11 @@ function semanticCall(prompt: string, keywords: string, scope: Scope): PlannedCa
         });
       });
       return {
+        // No hits (e.g. empty/partial embedding index) → contribute no section, so a
+        // degraded semantic index never injects a noisy "(no matches)" block. The
+        // trace still records the attempt for observability.
         citations: citations.slice(0, MAX_SECTION_LINES),
-        section: sectionBlock("searchSemantic — top hits with ±2 context", lines, lines.length),
+        section: lines.length > 0 ? sectionBlock("searchSemantic — top hits with ±2 context", lines, lines.length) : "",
         traces: [{ tool: "searchSemantic", args }]
       };
     }
@@ -416,19 +419,6 @@ function buildPlan(signals: Signals, prompt: string, semanticEnabled: boolean): 
     add(passageCall("WEB", ref));
   }
 
-  // Add semantic retrieval BEFORE the word-expansion loops. It is the headline
-  // conceptual-recall path, and `shouldRunSemantic` effectively promises it runs;
-  // adding it here means a prompt with many topic words (whose per-word lemma/
-  // keyword calls would otherwise fill the MAX_PLANNED_CALLS budget) cannot crowd
-  // the single semantic call out of the final slice. Priority order is therefore:
-  // explicit passage references first, then semantic, then per-word expansions.
-  // Only add it when semantic retrieval is actually available (live mode on + API
-  // key): otherwise `searchSemantic` would no-op AND its slot would be stolen from a
-  // deterministic search, breaking graceful degradation in the local-fallback path.
-  if (semanticEnabled && shouldRunSemantic(signals)) {
-    add(semanticCall(prompt, signals.topicWords.join(" "), scope));
-  }
-
   for (const lemma of signals.greekWords) {
     add(lemmaCall(lemma, scope));
   }
@@ -447,7 +437,21 @@ function buildPlan(signals: Signals, prompt: string, semanticEnabled: boolean): 
     add(topLemmasCall(signals.book));
   }
 
-  return calls.slice(0, MAX_PLANNED_CALLS);
+  // Bound the DETERMINISTIC calls to the budget.
+  const plan = calls.slice(0, MAX_PLANNED_CALLS);
+
+  // Semantic retrieval runs in ADDITION to the deterministic budget (at most one
+  // extra call), never inside it. This deliberately resolves the tension between two
+  // failure modes: placing it inside the slice either let many topic words crowd it
+  // out, or — when the embedding index is empty/partial (live on, but searchSemantic
+  // returns [])— let an empty semantic call displace a deterministic search exactly
+  // when the index is degraded. As a separate slot it can do neither; an empty result
+  // simply contributes no section. Total evidence stays bounded by MAX_EVIDENCE_CHARS.
+  if (semanticEnabled && shouldRunSemantic(signals)) {
+    plan.push(semanticCall(prompt, signals.topicWords.join(" "), scope));
+  }
+
+  return plan;
 }
 
 export async function runRetrievalPlan(

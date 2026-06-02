@@ -108,6 +108,8 @@ npm run verify
 
 The project includes an import script for three Greek/English NT data sources. Each run is tracked in the `ImportRun` table.
 
+> These data scripts (`import:open-bible`, `import:macula-glosses`, `embed:verses`) run through `tsx --env-file=.env`, so they read `DATABASE_URL` (and, for `embed:verses`, `OPENAI_API_KEY`) from your `.env`. Set those there before running, or pass a different file explicitly, e.g. `tsx --env-file=.env.test scripts/embed-verses.ts` to target the test branch. Already-set shell/system env vars are preserved.
+
 | Source | Purpose | Provides |
 |---|---|---|
 | MorphGNT SBLGNT | Per-word Greek tokens + morphology | `Token` rows + `Verse.text` for the SBLGNT corpus |
@@ -134,6 +136,12 @@ npm run import:open-bible -- --web-usfm-dir ./data/web-usfm
 
 # MACULA Greek glosses only (default URL points at Clear-Bible main)
 npm run import:macula-glosses
+```
+
+After the corpus is imported, generate the semantic-search embeddings (one-time, idempotent; requires `OPENAI_API_KEY` in `.env`):
+
+```bash
+npm run embed:verses
 ```
 
 Source repositories: MorphGNT at `https://github.com/morphgnt/sblgnt`, WEB USFM at `https://ebible.org/Scriptures/engwebp_usfm.zip` (the downloaded zip is checked in at the project root as `engwebp_usfm.zip`; unzipped contents live in `data/web-usfm/`), MACULA Greek at `https://github.com/Clear-Bible/macula-greek`.

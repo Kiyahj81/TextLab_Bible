@@ -18,9 +18,9 @@
     "db:migrate": "prisma migrate dev --name init",
     "db:seed": "prisma db seed",
     "prisma:generate": "prisma generate",
-    "import:open-bible": "tsx scripts/import-open-bible.ts",
-    "import:macula-glosses": "tsx scripts/import-open-bible.ts --macula-greek-url https://raw.githubusercontent.com/Clear-Bible/macula-greek/main/SBLGNT/tsv/macula-greek-SBLGNT.tsv",
-    "embed:verses": "tsx scripts/embed-verses.ts"
+    "import:open-bible": "tsx --env-file=.env scripts/import-open-bible.ts",
+    "import:macula-glosses": "tsx --env-file=.env scripts/import-open-bible.ts --macula-greek-url https://raw.githubusercontent.com/Clear-Bible/macula-greek/main/SBLGNT/tsv/macula-greek-SBLGNT.tsv",
+    "embed:verses": "tsx --env-file=.env scripts/embed-verses.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",

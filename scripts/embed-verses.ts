@@ -1,3 +1,11 @@
+// Idempotent embedding ingestion: embeds WEB verses with text-embedding-3-small and
+// upserts VerseEmbedding rows (skips empty verses; retries transient 5xx).
+//
+// Run via `npm run embed:verses` (which passes `tsx --env-file=.env`). A bare
+// `tsx scripts/embed-verses.ts` does NOT auto-load .env, so always go through the npm
+// script or pass `--env-file` yourself; the script reads OPENAI_API_KEY and
+// DATABASE_URL from the environment. To target a different DB (e.g. a Neon test
+// branch), run `tsx --env-file=.env.test scripts/embed-verses.ts`.
 import { PrismaClient, Prisma } from "@prisma/client";
 import OpenAI from "openai";
 

@@ -52,7 +52,7 @@ export async function answerBibleQuestion(
 ): Promise<AssistantAnswer> {
   const routing = routeAssistantPrompt(prompt, options.escalate ?? false);
   const signals = extractSignals(prompt);
-  const evidence = await runRetrievalPlan(signals);
+  const evidence = await runRetrievalPlan(signals, prompt);
 
   if (!isLiveAssistantEnabled()) {
     return fallbackAnswer(prompt, evidence, routing);

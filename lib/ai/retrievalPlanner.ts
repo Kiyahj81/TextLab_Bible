@@ -7,8 +7,11 @@ import {
   getTopLemmas,
   searchKeyword,
   searchLemma,
-  searchMorphology
+  searchMorphology,
+  searchSemantic,
+  SEMANTIC_INDEX_CORPUS
 } from "@/lib/search";
+import { parseReference } from "@/lib/references";
 
 export type EvidencePacket = {
   citations: AssistantCitation[];
@@ -37,6 +40,9 @@ const MAX_EVIDENCE_CHARS = 58_000;
 // Each call cites a bounded sample; the whole packet is capped so downstream
 // consumers never overflow.
 const MAX_TOTAL_CITATIONS = 40;
+// Semantic search: how many fused hits to expand, and the ± window per hit.
+const SEMANTIC_HIT_LIMIT = 5;
+const SEMANTIC_WINDOW = 2;
 
 type Scope = { book?: string; chapter?: number };
 
@@ -310,7 +316,74 @@ function topLemmasCall(book: string): PlannedCall {
   };
 }
 
-function buildPlan(signals: Signals): PlannedCall[] {
+// Fire semantic search only for conceptual prompts: there must be topic words AND
+// no single pinpointed verse reference (a passage/lemma/morph lookup skips it).
+export function shouldRunSemantic(signals: Signals): boolean {
+  if (signals.topicWords.length === 0) return false;
+  const singleExactVerse =
+    signals.references.length === 1 && signals.references[0].verseStart !== undefined;
+  return !singleExactVerse;
+}
+
+// Build an on-spine ±2 window for a hit: SBLGNT range defines which references are
+// citable; WEB supplies readable text (falling back to Greek if WEB lacks a verse).
+// A WEB-only verse in the window is omitted because it is absent from the SBL range.
+async function expandOnSpineWindow(
+  reference: string
+): Promise<{ reference: string; text: string }[]> {
+  const parsed = parseReference(reference);
+  if (!parsed) return [];
+  const verseStart = Math.max(1, parsed.verse - SEMANTIC_WINDOW);
+  const verseEnd = parsed.verse + SEMANTIC_WINDOW;
+  const [sbl, web] = await Promise.all([
+    getPassage({ corpus: "SBLGNT", book: parsed.book, chapter: parsed.chapter, verseStart, verseEnd }),
+    getPassage({ corpus: "WEB", book: parsed.book, chapter: parsed.chapter, verseStart, verseEnd })
+  ]);
+  const webText = new Map(web.references.map((r) => [r.verse, r.text]));
+  return sbl.references.map((r) => ({
+    reference: r.reference,
+    text: webText.get(r.verse) ?? r.text
+  }));
+}
+
+function semanticCall(prompt: string, keywords: string, scope: Scope): PlannedCall {
+  const args: { query: string; book?: string } = { query: prompt };
+  if (scope.book) args.book = scope.book;
+  return {
+    key: `semantic:${scope.book ?? ""}`,
+    errorTrace: { tool: "searchSemantic", args },
+    run: async () => {
+      const hits = await searchSemantic({
+        query: prompt,
+        keywords,
+        book: scope.book,
+        limit: SEMANTIC_HIT_LIMIT
+      });
+      const lines: string[] = [];
+      const citations: AssistantCitation[] = [];
+      const windows = await Promise.all(hits.map((h) => expandOnSpineWindow(h.reference)));
+      hits.forEach((hit, i) => {
+        const window = windows[i];
+        if (window.length === 0) return;
+        lines.push(`#### ${hit.reference} (semantic hit)`);
+        for (const v of window) lines.push(`- ${v.reference}, ${SEMANTIC_INDEX_CORPUS}: ${v.text}`);
+        citations.push({
+          reference: hit.reference,
+          corpus: SEMANTIC_INDEX_CORPUS,
+          searchQuery: "semantic",
+          toolName: "searchSemantic"
+        });
+      });
+      return {
+        citations: citations.slice(0, MAX_SECTION_LINES),
+        section: sectionBlock("searchSemantic — top hits with ±2 context", lines, lines.length),
+        traces: [{ tool: "searchSemantic", args }]
+      };
+    }
+  };
+}
+
+function buildPlan(signals: Signals, prompt: string): PlannedCall[] {
   const calls: PlannedCall[] = [];
   const seen = new Set<string>();
   const add = (call: PlannedCall) => {
@@ -335,6 +408,10 @@ function buildPlan(signals: Signals): PlannedCall[] {
     else add(keywordCall(word, scope));
   }
 
+  if (shouldRunSemantic(signals)) {
+    add(semanticCall(prompt, signals.topicWords.join(" "), scope));
+  }
+
   for (const morph of signals.morphCodes) {
     add(morphCall(morph.code, morph.mode, scope));
   }
@@ -346,8 +423,8 @@ function buildPlan(signals: Signals): PlannedCall[] {
   return calls.slice(0, MAX_PLANNED_CALLS);
 }
 
-export async function runRetrievalPlan(signals: Signals): Promise<EvidencePacket> {
-  const plan = buildPlan(signals);
+export async function runRetrievalPlan(signals: Signals, prompt = ""): Promise<EvidencePacket> {
+  const plan = buildPlan(signals, prompt);
   const citations: AssistantCitation[] = [];
   const toolTrace: ToolTraceEntry[] = [];
   const sections: string[] = [];

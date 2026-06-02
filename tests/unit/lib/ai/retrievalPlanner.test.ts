@@ -1,14 +1,15 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import type { Signals } from "@/lib/ai/signals";
 
-const { getPassage, searchLemma, searchKeyword, searchMorphology, getTopLemmas, findLemmaExamples } =
+const { getPassage, searchLemma, searchKeyword, searchMorphology, getTopLemmas, findLemmaExamples, searchSemantic } =
   vi.hoisted(() => ({
     getPassage: vi.fn(),
     searchLemma: vi.fn(),
     searchKeyword: vi.fn(),
     searchMorphology: vi.fn(),
     getTopLemmas: vi.fn(),
-    findLemmaExamples: vi.fn()
+    findLemmaExamples: vi.fn(),
+    searchSemantic: vi.fn()
   }));
 
 vi.mock("@/lib/search", () => ({
@@ -17,10 +18,12 @@ vi.mock("@/lib/search", () => ({
   searchKeyword,
   searchMorphology,
   getTopLemmas,
-  findLemmaExamples
+  findLemmaExamples,
+  searchSemantic,
+  SEMANTIC_INDEX_CORPUS: "WEB"
 }));
 
-import { runRetrievalPlan } from "@/lib/ai/retrievalPlanner";
+import { runRetrievalPlan, shouldRunSemantic } from "@/lib/ai/retrievalPlanner";
 
 const emptySignals: Signals = {
   references: [],
@@ -81,6 +84,7 @@ beforeEach(() => {
     ],
     pagination: {}
   }));
+  searchSemantic.mockResolvedValue([]);
   getTopLemmas.mockResolvedValue([{ lemma: "λόγος", partOfSpeech: "N-", count: 10 }]);
   findLemmaExamples.mockResolvedValue(
     new Map([
@@ -468,5 +472,93 @@ describe("runRetrievalPlan", () => {
     });
 
     expect(packet.formattedEvidence).toContain("getPassage(Rom 8:1-4");
+  });
+});
+
+describe("shouldRunSemantic", () => {
+  const base: Signals = { references: [], greekWords: [], topicWords: [], morphCodes: [], intent: "general" };
+
+  it("fires when there are topic words and no exact verse reference", () => {
+    expect(shouldRunSemantic({ ...base, topicWords: ["reconciliation"] })).toBe(true);
+  });
+
+  it("does not fire without topic words", () => {
+    expect(shouldRunSemantic(base)).toBe(false);
+  });
+
+  it("does not fire for a single exact verse reference", () => {
+    expect(
+      shouldRunSemantic({
+        ...base,
+        topicWords: ["reconciliation"],
+        references: [{ book: "2Cor", chapter: 5, verseStart: 18 }]
+      })
+    ).toBe(false);
+  });
+
+  it("still fires for a bare-chapter reference (no verseStart)", () => {
+    expect(
+      shouldRunSemantic({ ...base, topicWords: ["love"], references: [{ book: "John", chapter: 1 }] })
+    ).toBe(true);
+  });
+});
+
+describe("semanticCall via runRetrievalPlan", () => {
+  it("expands each hit to an on-spine ±2 window with per-verse WEB lines", async () => {
+    searchSemantic.mockResolvedValueOnce([{ reference: "Eph 2:16", corpus: "WEB", text: "reconcile" }]);
+    // SBL window 14..18 has 14,15,16,17,18; WEB has the same → all on-spine.
+    getPassage.mockImplementation(async (input: { corpus: string; book: string; chapter: number; verseStart: number; verseEnd: number }) => ({
+      corpus: input.corpus,
+      references: [14, 15, 16, 17, 18].map((verse) => ({
+        book: input.book,
+        chapter: input.chapter,
+        verse,
+        reference: `${input.book} ${input.chapter}:${verse}`,
+        text: `${input.corpus} ${verse}`
+      }))
+    }));
+
+    const evidence = await runRetrievalPlan(
+      { references: [], greekWords: [], topicWords: ["reconciliation"], morphCodes: [], intent: "general" },
+      "what does Paul say about reconciliation"
+    );
+
+    expect(searchSemantic).toHaveBeenCalledWith(
+      expect.objectContaining({ query: "what does Paul say about reconciliation", keywords: "reconciliation" })
+    );
+    expect(evidence.formattedEvidence).toContain("Eph 2:16, WEB:");
+    expect(evidence.formattedEvidence).toContain("Eph 2:14, WEB:"); // ±2 neighbor
+    expect(evidence.citations.some((c) => c.reference === "Eph 2:16" && c.toolName === "searchSemantic")).toBe(true);
+  });
+
+  it("omits a window verse missing from the SBL spine", async () => {
+    searchSemantic.mockResolvedValueOnce([{ reference: "Acts 8:36", corpus: "WEB", text: "what hinders" }]);
+    getPassage.mockImplementation(async (input: { corpus: string; book: string; chapter: number }) => {
+      if (input.corpus === "SBLGNT") {
+        // SBL lacks 8:37 (WEB-only verse) → window returns 34,35,36,38.
+        return {
+          corpus: "SBLGNT",
+          references: [34, 35, 36, 38].map((verse) => ({
+            book: input.book, chapter: input.chapter, verse,
+            reference: `${input.book} ${input.chapter}:${verse}`, text: `SBLGNT ${verse}`
+          }))
+        };
+      }
+      return {
+        corpus: "WEB",
+        references: [34, 35, 36, 37, 38].map((verse) => ({
+          book: input.book, chapter: input.chapter, verse,
+          reference: `${input.book} ${input.chapter}:${verse}`, text: `WEB ${verse}`
+        }))
+      };
+    });
+
+    const evidence = await runRetrievalPlan(
+      { references: [], greekWords: [], topicWords: ["baptism"], morphCodes: [], intent: "general" },
+      "is baptism required"
+    );
+
+    expect(evidence.formattedEvidence).toContain("Acts 8:36, WEB:");
+    expect(evidence.formattedEvidence).not.toContain("Acts 8:37"); // WEB-only neighbor dropped
   });
 });

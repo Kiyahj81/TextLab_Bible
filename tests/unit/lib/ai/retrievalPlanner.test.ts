@@ -486,6 +486,26 @@ describe("shouldRunSemantic", () => {
     expect(shouldRunSemantic(base)).toBe(false);
   });
 
+  it("fires on a topic-survey whose phrase was captured as a greek lemma (phrase-only prompt)", () => {
+    // "verses about sexual immorality": topicWords stripped, lemma in greekWords.
+    expect(shouldRunSemantic({ ...base, intent: "topic-survey", greekWords: ["πορνεία"] })).toBe(true);
+  });
+
+  it("does not fire on a termless topic-survey (book survey → getTopLemmas path)", () => {
+    expect(shouldRunSemantic({ ...base, intent: "topic-survey", book: "Heb" })).toBe(false);
+  });
+
+  it("does not fire on topic-survey intent when all references are exact verses", () => {
+    expect(
+      shouldRunSemantic({
+        ...base,
+        intent: "topic-survey",
+        greekWords: ["πορνεία"],
+        references: [{ book: "1Cor", chapter: 6, verseStart: 18 }]
+      })
+    ).toBe(false);
+  });
+
   it("does not fire for a single exact verse reference", () => {
     expect(
       shouldRunSemantic({
@@ -542,6 +562,32 @@ describe("semanticCall via runRetrievalPlan", () => {
     expect(evidence.formattedEvidence).toContain("Eph 2:16, WEB:");
     expect(evidence.formattedEvidence).toContain("Eph 2:14, WEB:"); // ±2 neighbor
     expect(evidence.citations.some((c) => c.reference === "Eph 2:16" && c.toolName === "searchSemantic")).toBe(true);
+  });
+
+  it("keeps the semantic call when many topic words would otherwise saturate the plan", async () => {
+    // 9 unmapped topic words → 9 keyword calls; with MAX_PLANNED_CALLS = 8 the
+    // semantic call must still survive the slice because it is added first.
+    searchSemantic.mockResolvedValueOnce([{ reference: "John 3:16", corpus: "WEB", text: "loved" }]);
+    const manyWords = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta", "iota"];
+
+    const evidence = await runRetrievalPlan(
+      { references: [], greekWords: [], topicWords: manyWords, morphCodes: [], intent: "general" },
+      "a long conceptual prompt about many things"
+    );
+
+    expect(searchSemantic).toHaveBeenCalled();
+    expect(evidence.formattedEvidence).toContain("(semantic hit)");
+  });
+
+  it("records keywords in the semantic tool trace", async () => {
+    searchSemantic.mockResolvedValueOnce([]);
+    const evidence = await runRetrievalPlan(
+      { references: [], greekWords: [], topicWords: ["mercy"], morphCodes: [], intent: "general" },
+      "what is mercy"
+    );
+    expect(
+      evidence.toolTrace.some((t) => t.tool === "searchSemantic" && (t.args as { keywords?: string })?.keywords === "mercy")
+    ).toBe(true);
   });
 
   it("omits a window verse missing from the SBL spine", async () => {

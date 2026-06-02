@@ -21,6 +21,12 @@ async function main() {
   const client = new OpenAI({ apiKey, maxRetries: 6 });
 
   // Idempotent/resumable: only verses in the index corpus with no embedding row.
+  // NOTE (staleness caveat): this selects verses lacking ANY embedding row; it does
+  // NOT detect verses whose WEB text changed after embedding. WEB is stable
+  // public-domain text and is rarely re-imported, so text-version tracking is out of
+  // scope here. If the WEB source is re-imported, force a full re-embed with:
+  //   DELETE FROM "VerseEmbedding";  -- then: npm run embed:verses
+  // (the same applies when switching the embedding model). See the Phase 4a spec.
   const pending = await prisma.$queryRaw<{ id: string; text: string }[]>(Prisma.sql`
     SELECT v."id" AS id, v."text" AS text
     FROM "Verse" v

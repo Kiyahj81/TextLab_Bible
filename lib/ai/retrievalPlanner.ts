@@ -316,10 +316,18 @@ function topLemmasCall(book: string): PlannedCall {
   };
 }
 
-// Fire semantic search only for conceptual prompts: there must be topic words AND
-// no single pinpointed verse reference (a passage/lemma/morph lookup skips it).
+// Fire semantic search only for conceptual prompts that carry an actual query term.
+// "Conceptual" = extracted topic words, OR a "verses about X" topic-survey whose only
+// term was a mapped multi-word phrase: extractSignals strips the phrase before
+// computing topicWords (leaving none) but captures its lemma in greekWords (e.g.
+// "verses about sexual immorality" → greekWords:[πορνεία]). Requiring a term keeps a
+// bare, termless book survey ("themes in Hebrews") on the deterministic getTopLemmas
+// path instead of an empty semantic call.
 export function shouldRunSemantic(signals: Signals): boolean {
-  if (signals.topicWords.length === 0) return false;
+  const conceptual =
+    signals.topicWords.length > 0 ||
+    (signals.intent === "topic-survey" && signals.greekWords.length > 0);
+  if (!conceptual) return false;
   // Skip semantic search when the prompt is fully pinned to specific verses — a
   // pinpointed lookup (one or more exact verse references) is better served by the
   // deterministic passage/lemma calls. A bare-chapter reference (no verseStart) or
@@ -351,7 +359,10 @@ async function expandOnSpineWindow(
 }
 
 function semanticCall(prompt: string, keywords: string, scope: Scope): PlannedCall {
-  const args: { query: string; book?: string } = { query: prompt };
+  // Record `keywords` (the FTS half's query) in the trace so the grounding context
+  // and user-visible tool-trace reflect that a keyword FTS pass ran alongside KNN.
+  const args: { query: string; keywords?: string; book?: string } = { query: prompt };
+  if (keywords) args.keywords = keywords;
   if (scope.book) args.book = scope.book;
   return {
     key: `semantic:${scope.book ?? ""}`,
@@ -402,6 +413,16 @@ function buildPlan(signals: Signals, prompt: string): PlannedCall[] {
     add(passageCall("WEB", ref));
   }
 
+  // Add semantic retrieval BEFORE the word-expansion loops. It is the headline
+  // conceptual-recall path, and `shouldRunSemantic` effectively promises it runs;
+  // adding it here means a prompt with many topic words (whose per-word lemma/
+  // keyword calls would otherwise fill the MAX_PLANNED_CALLS budget) cannot crowd
+  // the single semantic call out of the final slice. Priority order is therefore:
+  // explicit passage references first, then semantic, then per-word expansions.
+  if (shouldRunSemantic(signals)) {
+    add(semanticCall(prompt, signals.topicWords.join(" "), scope));
+  }
+
   for (const lemma of signals.greekWords) {
     add(lemmaCall(lemma, scope));
   }
@@ -410,10 +431,6 @@ function buildPlan(signals: Signals, prompt: string): PlannedCall[] {
     const mapped = ENGLISH_TO_GREEK_LEMMA[word];
     if (mapped) add(lemmaCall(mapped, scope));
     else add(keywordCall(word, scope));
-  }
-
-  if (shouldRunSemantic(signals)) {
-    add(semanticCall(prompt, signals.topicWords.join(" "), scope));
   }
 
   for (const morph of signals.morphCodes) {

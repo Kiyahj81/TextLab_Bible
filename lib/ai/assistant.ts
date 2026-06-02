@@ -52,9 +52,14 @@ export async function answerBibleQuestion(
 ): Promise<AssistantAnswer> {
   const routing = routeAssistantPrompt(prompt, options.escalate ?? false);
   const signals = extractSignals(prompt);
-  const evidence = await runRetrievalPlan(signals, prompt);
+  // Resolve live-mode once and pass it into retrieval. Remote semantic retrieval
+  // embeds the prompt via OpenAI, so it must honor the same kill switch as synthesis
+  // (no embedding egress/spend when live is disabled) — and skipping it also frees its
+  // planner slot for deterministic searches in the local-fallback path.
+  const live = isLiveAssistantEnabled();
+  const evidence = await runRetrievalPlan(signals, prompt, live);
 
-  if (!isLiveAssistantEnabled()) {
+  if (!live) {
     return fallbackAnswer(prompt, evidence, routing);
   }
 

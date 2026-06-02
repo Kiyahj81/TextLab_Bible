@@ -128,8 +128,13 @@ In `lib/ai/retrievalPlanner.ts`:
     still showing readable English. This prevents a **WEB-only neighbor** (e.g. hit Acts 8:36, window
     includes WEB-only Acts 8:37) from reaching the model and reintroducing the `reference-not-found`
     withholding the §3 hit filter closes.
-- **Graceful degradation:** no `OPENAI_API_KEY` → `embedQuery` returns null → `searchSemantic` returns
-  `[]` → `semanticCall` contributes nothing. The deterministic fallback is unaffected.
+- **Graceful degradation + live-mode kill switch:** semantic retrieval only runs when live mode is
+  enabled (`isLiveAssistantEnabled()` — API key present AND `TEXTLAB_ASSISTANT_DISABLE_LIVE` unset).
+  `answerBibleQuestion` resolves live-mode once and passes it into `runRetrievalPlan(signals, prompt,
+  semanticEnabled)`; `buildPlan` adds the `semanticCall` only when `semanticEnabled`. This ensures (a) no
+  prompt is embedded via OpenAI when the kill switch is on (no egress/spend), and (b) a disabled semantic
+  call never consumes one of the `MAX_PLANNED_CALLS` slots, so the local-fallback path keeps all its
+  deterministic searches. `embedQuery` still also returns null when there is no client, as a backstop.
 
 The V±2 expansion respects the existing `MAX_PASSAGE_LINES` / `MAX_EVIDENCE_CHARS` ceilings so a topical
 query cannot blow the evidence budget.

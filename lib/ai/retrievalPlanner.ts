@@ -401,7 +401,7 @@ function semanticCall(prompt: string, keywords: string, scope: Scope): PlannedCa
   };
 }
 
-function buildPlan(signals: Signals, prompt: string): PlannedCall[] {
+function buildPlan(signals: Signals, prompt: string, semanticEnabled: boolean): PlannedCall[] {
   const calls: PlannedCall[] = [];
   const seen = new Set<string>();
   const add = (call: PlannedCall) => {
@@ -422,7 +422,10 @@ function buildPlan(signals: Signals, prompt: string): PlannedCall[] {
   // keyword calls would otherwise fill the MAX_PLANNED_CALLS budget) cannot crowd
   // the single semantic call out of the final slice. Priority order is therefore:
   // explicit passage references first, then semantic, then per-word expansions.
-  if (shouldRunSemantic(signals)) {
+  // Only add it when semantic retrieval is actually available (live mode on + API
+  // key): otherwise `searchSemantic` would no-op AND its slot would be stolen from a
+  // deterministic search, breaking graceful degradation in the local-fallback path.
+  if (semanticEnabled && shouldRunSemantic(signals)) {
     add(semanticCall(prompt, signals.topicWords.join(" "), scope));
   }
 
@@ -447,8 +450,12 @@ function buildPlan(signals: Signals, prompt: string): PlannedCall[] {
   return calls.slice(0, MAX_PLANNED_CALLS);
 }
 
-export async function runRetrievalPlan(signals: Signals, prompt = ""): Promise<EvidencePacket> {
-  const plan = buildPlan(signals, prompt);
+export async function runRetrievalPlan(
+  signals: Signals,
+  prompt = "",
+  semanticEnabled = true
+): Promise<EvidencePacket> {
+  const plan = buildPlan(signals, prompt, semanticEnabled);
   const citations: AssistantCitation[] = [];
   const toolTrace: ToolTraceEntry[] = [];
   const sections: string[] = [];

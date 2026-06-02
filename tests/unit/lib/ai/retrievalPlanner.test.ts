@@ -623,6 +623,26 @@ describe("semanticCall via runRetrievalPlan", () => {
     expect(evidence.formattedEvidence).not.toContain("Acts 8:37"); // WEB-only neighbor dropped
   });
 
+  it("does not call searchSemantic or consume a plan slot when semantic retrieval is disabled", async () => {
+    // Even if searchSemantic WOULD return a hit, a disabled (no key / kill switch)
+    // run must not call it (no embedding egress) and must not steal a deterministic slot.
+    searchSemantic.mockResolvedValue([{ reference: "John 3:16", corpus: "WEB", text: "x" }]);
+    const eightWords = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta"];
+
+    const evidence = await runRetrievalPlan(
+      { references: [], greekWords: [], topicWords: eightWords, morphCodes: [], intent: "general" },
+      "a long conceptual fallback prompt",
+      false // semanticEnabled = false
+    );
+
+    expect(searchSemantic).not.toHaveBeenCalled();
+    expect(evidence.formattedEvidence).not.toContain("(semantic hit)");
+    // All 8 deterministic keyword slots are preserved (none crowded out by a no-op call).
+    for (const w of eightWords) {
+      expect(evidence.formattedEvidence).toContain(`searchKeyword(${w}`);
+    }
+  });
+
   it("labels an SBL-only window verse as SBLGNT, never WEB (corpus fallback)", async () => {
     searchSemantic.mockResolvedValueOnce([{ reference: "Luke 1:36", corpus: "WEB", text: "Elizabeth" }]);
     getPassage.mockImplementation(async (input: { corpus: string; book: string; chapter: number }) => {

@@ -320,9 +320,13 @@ function topLemmasCall(book: string): PlannedCall {
 // no single pinpointed verse reference (a passage/lemma/morph lookup skips it).
 export function shouldRunSemantic(signals: Signals): boolean {
   if (signals.topicWords.length === 0) return false;
-  const singleExactVerse =
-    signals.references.length === 1 && signals.references[0].verseStart !== undefined;
-  return !singleExactVerse;
+  // Skip semantic search when the prompt is fully pinned to specific verses — a
+  // pinpointed lookup (one or more exact verse references) is better served by the
+  // deterministic passage/lemma calls. A bare-chapter reference (no verseStart) or
+  // a reference-free topical prompt still runs semantic search.
+  const allExactVerses =
+    signals.references.length > 0 && signals.references.every((r) => r.verseStart !== undefined);
+  return !allExactVerses;
 }
 
 // Build an on-spine ±2 window for a hit: SBLGNT range defines which references are

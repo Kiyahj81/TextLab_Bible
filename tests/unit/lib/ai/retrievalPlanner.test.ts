@@ -496,6 +496,19 @@ describe("shouldRunSemantic", () => {
     ).toBe(false);
   });
 
+  it("does not fire when ALL references are exact verses (multi-verse pin)", () => {
+    expect(
+      shouldRunSemantic({
+        ...base,
+        topicWords: ["grace"],
+        references: [
+          { book: "Rom", chapter: 3, verseStart: 23 },
+          { book: "Eph", chapter: 2, verseStart: 8 }
+        ]
+      })
+    ).toBe(false);
+  });
+
   it("still fires for a bare-chapter reference (no verseStart)", () => {
     expect(
       shouldRunSemantic({ ...base, topicWords: ["love"], references: [{ book: "John", chapter: 1 }] })

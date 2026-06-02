@@ -19,7 +19,8 @@
     "db:seed": "prisma db seed",
     "prisma:generate": "prisma generate",
     "import:open-bible": "tsx scripts/import-open-bible.ts",
-    "import:macula-glosses": "tsx scripts/import-open-bible.ts --macula-greek-url https://raw.githubusercontent.com/Clear-Bible/macula-greek/main/SBLGNT/tsv/macula-greek-SBLGNT.tsv"
+    "import:macula-glosses": "tsx scripts/import-open-bible.ts --macula-greek-url https://raw.githubusercontent.com/Clear-Bible/macula-greek/main/SBLGNT/tsv/macula-greek-SBLGNT.tsv",
+    "embed:verses": "tsx scripts/embed-verses.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",

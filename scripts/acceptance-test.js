@@ -230,16 +230,6 @@ async function run() {
     result.interactions.push("Assistant returned retrieval-first answer, trace, citations, and Markdown content.");
     await screenshot("04-assistant-answer");
 
-    // Phase 4a semantic path: topical prompt exercises the gated semanticCall in the
-    // retrieval planner (searchSemantic via pgvector + FTS RRF, SBLGNT-spine filtered).
-    // When OPENAI_API_KEY is unset on the runner, the planner gracefully no-ops to
-    // deterministic retrieval — the interaction passes either way.
-    await page.locator("textarea").first().fill("What does the New Testament teach about reconciliation?");
-    await page.getByRole("button", { name: "Ask assistant" }).click();
-    const topicalAnswerPre = page.locator("pre").filter({ hasText: "Textual observations:" });
-    await topicalAnswerPre.waitFor({ timeout: 30000 });
-    result.interactions.push("Topical prompt (Phase 4a semantic path) returned a retrieval-first answer.");
-
     const downloadPromise = page.waitForEvent("download");
     await page.getByRole("button", { name: "Export Markdown" }).click();
     const download = await downloadPromise;
@@ -257,6 +247,21 @@ async function run() {
       "saved note was not returned by notes API"
     );
     result.interactions.push("Saved note persisted and was returned by /api/notes.");
+
+    // Phase 4a semantic path, issued LAST so it cannot race the λόγος export above.
+    // Await the topical prompt's OWN /api/assistant response — not a stale
+    // "Textual observations:" left rendered from the λόγος answer — so this proves the
+    // request actually executed the planner (incl. the gated semantic call). When
+    // OPENAI_API_KEY is unset the planner gracefully no-ops to deterministic retrieval,
+    // but the route still returns 200, so the check holds in both modes.
+    await page.locator("textarea").first().fill("What does the New Testament teach about reconciliation?");
+    const [topicalResponse] = await Promise.all([
+      page.waitForResponse((r) => r.url().includes("/api/assistant") && r.request().method() === "POST"),
+      page.getByRole("button", { name: "Ask assistant" }).click()
+    ]);
+    assert(topicalResponse.status() === 200, "topical assistant request did not return HTTP 200");
+    result.interactions.push("Topical prompt (Phase 4a semantic path) completed with a 200 response.");
+
     result.finalUrl = page.url();
     result.title = await page.title();
 

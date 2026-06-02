@@ -25,6 +25,11 @@ export type Signals = {
   morphCodes: MorphSignal[];
   intent: Intent;
   book?: string;
+  // Greek lemmas derived from a matched English multi-word phrase (e.g. "sexual
+  // immorality" → πορνεία). A subset of greekWords, kept separately because the
+  // phrase's component words are stripped from topicWords — so this is the only
+  // signal that a phrase-only conceptual prompt carried a searchable concept.
+  phraseLemmas?: string[];
 };
 
 // English Bible terms → Greek lemma. Used by the retrieval planner to turn a
@@ -115,7 +120,7 @@ const STOP_WORDS: ReadonlySet<string> = new Set([
   "to", "for", "with", "by", "from", "into", "onto", "off", "out", "up", "down", "over",
   "under", "about", "between", "through", "during", "before", "after", "above", "below",
   "is", "are", "was", "were", "be", "been", "being", "am", "do", "does", "did", "done",
-  "have", "has", "had", "can", "could", "should", "would", "will", "shall", "may", "might", "like",
+  "have", "has", "had", "can", "could", "should", "would", "will", "shall", "may", "might",
   "must", "this", "that", "these", "those", "it", "its", "he", "she", "they", "them", "his", "hers",
   "her", "him", "their", "theirs", "you", "your", "yours", "i", "me", "my", "mine", "we", "our", "us",
   "who", "whom", "whose", "what", "when", "where", "why", "how", "which", "there", "here", "relate",
@@ -307,6 +312,7 @@ export function extractSignals(prompt: string): Signals {
     topicWords: detectTopicWords(phrases.cleaned),
     morphCodes: detectMorphCodes(prompt),
     intent: detectIntent(prompt),
-    book: detectBookFromPrompt(prompt)
+    book: detectBookFromPrompt(prompt),
+    phraseLemmas: phrases.lemmas
   };
 }

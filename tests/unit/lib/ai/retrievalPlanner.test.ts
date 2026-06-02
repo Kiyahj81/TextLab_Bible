@@ -486,21 +486,23 @@ describe("shouldRunSemantic", () => {
     expect(shouldRunSemantic(base)).toBe(false);
   });
 
-  it("fires on a topic-survey whose phrase was captured as a greek lemma (phrase-only prompt)", () => {
-    // "verses about sexual immorality": topicWords stripped, lemma in greekWords.
-    expect(shouldRunSemantic({ ...base, intent: "topic-survey", greekWords: ["πορνεία"] })).toBe(true);
+  it("fires on a phrase-only concept regardless of intent (phrase lemma present)", () => {
+    // "What is sexual immorality?" / "verses about sexual immorality": the matched
+    // phrase is stripped from topicWords but recorded in phraseLemmas.
+    expect(shouldRunSemantic({ ...base, intent: "general", phraseLemmas: ["πορνεία"] })).toBe(true);
+    expect(shouldRunSemantic({ ...base, intent: "topic-survey", phraseLemmas: ["πορνεία"] })).toBe(true);
   });
 
-  it("does not fire on a termless topic-survey (book survey → getTopLemmas path)", () => {
+  it("does not fire on a termless prompt with no topic words or phrase lemmas", () => {
+    // A bare book survey ("themes in Hebrews") routes to getTopLemmas instead.
     expect(shouldRunSemantic({ ...base, intent: "topic-survey", book: "Heb" })).toBe(false);
   });
 
-  it("does not fire on topic-survey intent when all references are exact verses", () => {
+  it("does not fire on a phrase-only concept when all references are exact verses", () => {
     expect(
       shouldRunSemantic({
         ...base,
-        intent: "topic-survey",
-        greekWords: ["πορνεία"],
+        phraseLemmas: ["πορνεία"],
         references: [{ book: "1Cor", chapter: 6, verseStart: 18 }]
       })
     ).toBe(false);
@@ -619,5 +621,36 @@ describe("semanticCall via runRetrievalPlan", () => {
 
     expect(evidence.formattedEvidence).toContain("Acts 8:36, WEB:");
     expect(evidence.formattedEvidence).not.toContain("Acts 8:37"); // WEB-only neighbor dropped
+  });
+
+  it("labels an SBL-only window verse as SBLGNT, never WEB (corpus fallback)", async () => {
+    searchSemantic.mockResolvedValueOnce([{ reference: "Luke 1:36", corpus: "WEB", text: "Elizabeth" }]);
+    getPassage.mockImplementation(async (input: { corpus: string; book: string; chapter: number }) => {
+      if (input.corpus === "SBLGNT") {
+        return {
+          corpus: "SBLGNT",
+          references: [35, 36, 37].map((verse) => ({
+            book: input.book, chapter: input.chapter, verse,
+            reference: `${input.book} ${input.chapter}:${verse}`, text: `GREEK ${verse}`
+          }))
+        };
+      }
+      // WEB lacks verse 35 → its window line must fall back to Greek labeled SBLGNT.
+      return {
+        corpus: "WEB",
+        references: [36, 37].map((verse) => ({
+          book: input.book, chapter: input.chapter, verse,
+          reference: `${input.book} ${input.chapter}:${verse}`, text: `ENGLISH ${verse}`
+        }))
+      };
+    });
+
+    const evidence = await runRetrievalPlan(
+      { references: [], greekWords: [], topicWords: ["kinship"], morphCodes: [], intent: "general" },
+      "how are Mary and Elizabeth related"
+    );
+
+    expect(evidence.formattedEvidence).toContain("Luke 1:35, SBLGNT: GREEK 35"); // SBL-only → Greek labeled SBLGNT
+    expect(evidence.formattedEvidence).toContain("Luke 1:36, WEB: ENGLISH 36"); // WEB present → WEB
   });
 });

@@ -198,13 +198,15 @@ describe("extractSignals", () => {
       topicWords: [],
       morphCodes: [],
       intent: "word-study",
-      book: "Rom"
+      book: "Rom",
+      phraseLemmas: []
     });
   });
 
   it("routes a phrase to a Greek lemma and drops its component words from topicWords", () => {
     const signals = extractSignals("what does the bible teach about the second coming");
     expect(signals.greekWords).toContain("παρουσία");
+    expect(signals.phraseLemmas).toContain("παρουσία");
     expect(signals.topicWords).not.toContain("second");
     expect(signals.topicWords).not.toContain("coming");
   });

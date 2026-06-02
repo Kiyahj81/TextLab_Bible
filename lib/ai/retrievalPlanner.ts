@@ -316,17 +316,16 @@ function topLemmasCall(book: string): PlannedCall {
   };
 }
 
-// Fire semantic search only for conceptual prompts that carry an actual query term.
-// "Conceptual" = extracted topic words, OR a "verses about X" topic-survey whose only
-// term was a mapped multi-word phrase: extractSignals strips the phrase before
-// computing topicWords (leaving none) but captures its lemma in greekWords (e.g.
-// "verses about sexual immorality" → greekWords:[πορνεία]). Requiring a term keeps a
-// bare, termless book survey ("themes in Hebrews") on the deterministic getTopLemmas
-// path instead of an empty semantic call.
+// Fire semantic search only for conceptual prompts that carry an actual concept term:
+// either extracted topic words, or a mapped multi-word phrase. The phrase case matters
+// because extractSignals strips a matched phrase before computing topicWords (leaving
+// none) but records its lemma in phraseLemmas — so a phrase-only prompt of ANY intent
+// ("What is sexual immorality?", "verses about sexual immorality") still gets hybrid
+// recall, matching how the single-word equivalent ("What is reconciliation?") behaves.
+// A bare, termless book survey ("themes in Hebrews") has neither and stays on the
+// deterministic getTopLemmas path instead of issuing an empty semantic call.
 export function shouldRunSemantic(signals: Signals): boolean {
-  const conceptual =
-    signals.topicWords.length > 0 ||
-    (signals.intent === "topic-survey" && signals.greekWords.length > 0);
+  const conceptual = signals.topicWords.length > 0 || (signals.phraseLemmas?.length ?? 0) > 0;
   if (!conceptual) return false;
   // Skip semantic search when the prompt is fully pinned to specific verses — a
   // pinpointed lookup (one or more exact verse references) is better served by the
@@ -338,11 +337,13 @@ export function shouldRunSemantic(signals: Signals): boolean {
 }
 
 // Build an on-spine ±2 window for a hit: SBLGNT range defines which references are
-// citable; WEB supplies readable text (falling back to Greek if WEB lacks a verse).
-// A WEB-only verse in the window is omitted because it is absent from the SBL range.
+// citable; WEB supplies readable display text. A WEB-only verse in the window is
+// omitted because it is absent from the SBL range. When SBL has a verse WEB lacks,
+// fall back to the Greek text AND label that line SBLGNT — never present Greek under a
+// WEB label, which would violate the citation-spine / display-aid corpus distinction.
 async function expandOnSpineWindow(
   reference: string
-): Promise<{ reference: string; text: string }[]> {
+): Promise<{ reference: string; corpus: "SBLGNT" | "WEB"; text: string }[]> {
   const parsed = parseReference(reference);
   if (!parsed) return [];
   const verseStart = Math.max(1, parsed.verse - SEMANTIC_WINDOW);
@@ -352,10 +353,12 @@ async function expandOnSpineWindow(
     getPassage({ corpus: "WEB", book: parsed.book, chapter: parsed.chapter, verseStart, verseEnd })
   ]);
   const webText = new Map(web.references.map((r) => [r.verse, r.text]));
-  return sbl.references.map((r) => ({
-    reference: r.reference,
-    text: webText.get(r.verse) ?? r.text
-  }));
+  return sbl.references.map((r) => {
+    const web = webText.get(r.verse);
+    return web !== undefined
+      ? { reference: r.reference, corpus: "WEB" as const, text: web }
+      : { reference: r.reference, corpus: "SBLGNT" as const, text: r.text };
+  });
 }
 
 function semanticCall(prompt: string, keywords: string, scope: Scope): PlannedCall {
@@ -381,7 +384,7 @@ function semanticCall(prompt: string, keywords: string, scope: Scope): PlannedCa
         const window = windows[i];
         if (window.length === 0) return;
         lines.push(`#### ${hit.reference} (semantic hit)`);
-        for (const v of window) lines.push(`- ${v.reference}, ${SEMANTIC_INDEX_CORPUS}: ${v.text}`);
+        for (const v of window) lines.push(`- ${v.reference}, ${v.corpus}: ${v.text}`);
         citations.push({
           reference: hit.reference,
           corpus: SEMANTIC_INDEX_CORPUS,

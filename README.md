@@ -18,6 +18,7 @@ Milestone 2.5 of the TextLab Bible MVP: a single full-stack Next.js app deliveri
 - Highlights, notes, saved searches, and assistant sessions scoped to the signed-in user — verse-level on Greek tokens, word-level on English text
 - **AI Study Assistant** at `/assistant`:
   - Deterministic-first retrieval: signal extraction (references, Greek words, topics, morphology, intent) → parallel corpus search → model synthesis with a single `getPassage` refinement step; the planner scopes word searches to the named book/chapter, returns whole chapters and cross-chapter passages in full (assembled from per-chapter fetches), and samples large corpus surveys with a true-count marker (e.g. `116 hit(s) … (91 more)`); passage assembly is bounded for safety (a per-corpus line ceiling plus pathological-span guards) and total evidence is capped so even large or malformed prompts stay within request and saved-note limits
+  - **Hybrid semantic retrieval** on topical questions (Phase 4a): `searchSemantic` fuses pgvector KNN over WEB verse embeddings with keyword FTS via Reciprocal Rank Fusion, filters hits to the SBLGNT citation spine, and expands each hit to an on-spine ±2 verse window. Requires `OPENAI_API_KEY` and the `add_verse_embeddings` migration applied; gracefully no-ops to deterministic retrieval otherwise. One-time ingestion: `npm run embed:verses` (idempotent, skips empty verses)
   - User-confirmed **scholarly-model escalation** — a "Use scholarly model" affordance re-runs the prompt on `gpt-5.4` (never automatic)
   - Live OpenAI synthesis when `OPENAI_API_KEY` is set; deterministic local fallback otherwise
   - **Grounding / Silence Protocol** — before any answer is returned or stored, the assistant verifies its citations against the SBLGNT. If a Greek quote falls below the 0.90 similarity threshold or a reference cannot be resolved, the answer is withheld and the UI displays "Withheld — insufficient textual evidence" rather than risk an unsupported claim. WEB (English) citations are a display aid only: a WEB mismatch appends a caveat but does not withhold.
@@ -107,6 +108,8 @@ npm run verify
 
 The project includes an import script for three Greek/English NT data sources. Each run is tracked in the `ImportRun` table.
 
+> These data scripts (`import:open-bible`, `import:macula-glosses`, `embed:verses`) run through `tsx --env-file=.env`, so they read `DATABASE_URL` (and, for `embed:verses`, `OPENAI_API_KEY`) from your `.env`. Set those there before running, or pass a different file explicitly, e.g. `tsx --env-file=.env.test scripts/embed-verses.ts` to target the test branch. Already-set shell/system env vars are preserved.
+
 | Source | Purpose | Provides |
 |---|---|---|
 | MorphGNT SBLGNT | Per-word Greek tokens + morphology | `Token` rows + `Verse.text` for the SBLGNT corpus |
@@ -133,6 +136,12 @@ npm run import:open-bible -- --web-usfm-dir ./data/web-usfm
 
 # MACULA Greek glosses only (default URL points at Clear-Bible main)
 npm run import:macula-glosses
+```
+
+After the corpus is imported, generate the semantic-search embeddings (one-time, idempotent; requires `OPENAI_API_KEY` in `.env`):
+
+```bash
+npm run embed:verses
 ```
 
 Source repositories: MorphGNT at `https://github.com/morphgnt/sblgnt`, WEB USFM at `https://ebible.org/Scriptures/engwebp_usfm.zip` (the downloaded zip is checked in at the project root as `engwebp_usfm.zip`; unzipped contents live in `data/web-usfm/`), MACULA Greek at `https://github.com/Clear-Bible/macula-greek`.

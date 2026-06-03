@@ -1,14 +1,15 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import type { Signals } from "@/lib/ai/signals";
 
-const { getPassage, searchLemma, searchKeyword, searchMorphology, getTopLemmas, findLemmaExamples } =
+const { getPassage, searchLemma, searchKeyword, searchMorphology, getTopLemmas, findLemmaExamples, searchSemantic } =
   vi.hoisted(() => ({
     getPassage: vi.fn(),
     searchLemma: vi.fn(),
     searchKeyword: vi.fn(),
     searchMorphology: vi.fn(),
     getTopLemmas: vi.fn(),
-    findLemmaExamples: vi.fn()
+    findLemmaExamples: vi.fn(),
+    searchSemantic: vi.fn()
   }));
 
 vi.mock("@/lib/search", () => ({
@@ -17,10 +18,12 @@ vi.mock("@/lib/search", () => ({
   searchKeyword,
   searchMorphology,
   getTopLemmas,
-  findLemmaExamples
+  findLemmaExamples,
+  searchSemantic,
+  SEMANTIC_INDEX_CORPUS: "WEB"
 }));
 
-import { runRetrievalPlan } from "@/lib/ai/retrievalPlanner";
+import { runRetrievalPlan, shouldRunSemantic } from "@/lib/ai/retrievalPlanner";
 
 const emptySignals: Signals = {
   references: [],
@@ -81,6 +84,7 @@ beforeEach(() => {
     ],
     pagination: {}
   }));
+  searchSemantic.mockResolvedValue([]);
   getTopLemmas.mockResolvedValue([{ lemma: "λόγος", partOfSpeech: "N-", count: 10 }]);
   findLemmaExamples.mockResolvedValue(
     new Map([
@@ -261,6 +265,54 @@ describe("runRetrievalPlan", () => {
 
     expect(searchLemma.mock.calls[0][0].chapter).toBeUndefined();
     expect(searchLemma.mock.calls[0][0].book).toBe("2Cor");
+  });
+
+  it("book-scopes term searches for multiple references in the same book", async () => {
+    await runRetrievalPlan({
+      ...emptySignals,
+      references: [
+        { book: "John", chapter: 3 },
+        { book: "John", chapter: 15 }
+      ],
+      topicWords: ["donkey"],
+      intent: "comparison",
+      book: "John"
+    });
+
+    expect(searchKeyword.mock.calls[0][0]).toEqual(expect.objectContaining({ query: "donkey", book: "John" }));
+    expect(searchKeyword.mock.calls[0][0].chapter).toBeUndefined();
+  });
+
+  it("does not silently scope term searches to the first book for multi-book prompts", async () => {
+    await runRetrievalPlan({
+      ...emptySignals,
+      references: [
+        { book: "Rom", chapter: 5 },
+        { book: "1Cor", chapter: 13 }
+      ],
+      topicWords: ["donkey"],
+      intent: "comparison",
+      book: "Rom"
+    });
+
+    expect(searchKeyword.mock.calls[0][0]).toEqual(expect.objectContaining({ query: "donkey" }));
+    expect(searchKeyword.mock.calls[0][0].book).toBeUndefined();
+    expect(searchKeyword.mock.calls[0][0].chapter).toBeUndefined();
+  });
+
+  it("keeps explicit morphology prompts out of keyword and semantic search when no topic remains", async () => {
+    await runRetrievalPlan({
+      ...emptySignals,
+      morphCodes: [{ code: "V-PAI-3S", mode: "exact" }],
+      intent: "morphology",
+      book: "1Pet"
+    });
+
+    expect(searchMorphology).toHaveBeenCalledWith(
+      expect.objectContaining({ morphCode: "V-PAI-3S", matchMode: "exact", book: "1Pet" })
+    );
+    expect(searchKeyword).not.toHaveBeenCalled();
+    expect(searchSemantic).not.toHaveBeenCalled();
   });
 
   it("returns all word hits when the count is at or below the sample size", async () => {
@@ -468,5 +520,260 @@ describe("runRetrievalPlan", () => {
     });
 
     expect(packet.formattedEvidence).toContain("getPassage(Rom 8:1-4");
+  });
+});
+
+describe("shouldRunSemantic", () => {
+  const base: Signals = { references: [], greekWords: [], topicWords: [], morphCodes: [], intent: "general" };
+
+  it("fires when there are topic words and no exact verse reference", () => {
+    expect(shouldRunSemantic({ ...base, topicWords: ["reconciliation"] })).toBe(true);
+  });
+
+  it("does not fire without topic words", () => {
+    expect(shouldRunSemantic(base)).toBe(false);
+  });
+
+  it("fires on a phrase-only concept regardless of intent (phrase term present)", () => {
+    // "What is sexual immorality?" / "verses about sexual immorality": the matched
+    // phrase is stripped from topicWords but recorded in phraseTerms.
+    expect(shouldRunSemantic({ ...base, intent: "general", phraseTerms: ["sexual immorality"] })).toBe(true);
+    expect(shouldRunSemantic({ ...base, intent: "topic-survey", phraseTerms: ["sexual immorality"] })).toBe(true);
+  });
+
+  it("does not fire on a termless prompt with no topic words or phrase terms", () => {
+    // A bare book survey ("themes in Hebrews") routes to getTopLemmas instead.
+    expect(shouldRunSemantic({ ...base, intent: "topic-survey", book: "Heb" })).toBe(false);
+  });
+
+  it("does not fire on a phrase-only concept when all references are exact verses", () => {
+    expect(
+      shouldRunSemantic({
+        ...base,
+        phraseTerms: ["sexual immorality"],
+        references: [{ book: "1Cor", chapter: 6, verseStart: 18 }]
+      })
+    ).toBe(false);
+  });
+
+  it("does not fire for a single exact verse reference", () => {
+    expect(
+      shouldRunSemantic({
+        ...base,
+        topicWords: ["reconciliation"],
+        references: [{ book: "2Cor", chapter: 5, verseStart: 18 }]
+      })
+    ).toBe(false);
+  });
+
+  it("does not fire when ALL references are exact verses (multi-verse pin)", () => {
+    expect(
+      shouldRunSemantic({
+        ...base,
+        topicWords: ["grace"],
+        references: [
+          { book: "Rom", chapter: 3, verseStart: 23 },
+          { book: "Eph", chapter: 2, verseStart: 8 }
+        ]
+      })
+    ).toBe(false);
+  });
+
+  it("still fires for a bare-chapter reference (no verseStart)", () => {
+    expect(
+      shouldRunSemantic({ ...base, topicWords: ["love"], references: [{ book: "John", chapter: 1 }] })
+    ).toBe(true);
+  });
+});
+
+describe("semanticCall via runRetrievalPlan", () => {
+  it("expands each hit to an on-spine ±2 window with per-verse WEB lines", async () => {
+    searchSemantic.mockResolvedValueOnce([{ reference: "Eph 2:16", corpus: "WEB", text: "reconcile" }]);
+    // SBL window 14..18 has 14,15,16,17,18; WEB has the same → all on-spine.
+    getPassage.mockImplementation(async (input: { corpus: string; book: string; chapter: number; verseStart: number; verseEnd: number }) => ({
+      corpus: input.corpus,
+      references: [14, 15, 16, 17, 18].map((verse) => ({
+        book: input.book,
+        chapter: input.chapter,
+        verse,
+        reference: `${input.book} ${input.chapter}:${verse}`,
+        text: `${input.corpus} ${verse}`
+      }))
+    }));
+
+    const evidence = await runRetrievalPlan(
+      { references: [], greekWords: [], topicWords: ["reconciliation"], morphCodes: [], intent: "general" },
+      "what does Paul say about reconciliation"
+    );
+
+    expect(searchSemantic).toHaveBeenCalledWith(
+      expect.objectContaining({ query: "what does Paul say about reconciliation", keywords: "reconciliation" })
+    );
+    expect(evidence.formattedEvidence).toContain("Eph 2:16, WEB:");
+    expect(evidence.formattedEvidence).toContain("Eph 2:14, WEB:"); // ±2 neighbor
+    expect(evidence.citations.some((c) => c.reference === "Eph 2:16" && c.toolName === "searchSemantic")).toBe(true);
+  });
+
+  it("keeps the semantic call when many topic words would otherwise saturate the plan", async () => {
+    // 9 unmapped topic words → 9 keyword calls; with MAX_PLANNED_CALLS = 8 the
+    // semantic call must still survive the slice because it is added first.
+    searchSemantic.mockResolvedValueOnce([{ reference: "John 3:16", corpus: "WEB", text: "loved" }]);
+    const manyWords = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta", "iota"];
+
+    const evidence = await runRetrievalPlan(
+      { references: [], greekWords: [], topicWords: manyWords, morphCodes: [], intent: "general" },
+      "a long conceptual prompt about many things"
+    );
+
+    expect(searchSemantic).toHaveBeenCalled();
+    expect(evidence.formattedEvidence).toContain("(semantic hit)");
+  });
+
+  it("records keywords in the semantic tool trace", async () => {
+    searchSemantic.mockResolvedValueOnce([]);
+    const evidence = await runRetrievalPlan(
+      { references: [], greekWords: [], topicWords: ["mercy"], morphCodes: [], intent: "general" },
+      "what is mercy"
+    );
+    expect(
+      evidence.toolTrace.some((t) => t.tool === "searchSemantic" && (t.args as { keywords?: string })?.keywords === "mercy")
+    ).toBe(true);
+  });
+
+  it("omits a window verse missing from the SBL spine", async () => {
+    searchSemantic.mockResolvedValueOnce([{ reference: "Acts 8:36", corpus: "WEB", text: "what hinders" }]);
+    getPassage.mockImplementation(async (input: { corpus: string; book: string; chapter: number }) => {
+      if (input.corpus === "SBLGNT") {
+        // SBL lacks 8:37 (WEB-only verse) → window returns 34,35,36,38.
+        return {
+          corpus: "SBLGNT",
+          references: [34, 35, 36, 38].map((verse) => ({
+            book: input.book, chapter: input.chapter, verse,
+            reference: `${input.book} ${input.chapter}:${verse}`, text: `SBLGNT ${verse}`
+          }))
+        };
+      }
+      return {
+        corpus: "WEB",
+        references: [34, 35, 36, 37, 38].map((verse) => ({
+          book: input.book, chapter: input.chapter, verse,
+          reference: `${input.book} ${input.chapter}:${verse}`, text: `WEB ${verse}`
+        }))
+      };
+    });
+
+    const evidence = await runRetrievalPlan(
+      { references: [], greekWords: [], topicWords: ["baptism"], morphCodes: [], intent: "general" },
+      "is baptism required"
+    );
+
+    expect(evidence.formattedEvidence).toContain("Acts 8:36, WEB:");
+    expect(evidence.formattedEvidence).not.toContain("Acts 8:37"); // WEB-only neighbor dropped
+  });
+
+  it("forwards the English phrase as FTS keywords for a phrase-only prompt (hybrid, not vector-only)", async () => {
+    searchSemantic.mockResolvedValueOnce([]);
+    await runRetrievalPlan(
+      { references: [], greekWords: ["πορνεία"], topicWords: [], morphCodes: [], intent: "general", phraseTerms: ["sexual immorality"] },
+      "What is sexual immorality?"
+    );
+    expect(searchSemantic).toHaveBeenCalledWith(
+      expect.objectContaining({ query: "What is sexual immorality?", keywords: "sexual immorality" })
+    );
+  });
+
+  it("preserves quoted phrase terms in semantic FTS keywords", async () => {
+    searchSemantic.mockResolvedValueOnce([]);
+    await runRetrievalPlan(
+      { references: [], greekWords: [], topicWords: [], morphCodes: [], intent: "topic-survey", phraseTerms: ['"new creation"'] },
+      'verses about "new creation"'
+    );
+
+    expect(searchSemantic).toHaveBeenCalledWith(
+      expect.objectContaining({ query: 'verses about "new creation"', keywords: '"new creation"' })
+    );
+  });
+
+  it("threads chapter scope into semantic search for a single-bare-chapter prompt", async () => {
+    searchSemantic.mockResolvedValueOnce([]);
+    await runRetrievalPlan(
+      { references: [{ book: "John", chapter: 3 }], greekWords: [], topicWords: ["love"], morphCodes: [], intent: "passage-study" },
+      "verses about love in John 3"
+    );
+    expect(searchSemantic).toHaveBeenCalledWith(
+      expect.objectContaining({ book: "John", chapter: 3, keywords: "love" })
+    );
+  });
+
+  it("preserves all deterministic slots when semantic is enabled but returns no hits (degraded index)", async () => {
+    // Live mode on, but the embedding index yields nothing (empty/partial/rollout).
+    searchSemantic.mockResolvedValue([]);
+    const eightWords = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta"];
+
+    const evidence = await runRetrievalPlan(
+      { references: [], greekWords: [], topicWords: eightWords, morphCodes: [], intent: "general" },
+      "a long conceptual prompt",
+      true // semanticEnabled
+    );
+
+    expect(searchSemantic).toHaveBeenCalled(); // attempted
+    expect(evidence.formattedEvidence).not.toContain("(semantic hit)");
+    // Empty semantic result contributes no section (no "(no matches)" noise)…
+    expect(evidence.formattedEvidence).not.toContain("searchSemantic — top hits");
+    // …and crucially never displaces a deterministic search: all 8 keyword slots run.
+    for (const w of eightWords) {
+      expect(evidence.formattedEvidence).toContain(`searchKeyword(${w}`);
+    }
+  });
+
+  it("does not call searchSemantic or consume a plan slot when semantic retrieval is disabled", async () => {
+    // Even if searchSemantic WOULD return a hit, a disabled (no key / kill switch)
+    // run must not call it (no embedding egress) and must not steal a deterministic slot.
+    searchSemantic.mockResolvedValue([{ reference: "John 3:16", corpus: "WEB", text: "x" }]);
+    const eightWords = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta"];
+
+    const evidence = await runRetrievalPlan(
+      { references: [], greekWords: [], topicWords: eightWords, morphCodes: [], intent: "general" },
+      "a long conceptual fallback prompt",
+      false // semanticEnabled = false
+    );
+
+    expect(searchSemantic).not.toHaveBeenCalled();
+    expect(evidence.formattedEvidence).not.toContain("(semantic hit)");
+    // All 8 deterministic keyword slots are preserved (none crowded out by a no-op call).
+    for (const w of eightWords) {
+      expect(evidence.formattedEvidence).toContain(`searchKeyword(${w}`);
+    }
+  });
+
+  it("labels an SBL-only window verse as SBLGNT, never WEB (corpus fallback)", async () => {
+    searchSemantic.mockResolvedValueOnce([{ reference: "Luke 1:36", corpus: "WEB", text: "Elizabeth" }]);
+    getPassage.mockImplementation(async (input: { corpus: string; book: string; chapter: number }) => {
+      if (input.corpus === "SBLGNT") {
+        return {
+          corpus: "SBLGNT",
+          references: [35, 36, 37].map((verse) => ({
+            book: input.book, chapter: input.chapter, verse,
+            reference: `${input.book} ${input.chapter}:${verse}`, text: `GREEK ${verse}`
+          }))
+        };
+      }
+      // WEB lacks verse 35 → its window line must fall back to Greek labeled SBLGNT.
+      return {
+        corpus: "WEB",
+        references: [36, 37].map((verse) => ({
+          book: input.book, chapter: input.chapter, verse,
+          reference: `${input.book} ${input.chapter}:${verse}`, text: `ENGLISH ${verse}`
+        }))
+      };
+    });
+
+    const evidence = await runRetrievalPlan(
+      { references: [], greekWords: [], topicWords: ["kinship"], morphCodes: [], intent: "general" },
+      "how are Mary and Elizabeth related"
+    );
+
+    expect(evidence.formattedEvidence).toContain("Luke 1:35, SBLGNT: GREEK 35"); // SBL-only → Greek labeled SBLGNT
+    expect(evidence.formattedEvidence).toContain("Luke 1:36, WEB: ENGLISH 36"); // WEB present → WEB
   });
 });

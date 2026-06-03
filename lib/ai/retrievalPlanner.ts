@@ -7,8 +7,11 @@ import {
   getTopLemmas,
   searchKeyword,
   searchLemma,
-  searchMorphology
+  searchMorphology,
+  searchSemantic,
+  SEMANTIC_INDEX_CORPUS
 } from "@/lib/search";
+import { parseReference } from "@/lib/references";
 
 export type EvidencePacket = {
   citations: AssistantCitation[];
@@ -37,17 +40,26 @@ const MAX_EVIDENCE_CHARS = 58_000;
 // Each call cites a bounded sample; the whole packet is capped so downstream
 // consumers never overflow.
 const MAX_TOTAL_CITATIONS = 40;
+// Semantic search: how many fused hits to expand, and the ± window per hit.
+const SEMANTIC_HIT_LIMIT = 5;
+const SEMANTIC_WINDOW = 2;
 
 type Scope = { book?: string; chapter?: number };
 
-// A single, single-chapter reference scopes word searches to that chapter. A
-// cross-chapter reference, multiple references, or none falls back to book scope
-// (or corpus-wide if no book is detected).
+// A single, single-chapter reference scopes word searches to that chapter.
+// Multiple references only retain book scope when all refs are in the same book;
+// cross-book comparisons stay corpus-wide instead of inheriting the first book.
 function scopeFor(signals: Signals): Scope {
   if (signals.references.length === 1) {
     const ref = signals.references[0];
     const singleChapter = ref.chapterEnd === undefined || ref.chapterEnd === ref.chapter;
     if (singleChapter) return { book: ref.book, chapter: ref.chapter };
+    return { book: ref.book };
+  }
+  if (signals.references.length > 1) {
+    const books = new Set(signals.references.map((ref) => ref.book));
+    if (books.size === 1) return { book: signals.references[0].book };
+    return {};
   }
   return signals.book ? { book: signals.book } : {};
 }
@@ -310,7 +322,99 @@ function topLemmasCall(book: string): PlannedCall {
   };
 }
 
-function buildPlan(signals: Signals): PlannedCall[] {
+// Fire semantic search only for conceptual prompts that carry an actual concept term:
+// either extracted topic words, or a mapped multi-word phrase. The phrase case matters
+// because extractSignals strips a matched phrase before computing topicWords (leaving
+// none) but records its English text in phraseTerms — so a phrase-only prompt of ANY
+// intent ("What is sexual immorality?", "verses about sexual immorality") still gets
+// hybrid recall, matching how the single-word equivalent ("What is reconciliation?")
+// behaves. A bare, termless book survey ("themes in Hebrews") has neither and stays on
+// the deterministic getTopLemmas path instead of issuing an empty semantic call.
+export function shouldRunSemantic(signals: Signals): boolean {
+  const conceptual = signals.topicWords.length > 0 || (signals.phraseTerms?.length ?? 0) > 0;
+  if (!conceptual) return false;
+  // Skip semantic search when the prompt is fully pinned to specific verses — a
+  // pinpointed lookup (one or more exact verse references) is better served by the
+  // deterministic passage/lemma calls. A bare-chapter reference (no verseStart) or
+  // a reference-free topical prompt still runs semantic search.
+  const allExactVerses =
+    signals.references.length > 0 && signals.references.every((r) => r.verseStart !== undefined);
+  return !allExactVerses;
+}
+
+// Build an on-spine ±2 window for a hit: SBLGNT range defines which references are
+// citable; WEB supplies readable display text. A WEB-only verse in the window is
+// omitted because it is absent from the SBL range. When SBL has a verse WEB lacks,
+// fall back to the Greek text AND label that line SBLGNT — never present Greek under a
+// WEB label, which would violate the citation-spine / display-aid corpus distinction.
+async function expandOnSpineWindow(
+  reference: string
+): Promise<{ reference: string; corpus: "SBLGNT" | "WEB"; text: string }[]> {
+  const parsed = parseReference(reference);
+  if (!parsed) return [];
+  const verseStart = Math.max(1, parsed.verse - SEMANTIC_WINDOW);
+  const verseEnd = parsed.verse + SEMANTIC_WINDOW;
+  const [sbl, web] = await Promise.all([
+    getPassage({ corpus: "SBLGNT", book: parsed.book, chapter: parsed.chapter, verseStart, verseEnd }),
+    getPassage({ corpus: "WEB", book: parsed.book, chapter: parsed.chapter, verseStart, verseEnd })
+  ]);
+  const webText = new Map(web.references.map((r) => [r.verse, r.text]));
+  return sbl.references.map((r) => {
+    const web = webText.get(r.verse);
+    return web !== undefined
+      ? { reference: r.reference, corpus: "WEB" as const, text: web }
+      : { reference: r.reference, corpus: "SBLGNT" as const, text: r.text };
+  });
+}
+
+function semanticCall(prompt: string, keywords: string, scope: Scope): PlannedCall {
+  // Record `keywords` (the FTS half's query) in the trace so the grounding context
+  // and user-visible tool-trace reflect that a keyword FTS pass ran alongside KNN.
+  const args: { query: string; keywords?: string; book?: string; chapter?: number } = { query: prompt };
+  if (keywords) args.keywords = keywords;
+  if (scope.book) args.book = scope.book;
+  if (scope.chapter !== undefined) args.chapter = scope.chapter;
+  return {
+    key: `semantic:${scope.book ?? ""}|${scope.chapter ?? ""}`,
+    errorTrace: { tool: "searchSemantic", args },
+    run: async () => {
+      const hits = await searchSemantic({
+        query: prompt,
+        keywords,
+        book: scope.book,
+        // Honor the same chapter scope as the deterministic calls: a prompt like
+        // "verses about love in John 3" must not pull semantic hits from other chapters.
+        chapter: scope.chapter,
+        limit: SEMANTIC_HIT_LIMIT
+      });
+      const lines: string[] = [];
+      const citations: AssistantCitation[] = [];
+      const windows = await Promise.all(hits.map((h) => expandOnSpineWindow(h.reference)));
+      hits.forEach((hit, i) => {
+        const window = windows[i];
+        if (window.length === 0) return;
+        lines.push(`#### ${hit.reference} (semantic hit)`);
+        for (const v of window) lines.push(`- ${v.reference}, ${v.corpus}: ${v.text}`);
+        citations.push({
+          reference: hit.reference,
+          corpus: SEMANTIC_INDEX_CORPUS,
+          searchQuery: "semantic",
+          toolName: "searchSemantic"
+        });
+      });
+      return {
+        // No hits (e.g. empty/partial embedding index) → contribute no section, so a
+        // degraded semantic index never injects a noisy "(no matches)" block. The
+        // trace still records the attempt for observability.
+        citations: citations.slice(0, MAX_SECTION_LINES),
+        section: lines.length > 0 ? sectionBlock("searchSemantic — top hits with ±2 context", lines, lines.length) : "",
+        traces: [{ tool: "searchSemantic", args }]
+      };
+    }
+  };
+}
+
+function buildPlan(signals: Signals, prompt: string, semanticEnabled: boolean): PlannedCall[] {
   const calls: PlannedCall[] = [];
   const seen = new Set<string>();
   const add = (call: PlannedCall) => {
@@ -343,11 +447,34 @@ function buildPlan(signals: Signals): PlannedCall[] {
     add(topLemmasCall(signals.book));
   }
 
-  return calls.slice(0, MAX_PLANNED_CALLS);
+  // Bound the DETERMINISTIC calls to the budget.
+  const plan = calls.slice(0, MAX_PLANNED_CALLS);
+
+  // Semantic retrieval runs in ADDITION to the deterministic budget (at most one
+  // extra call), never inside it. This deliberately resolves the tension between two
+  // failure modes: placing it inside the slice either let many topic words crowd it
+  // out, or — when the embedding index is empty/partial (live on, but searchSemantic
+  // returns [])— let an empty semantic call displace a deterministic search exactly
+  // when the index is degraded. As a separate slot it can do neither; an empty result
+  // simply contributes no section. Total evidence stays bounded by MAX_EVIDENCE_CHARS.
+  if (semanticEnabled && shouldRunSemantic(signals)) {
+    // FTS keywords = topic words PLUS matched English phrase terms. Without the phrase
+    // terms a phrase-only prompt ("What is sexual immorality?") would pass empty
+    // keywords and silently skip the FTS half — leaving it vector-only, unlike its
+    // single-word equivalent which gets full KNN+FTS.
+    const keywords = [...signals.topicWords, ...(signals.phraseTerms ?? [])].join(" ");
+    plan.push(semanticCall(prompt, keywords, scope));
+  }
+
+  return plan;
 }
 
-export async function runRetrievalPlan(signals: Signals): Promise<EvidencePacket> {
-  const plan = buildPlan(signals);
+export async function runRetrievalPlan(
+  signals: Signals,
+  prompt = "",
+  semanticEnabled = true
+): Promise<EvidencePacket> {
+  const plan = buildPlan(signals, prompt, semanticEnabled);
   const citations: AssistantCitation[] = [];
   const toolTrace: ToolTraceEntry[] = [];
   const sections: string[] = [];

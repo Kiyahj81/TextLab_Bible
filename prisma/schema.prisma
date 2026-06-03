@@ -62,14 +62,27 @@ model Verse {
   /// Prisma drift detection accounts for the column.
   textSearch Unsupported("tsvector")?
 
-  corpus     Corpus      @relation(fields: [corpusId], references: [id])
-  book       Book        @relation(fields: [bookId], references: [id])
+  corpus     Corpus         @relation(fields: [corpusId], references: [id])
+  book       Book           @relation(fields: [bookId], references: [id])
   notes      Note[]
   highlights Highlight[]
+  embedding  VerseEmbedding?
 
   @@unique([corpusId, bookId, chapter, verse])
   @@index([bookId, chapter, verse])
   @@index([textSearch], type: Gin)
+}
+
+model VerseEmbedding {
+  verseId   String   @id
+  /// pgvector column. Never read through the typed client — KNN uses $queryRaw.
+  /// Declared so Prisma drift detection accounts for the column.
+  embedding Unsupported("vector(1536)")
+  model     String
+  textHash  String   @default("")
+  createdAt DateTime @default(now())
+
+  verse Verse @relation(fields: [verseId], references: [id], onDelete: Cascade)
 }
 
 model Token {

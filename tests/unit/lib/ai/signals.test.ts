@@ -35,6 +35,11 @@ describe("detectReferences", () => {
     expect(detectReferences("1 Cor 13")).toEqual([{ book: "1Cor", chapter: 13 }]);
   });
 
+  it("parses numbered John books before the Gospel of John", () => {
+    expect(detectReferences("1 John 4")).toEqual([{ book: "1John", chapter: 4 }]);
+    expect(detectReferences("2 John 1")).toEqual([{ book: "2John", chapter: 1 }]);
+  });
+
   it("parses John 3:16", () => {
     expect(detectReferences("John 3:16")).toEqual([{ book: "John", chapter: 3, verseStart: 16 }]);
   });
@@ -118,6 +123,10 @@ describe("detectTopicWords", () => {
     expect(detectTopicWords("What is the role of law in Romans?")).toEqual(["law"]);
   });
 
+  it("drops describe as a framing verb instead of a topic word", () => {
+    expect(detectTopicWords("How does Paul describe love?")).toEqual(["love"]);
+  });
+
   it("drops proper nouns and common verbs", () => {
     expect(detectTopicWords("How does Paul use πίστις?")).toEqual([]);
   });
@@ -125,9 +134,21 @@ describe("detectTopicWords", () => {
   it("keeps satan as a topic word so named-entity questions retrieve evidence", () => {
     expect(detectTopicWords("what does the bible teach about satan")).toContain("satan");
   });
+
+  it("keeps core biblical entities as retrievable topic words", () => {
+    expect(detectTopicWords("verses about Jesus and God in Jerusalem")).toEqual(["jesus", "god", "jerusalem"]);
+  });
 });
 
 describe("ENGLISH_TO_GREEK_LEMMA", () => {
+  it("maps core entity topics to SBLGNT lemma forms", () => {
+    expect(ENGLISH_TO_GREEK_LEMMA).toHaveProperty("jesus");
+    expect(ENGLISH_TO_GREEK_LEMMA).toHaveProperty("christ");
+    expect(ENGLISH_TO_GREEK_LEMMA).toHaveProperty("god");
+    expect(ENGLISH_TO_GREEK_LEMMA).toHaveProperty("lord");
+    expect(ENGLISH_TO_GREEK_LEMMA).toHaveProperty("jerusalem");
+  });
+
   it("maps satan and devil to their SBLGNT lemma forms", () => {
     expect(ENGLISH_TO_GREEK_LEMMA.satan).toBe("Σατανᾶς");
     expect(ENGLISH_TO_GREEK_LEMMA.devil).toBe("διάβολος");
@@ -198,14 +219,46 @@ describe("extractSignals", () => {
       topicWords: [],
       morphCodes: [],
       intent: "word-study",
-      book: "Rom"
+      book: "Rom",
+      phraseTerms: []
     });
   });
 
-  it("routes a phrase to a Greek lemma and drops its component words from topicWords", () => {
+  it("routes a phrase to a Greek lemma, exposes the English phrase term, and drops its component words from topicWords", () => {
     const signals = extractSignals("what does the bible teach about the second coming");
-    expect(signals.greekWords).toContain("παρουσία");
+    expect(signals.greekWords).toContain("παρουσία"); // Greek lemma → deterministic searchLemma
+    expect(signals.phraseTerms).toContain("second coming"); // English term → FTS keywords + gate
     expect(signals.topicWords).not.toContain("second");
     expect(signals.topicWords).not.toContain("coming");
+  });
+
+  it("resolves bare numbered-book prompts using the longest matching alias", () => {
+    const signals = extractSignals("love in 1 John");
+    expect(signals.book).toBe("1John");
+    expect(signals.topicWords).toEqual(["love"]);
+  });
+
+  it("removes parsed references and book labels before topic-word extraction", () => {
+    const signals = extractSignals("love in 1 Corinthians 13");
+    expect(signals.references).toEqual([{ book: "1Cor", chapter: 13 }]);
+    expect(signals.topicWords).toEqual(["love"]);
+  });
+
+  it("keeps entity-only topical prompts retrievable", () => {
+    const signals = extractSignals("verses about Jesus");
+    expect(signals.topicWords).toEqual(["jesus"]);
+    expect(signals.greekWords).toEqual([]);
+  });
+
+  it("removes explicit morphology codes before topic-word extraction", () => {
+    const signals = extractSignals("find V-PAI-3S forms in 1 Peter");
+    expect(signals.morphCodes).toEqual([{ code: "V-PAI-3S", mode: "exact" }]);
+    expect(signals.topicWords).toEqual([]);
+  });
+
+  it("preserves quoted English phrases as phrase terms for FTS", () => {
+    const signals = extractSignals('verses about "new creation"');
+    expect(signals.phraseTerms).toContain('"new creation"');
+    expect(signals.topicWords).toEqual([]);
   });
 });

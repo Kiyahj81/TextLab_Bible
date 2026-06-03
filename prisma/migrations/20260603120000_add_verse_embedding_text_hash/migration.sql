@@ -1,0 +1,2 @@
+ALTER TABLE "VerseEmbedding"
+  ADD COLUMN "textHash" TEXT NOT NULL DEFAULT '';

@@ -14,12 +14,14 @@
     "test:coverage": "vitest run --coverage",
     "verify": "npm run lint && npx tsc --noEmit --pretty false && npm run build && npm run test:coverage",
     "security:audit": "npm audit --audit-level=low",
-    "db:push": "prisma db push",
+    "db:push": "node -e \"console.error('db:push is disabled for this project; use npm run db:migrate:deploy so handwritten SQL migrations run.'); process.exit(1)\"",
     "db:migrate": "prisma migrate dev --name init",
+    "db:migrate:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
     "prisma:generate": "prisma generate",
-    "import:open-bible": "tsx scripts/import-open-bible.ts",
-    "import:macula-glosses": "tsx scripts/import-open-bible.ts --macula-greek-url https://raw.githubusercontent.com/Clear-Bible/macula-greek/main/SBLGNT/tsv/macula-greek-SBLGNT.tsv"
+    "import:open-bible": "tsx --env-file=.env scripts/import-open-bible.ts",
+    "import:macula-glosses": "tsx --env-file=.env scripts/import-open-bible.ts --macula-greek-url https://raw.githubusercontent.com/Clear-Bible/macula-greek/main/SBLGNT/tsv/macula-greek-SBLGNT.tsv",
+    "embed:verses": "tsx --env-file=.env scripts/embed-verses.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",

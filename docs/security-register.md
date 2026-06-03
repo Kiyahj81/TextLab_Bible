@@ -49,6 +49,19 @@ sprint and at every Next.js minor upgrade. Cross-check each open row.
 | Owner | Maintainer (kiyahj81) |
 | Opened | 2026-05-31 (assistant timeout/grounding fix) |
 
+### Phase 4a OpenAI embeddings endpoint (`text-embedding-3-small`)
+
+| Field | Value |
+| --- | --- |
+| Severity | Low (data-egress consideration) |
+| Change | Phase 4a sends query text (at search time) and WEB verse text (at ingest time) to OpenAI's embeddings API (`text-embedding-3-small`) via the existing `lib/ai/openaiClient.ts` shared client. |
+| Trust boundary | Same as the existing synthesis calls — OpenAI is already a trusted sub-processor. No new vendor or secret is introduced; the existing `OPENAI_API_KEY` is reused. |
+| Data sensitivity | WEB verse text is public domain. Query text is the same user prompt already sent to the synthesis model; no new user data category is exposed to OpenAI. |
+| Status | Accepted — same trust boundary as synthesis |
+| Mitigation | `embed:verses` ingestion is a one-time offline script run by the maintainer, not a per-request server path. The search-time embedding call (`embedQuery`) sends only the user's assistant prompt, already covered by the existing synthesis data-handling posture. |
+| Owner | Maintainer (kiyahj81) |
+| Opened | 2026-06-02 (Phase 4a vector + hybrid retrieval) |
+
 ### Phase 3 raw SQL surface in searchKeyword (`lib/search.ts`)
 
 | Field | Value |

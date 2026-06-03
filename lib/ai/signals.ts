@@ -25,11 +25,13 @@ export type Signals = {
   morphCodes: MorphSignal[];
   intent: Intent;
   book?: string;
-  // Greek lemmas derived from a matched English multi-word phrase (e.g. "sexual
-  // immorality" → πορνεία). A subset of greekWords, kept separately because the
-  // phrase's component words are stripped from topicWords — so this is the only
-  // signal that a phrase-only conceptual prompt carried a searchable concept.
-  phraseLemmas?: string[];
+  // Matched English multi-word phrase strings (e.g. "sexual immorality"). Kept
+  // separately because the phrase's component words are stripped from topicWords — so
+  // this is the only signal that a phrase-only conceptual prompt carried a searchable
+  // concept. It feeds BOTH the semantic gate and the FTS keywords (it is English, so
+  // it can anchor the WEB full-text half); the corresponding Greek lemmas live in
+  // greekWords and drive the deterministic searchLemma call.
+  phraseTerms?: string[];
 };
 
 // English Bible terms → Greek lemma. Used by the retrieval planner to turn a
@@ -96,6 +98,11 @@ export const ENGLISH_TO_GREEK_LEMMA: Readonly<Record<string, string>> = {
   fear: "φόβος",
   joy: "χαρά",
   works: "ἔργον",
+  jesus: "Ἰησοῦς",
+  christ: "Χριστός",
+  god: "θεός",
+  lord: "κύριος",
+  jerusalem: "Ἰερουσαλήμ",
   // Named adversary. Kept out of PROPER_NOUNS so named-entity questions ("what
   // does the Bible teach about satan/the devil") route to a precise SBLGNT lemma
   // search. searchLemma matches case-insensitively, so Σατανᾶς and the mixed-case
@@ -124,28 +131,38 @@ const STOP_WORDS: ReadonlySet<string> = new Set([
   "must", "this", "that", "these", "those", "it", "its", "he", "she", "they", "them", "his", "hers",
   "her", "him", "their", "theirs", "you", "your", "yours", "i", "me", "my", "mine", "we", "our", "us",
   "who", "whom", "whose", "what", "when", "where", "why", "how", "which", "there", "here", "relate",
-  "mean", "means", "meaning", "use", "used", "uses", "using", "show", "find", "tell", "read", "related",
+  "mean", "means", "meaning", "use", "used", "uses", "using", "describe", "show", "find", "tell", "read", "related",
   "give", "list", "explain", "compare", "difference", "between", "versus", "vs", "passage", "summary",
   "passages", "verse", "verses", "word", "words", "lemma", "lemmas", "term", "terms", "summarize",
   "say", "says", "said", "talk", "talks", "role", "way", "ways", "thing", "things", "every", "each",
   "not", "no", "yes", "all", "any", "some", "more", "most", "much", "many", "few", "such", "other",
   "very", "just", "only", "also", "too", "than", "like", "different", "senses", "sense", "bible",
+  "form", "forms", "verb", "verbs", "imperative", "imperatives", "participle", "participles",
+  "subjunctive", "subjunctives", "infinitive", "infinitives", "aorist", "tense", "grammar",
+  "grammatical", "parse",
 ]);
 
 // Proper nouns that should not be treated as topic search terms. Book names are
 // already excluded separately via the ntBooks alias set.
 const PROPER_NOUNS: ReadonlySet<string> = new Set([
-  "paul", "jesus", "christ", "peter", "simon", "moses", "david", "abraham", "isaac", "elijah",
-  "jacob", "mary", "joseph", "pilate", "herod", "caesar", "jerusalem", "israel", "egypt", "isaiah",
-  "judah", "judea", "galilee", "timothy", "barnabas", "judas", "philip", "lord", "god",
+  "paul", "peter", "simon", "moses", "david", "abraham", "isaac", "elijah",
+  "jacob", "mary", "joseph", "pilate", "herod", "caesar", "israel", "egypt", "isaiah",
+  "judah", "judea", "galilee", "timothy", "barnabas", "judas", "philip",
 ]);
 
-const BOOK_ALIASES: ReadonlySet<string> = new Set(
-  ntBooks.flatMap((book) => [book.osisId.toLowerCase(), ...book.aliases])
-);
+const BOOK_ALIAS_ENTRIES: ReadonlyArray<{ alias: string; osisId: string }> = ntBooks
+  .flatMap((book) =>
+    [book.osisId.toLowerCase(), ...book.aliases].map((alias) => ({
+      alias: alias.toLowerCase().replace(/\s+/g, " "),
+      osisId: book.osisId
+    }))
+  )
+  .sort((a, b) => b.alias.length - a.alias.length || a.alias.localeCompare(b.alias));
+
+const BOOK_ALIASES: ReadonlySet<string> = new Set(BOOK_ALIAS_ENTRIES.map((entry) => entry.alias));
 
 const ALIAS_TO_OSIS: ReadonlyMap<string, string> = new Map(
-  ntBooks.flatMap((book) => book.aliases.map((alias) => [alias, book.osisId] as const))
+  BOOK_ALIAS_ENTRIES.map((entry) => [entry.alias, entry.osisId] as const)
 );
 
 const MORPH_POS_LETTERS = "NVATRCDPIX";
@@ -160,11 +177,9 @@ function escapeRegExp(value: string): string {
 // re-exported from lib/ai/assistant for backward compatibility.
 export function detectBookFromPrompt(prompt: string): string | undefined {
   const lower = prompt.toLowerCase();
-  for (const book of ntBooks) {
-    for (const alias of book.aliases) {
-      const pattern = new RegExp(`(^|[^a-z0-9])${escapeRegExp(alias)}([^a-z0-9]|$)`, "i");
-      if (pattern.test(lower)) return book.osisId;
-    }
+  for (const { alias, osisId } of BOOK_ALIAS_ENTRIES) {
+    const pattern = new RegExp(`(^|[^a-z0-9])${escapeRegExp(alias)}([^a-z0-9]|$)`, "i");
+    if (pattern.test(lower)) return osisId;
   }
   return undefined;
 }
@@ -177,6 +192,11 @@ const REFERENCE_REGEX = (() => {
     `(?<![a-z0-9])(${aliases.join("|")})\\s+(\\d+)(?::(\\d+)(?:\\s*[-\\u2013\\u2014]\\s*(?:(\\d+):)?(\\d+))?)?`,
     "gi"
   );
+})();
+
+const BOOK_ALIAS_REGEX = (() => {
+  const aliases = BOOK_ALIAS_ENTRIES.map((entry) => escapeRegExp(entry.alias));
+  return new RegExp(`(?<![a-z0-9])(?:${aliases.join("|")})(?![a-z0-9])`, "gi");
 })();
 
 export function detectReferences(prompt: string): ParsedReference[] {
@@ -211,6 +231,14 @@ export function detectGreekWords(prompt: string): string[] {
 
 const MORPH_CODE_REGEX = new RegExp(`\\b[${MORPH_POS_LETTERS}]-[A-Z0-9]+(?:-[A-Z0-9]+)*\\b`, "g");
 
+function stripMorphCodes(prompt: string): string {
+  return prompt.replace(MORPH_CODE_REGEX, " ");
+}
+
+function stripReferencesAndBookAliases(prompt: string): string {
+  return prompt.replace(REFERENCE_REGEX, " ").replace(BOOK_ALIAS_REGEX, " ");
+}
+
 export function detectMorphCodes(prompt: string): MorphSignal[] {
   const seen = new Set<string>();
   const out: MorphSignal[] = [];
@@ -242,31 +270,57 @@ export function detectTopicWords(prompt: string): string[] {
 
 // Precompiled phrase matchers. Anchored so a phrase embedded in a larger word does
 // not match (no alphanumerics on either side); internal whitespace is flexible.
-const PHRASE_PATTERNS: ReadonlyArray<{ source: string; lemma: string }> = Object.entries(
+const PHRASE_PATTERNS: ReadonlyArray<{ source: string; phrase: string; lemma: string }> = Object.entries(
   ENGLISH_PHRASE_TO_GREEK_LEMMA
 ).map(([phrase, lemma]) => ({
   source: `(?<![a-z0-9])${phrase.split(/\s+/).map(escapeRegExp).join("\\s+")}(?![a-z0-9])`,
+  phrase,
   lemma
 }));
 
-type PhraseMatch = { lemmas: string[]; cleaned: string };
+type PhraseMatch = { lemmas: string[]; terms: string[]; cleaned: string };
 
 // Scan the raw prompt for known multi-word phrases, returning the deduped Greek
-// lemmas and a copy of the prompt with matched phrases blanked out — so their
-// component words are not also picked up as standalone topic words.
+// lemmas, the matched English phrase strings (`terms`), and a copy of the prompt with
+// matched phrases blanked out — so their component words are not also picked up as
+// standalone topic words. `terms` is the FTS-usable English text (the lemmas are Greek
+// and only drive the deterministic searchLemma / semantic gate).
 function matchPhrases(prompt: string): PhraseMatch {
   const lemmas: string[] = [];
-  const seen = new Set<string>();
+  const terms: string[] = [];
+  const seenLemma = new Set<string>();
+  const seenTerm = new Set<string>();
   let cleaned = prompt;
-  for (const { source, lemma } of PHRASE_PATTERNS) {
-    if (!new RegExp(source, "i").test(prompt)) continue;
-    if (!seen.has(lemma)) {
-      seen.add(lemma);
-      lemmas.push(lemma);
-    }
+
+  const addLemma = (lemma: string) => {
+    if (seenLemma.has(lemma)) return;
+    seenLemma.add(lemma);
+    lemmas.push(lemma);
+  };
+
+  const addTerm = (term: string) => {
+    if (seenTerm.has(term)) return;
+    seenTerm.add(term);
+    terms.push(term);
+  };
+
+  cleaned = cleaned.replace(/"([^"]+)"/g, (_match, rawPhrase: string) => {
+    const phrase = rawPhrase.trim().replace(/\s+/g, " ");
+    if (phrase.split(/\s+/).filter(Boolean).length < 2) return " ";
+    const normalized = phrase.toLowerCase();
+    addTerm(`"${normalized}"`);
+    const lemma = ENGLISH_PHRASE_TO_GREEK_LEMMA[normalized];
+    if (lemma) addLemma(lemma);
+    return " ";
+  });
+
+  for (const { source, phrase, lemma } of PHRASE_PATTERNS) {
+    if (!new RegExp(source, "i").test(cleaned)) continue;
+    addLemma(lemma);
+    addTerm(phrase);
     cleaned = cleaned.replace(new RegExp(source, "gi"), " ");
   }
-  return { lemmas, cleaned };
+  return { lemmas, terms, cleaned };
 }
 
 export function detectPhraseLemmas(prompt: string): string[] {
@@ -305,14 +359,16 @@ export function extractSignals(prompt: string): Signals {
   // to a precise lemma search. Topic words are extracted from the phrase-stripped
   // prompt so a matched phrase's component words don't also fire as standalone
   // keyword searches.
+  const references = detectReferences(prompt);
   const phrases = matchPhrases(prompt);
+  const topicSource = stripReferencesAndBookAliases(stripMorphCodes(phrases.cleaned));
   return {
-    references: detectReferences(prompt),
+    references,
     greekWords: [...detectGreekWords(prompt), ...phrases.lemmas],
-    topicWords: detectTopicWords(phrases.cleaned),
+    topicWords: detectTopicWords(topicSource),
     morphCodes: detectMorphCodes(prompt),
     intent: detectIntent(prompt),
     book: detectBookFromPrompt(prompt),
-    phraseLemmas: phrases.lemmas
+    phraseTerms: phrases.terms
   };
 }

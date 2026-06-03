@@ -11,7 +11,7 @@ vi.mock("@/lib/db", () => ({ prisma: prismaMock }));
 const { getOpenAiMock } = vi.hoisted(() => ({ getOpenAiMock: vi.fn() }));
 vi.mock("@/lib/ai/openaiClient", () => ({ getOpenAi: getOpenAiMock }));
 
-import { formatVectorLiteral, spineKey, filterToSblSpine } from "@/lib/search";
+import { EMBEDDING_MODEL, embeddingTextHash, formatVectorLiteral, spineKey, filterToSblSpine } from "@/lib/search";
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -44,6 +44,13 @@ describe("filterToSblSpine", () => {
     ]);
     expect(set.has("John|1|1")).toBe(true);
     expect(set.has("John|1|2")).toBe(false);
+  });
+});
+
+describe("embeddingTextHash", () => {
+  it("normalizes surrounding whitespace and changes when verse text changes", () => {
+    expect(embeddingTextHash(" In the beginning ")).toBe(embeddingTextHash("In the beginning"));
+    expect(embeddingTextHash("In the beginning")).not.toBe(embeddingTextHash("In the end"));
   });
 });
 
@@ -93,5 +100,35 @@ describe("searchSemantic", () => {
 
     expect(prismaMock.$queryRaw).toHaveBeenCalledTimes(2); // vector + FTS
     expect(out.map((r) => r.reference)).toEqual(["Eph 2:16"]);
+  });
+
+  it("filters vector KNN rows to the current embedding model", async () => {
+    getOpenAiMock.mockReturnValue(fakeClient([0.1, 0.2, 0.3]));
+    prismaMock.$queryRaw.mockResolvedValueOnce([]);
+    prismaMock.verse.findMany.mockResolvedValueOnce([]);
+
+    await searchSemantic({ query: "reconciliation" });
+
+    const sql = JSON.stringify(prismaMock.$queryRaw.mock.calls[0]);
+    expect(sql).toContain("model");
+    expect(sql).toContain(EMBEDDING_MODEL);
+  });
+
+  it("applies a chapter-equality filter to the SQL only when a chapter is provided", async () => {
+    // matches the filter clause v."chapter" = $n, but NOT the SELECT's v."chapter" AS chapter
+    const chapterFilter = /chapter\\?"?\s*=/i;
+
+    getOpenAiMock.mockReturnValue(fakeClient([0.1, 0.2, 0.3]));
+    prismaMock.$queryRaw.mockResolvedValue([]);
+    prismaMock.verse.findMany.mockResolvedValue([]);
+    await searchSemantic({ query: "love", book: "John", chapter: 3 });
+    expect(JSON.stringify(prismaMock.$queryRaw.mock.calls[0])).toMatch(chapterFilter);
+
+    vi.clearAllMocks();
+    getOpenAiMock.mockReturnValue(fakeClient([0.1, 0.2, 0.3]));
+    prismaMock.$queryRaw.mockResolvedValue([]);
+    prismaMock.verse.findMany.mockResolvedValue([]);
+    await searchSemantic({ query: "love", book: "John" });
+    expect(JSON.stringify(prismaMock.$queryRaw.mock.calls[0])).not.toMatch(chapterFilter);
   });
 });

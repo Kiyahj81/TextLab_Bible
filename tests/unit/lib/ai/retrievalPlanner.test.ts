@@ -267,6 +267,54 @@ describe("runRetrievalPlan", () => {
     expect(searchLemma.mock.calls[0][0].book).toBe("2Cor");
   });
 
+  it("book-scopes term searches for multiple references in the same book", async () => {
+    await runRetrievalPlan({
+      ...emptySignals,
+      references: [
+        { book: "John", chapter: 3 },
+        { book: "John", chapter: 15 }
+      ],
+      topicWords: ["donkey"],
+      intent: "comparison",
+      book: "John"
+    });
+
+    expect(searchKeyword.mock.calls[0][0]).toEqual(expect.objectContaining({ query: "donkey", book: "John" }));
+    expect(searchKeyword.mock.calls[0][0].chapter).toBeUndefined();
+  });
+
+  it("does not silently scope term searches to the first book for multi-book prompts", async () => {
+    await runRetrievalPlan({
+      ...emptySignals,
+      references: [
+        { book: "Rom", chapter: 5 },
+        { book: "1Cor", chapter: 13 }
+      ],
+      topicWords: ["donkey"],
+      intent: "comparison",
+      book: "Rom"
+    });
+
+    expect(searchKeyword.mock.calls[0][0]).toEqual(expect.objectContaining({ query: "donkey" }));
+    expect(searchKeyword.mock.calls[0][0].book).toBeUndefined();
+    expect(searchKeyword.mock.calls[0][0].chapter).toBeUndefined();
+  });
+
+  it("keeps explicit morphology prompts out of keyword and semantic search when no topic remains", async () => {
+    await runRetrievalPlan({
+      ...emptySignals,
+      morphCodes: [{ code: "V-PAI-3S", mode: "exact" }],
+      intent: "morphology",
+      book: "1Pet"
+    });
+
+    expect(searchMorphology).toHaveBeenCalledWith(
+      expect.objectContaining({ morphCode: "V-PAI-3S", matchMode: "exact", book: "1Pet" })
+    );
+    expect(searchKeyword).not.toHaveBeenCalled();
+    expect(searchSemantic).not.toHaveBeenCalled();
+  });
+
   it("returns all word hits when the count is at or below the sample size", async () => {
     searchLemma.mockResolvedValueOnce({
       lemma: "λόγος",
@@ -486,14 +534,14 @@ describe("shouldRunSemantic", () => {
     expect(shouldRunSemantic(base)).toBe(false);
   });
 
-  it("fires on a phrase-only concept regardless of intent (phrase lemma present)", () => {
+  it("fires on a phrase-only concept regardless of intent (phrase term present)", () => {
     // "What is sexual immorality?" / "verses about sexual immorality": the matched
-    // phrase is stripped from topicWords but recorded in phraseLemmas.
-    expect(shouldRunSemantic({ ...base, intent: "general", phraseLemmas: ["πορνεία"] })).toBe(true);
-    expect(shouldRunSemantic({ ...base, intent: "topic-survey", phraseLemmas: ["πορνεία"] })).toBe(true);
+    // phrase is stripped from topicWords but recorded in phraseTerms.
+    expect(shouldRunSemantic({ ...base, intent: "general", phraseTerms: ["sexual immorality"] })).toBe(true);
+    expect(shouldRunSemantic({ ...base, intent: "topic-survey", phraseTerms: ["sexual immorality"] })).toBe(true);
   });
 
-  it("does not fire on a termless prompt with no topic words or phrase lemmas", () => {
+  it("does not fire on a termless prompt with no topic words or phrase terms", () => {
     // A bare book survey ("themes in Hebrews") routes to getTopLemmas instead.
     expect(shouldRunSemantic({ ...base, intent: "topic-survey", book: "Heb" })).toBe(false);
   });
@@ -502,7 +550,7 @@ describe("shouldRunSemantic", () => {
     expect(
       shouldRunSemantic({
         ...base,
-        phraseLemmas: ["πορνεία"],
+        phraseTerms: ["sexual immorality"],
         references: [{ book: "1Cor", chapter: 6, verseStart: 18 }]
       })
     ).toBe(false);
@@ -621,6 +669,40 @@ describe("semanticCall via runRetrievalPlan", () => {
 
     expect(evidence.formattedEvidence).toContain("Acts 8:36, WEB:");
     expect(evidence.formattedEvidence).not.toContain("Acts 8:37"); // WEB-only neighbor dropped
+  });
+
+  it("forwards the English phrase as FTS keywords for a phrase-only prompt (hybrid, not vector-only)", async () => {
+    searchSemantic.mockResolvedValueOnce([]);
+    await runRetrievalPlan(
+      { references: [], greekWords: ["πορνεία"], topicWords: [], morphCodes: [], intent: "general", phraseTerms: ["sexual immorality"] },
+      "What is sexual immorality?"
+    );
+    expect(searchSemantic).toHaveBeenCalledWith(
+      expect.objectContaining({ query: "What is sexual immorality?", keywords: "sexual immorality" })
+    );
+  });
+
+  it("preserves quoted phrase terms in semantic FTS keywords", async () => {
+    searchSemantic.mockResolvedValueOnce([]);
+    await runRetrievalPlan(
+      { references: [], greekWords: [], topicWords: [], morphCodes: [], intent: "topic-survey", phraseTerms: ['"new creation"'] },
+      'verses about "new creation"'
+    );
+
+    expect(searchSemantic).toHaveBeenCalledWith(
+      expect.objectContaining({ query: 'verses about "new creation"', keywords: '"new creation"' })
+    );
+  });
+
+  it("threads chapter scope into semantic search for a single-bare-chapter prompt", async () => {
+    searchSemantic.mockResolvedValueOnce([]);
+    await runRetrievalPlan(
+      { references: [{ book: "John", chapter: 3 }], greekWords: [], topicWords: ["love"], morphCodes: [], intent: "passage-study" },
+      "verses about love in John 3"
+    );
+    expect(searchSemantic).toHaveBeenCalledWith(
+      expect.objectContaining({ book: "John", chapter: 3, keywords: "love" })
+    );
   });
 
   it("preserves all deterministic slots when semantic is enabled but returns no hits (degraded index)", async () => {

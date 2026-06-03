@@ -7,6 +7,7 @@
 // DATABASE_URL from the environment. To target a different DB (e.g. a Neon test
 // branch), run `tsx --env-file=.env.test scripts/embed-verses.ts`.
 import { PrismaClient, Prisma } from "@prisma/client";
+import { createHash } from "node:crypto";
 import OpenAI from "openai";
 
 const prisma = new PrismaClient();
@@ -16,6 +17,10 @@ const BATCH = 100;
 
 function vectorLiteral(vector: number[]): string {
   return `[${vector.join(",")}]`;
+}
+
+function embeddingTextHash(text: string): string {
+  return createHash("sha256").update(text.trim(), "utf8").digest("hex");
 }
 
 async function main() {
@@ -28,21 +33,17 @@ async function main() {
   // backoff rides out transient 429/5xx bursts instead of aborting the whole run.
   const client = new OpenAI({ apiKey, maxRetries: 6 });
 
-  // Idempotent/resumable: only verses in the index corpus with no embedding row.
-  // NOTE (staleness caveat): this selects verses lacking ANY embedding row; it does
-  // NOT detect verses whose WEB text changed after embedding. WEB is stable
-  // public-domain text and is rarely re-imported, so text-version tracking is out of
-  // scope here. If the WEB source is re-imported, force a full re-embed with:
-  //   DELETE FROM "VerseEmbedding";  -- then: npm run embed:verses
-  // (the same applies when switching the embedding model). See the Phase 4a spec.
-  const pending = await prisma.$queryRaw<{ id: string; text: string }[]>(Prisma.sql`
-    SELECT v."id" AS id, v."text" AS text
+  // Idempotent/resumable: re-embed when the row is missing, the embedding model
+  // changed, or the indexed WEB text changed since the embedding was written.
+  const candidates = await prisma.$queryRaw<{ id: string; text: string; model: string | null; textHash: string | null }[]>(Prisma.sql`
+    SELECT v."id" AS id, v."text" AS text, e."model" AS model, e."textHash" AS "textHash"
     FROM "Verse" v
     JOIN "Corpus" c ON c."id" = v."corpusId"
     LEFT JOIN "VerseEmbedding" e ON e."verseId" = v."id"
-    WHERE c."abbreviation" = ${SEMANTIC_INDEX_CORPUS} AND e."verseId" IS NULL
+    WHERE c."abbreviation" = ${SEMANTIC_INDEX_CORPUS}
     ORDER BY v."id"
   `);
+  const pending = candidates.filter((v) => v.model !== MODEL || v.textHash !== embeddingTextHash(v.text));
 
   const embeddable = pending.filter((v) => v.text.trim().length > 0);
   const skipped = pending.length - embeddable.length;
@@ -52,14 +53,18 @@ async function main() {
 
   for (let i = 0; i < embeddable.length; i += BATCH) {
     const batch = embeddable.slice(i, i + BATCH);
-    const res = await client.embeddings.create({ model: MODEL, input: batch.map((b) => b.text) });
+    const res = await client.embeddings.create({ model: MODEL, input: batch.map((b) => b.text.trim()) });
     for (let j = 0; j < batch.length; j++) {
       const vec = vectorLiteral(res.data[j].embedding);
+      const textHash = embeddingTextHash(batch[j].text);
       await prisma.$executeRaw(Prisma.sql`
-        INSERT INTO "VerseEmbedding" ("verseId", "embedding", "model", "createdAt")
-        VALUES (${batch[j].id}, ${vec}::vector, ${MODEL}, now())
+        INSERT INTO "VerseEmbedding" ("verseId", "embedding", "model", "textHash", "createdAt")
+        VALUES (${batch[j].id}, ${vec}::vector, ${MODEL}, ${textHash}, now())
         ON CONFLICT ("verseId") DO UPDATE
-          SET "embedding" = EXCLUDED."embedding", "model" = EXCLUDED."model", "createdAt" = now()
+          SET "embedding" = EXCLUDED."embedding",
+              "model" = EXCLUDED."model",
+              "textHash" = EXCLUDED."textHash",
+              "createdAt" = now()
       `);
     }
     console.log(`  ${Math.min(i + BATCH, embeddable.length)}/${embeddable.length}`);

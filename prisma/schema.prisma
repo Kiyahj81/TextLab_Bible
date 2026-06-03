@@ -79,6 +79,7 @@ model VerseEmbedding {
   /// Declared so Prisma drift detection accounts for the column.
   embedding Unsupported("vector(1536)")
   model     String
+  textHash  String   @default("")
   createdAt DateTime @default(now())
 
   verse Verse @relation(fields: [verseId], references: [id], onDelete: Cascade)

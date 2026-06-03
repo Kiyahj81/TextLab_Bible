@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { createHash } from "node:crypto";
 import { prisma } from "@/lib/db";
 import { bookName, formatReference, normalizeBook } from "@/lib/references";
 import { getOpenAi } from "@/lib/ai/openaiClient";
@@ -35,6 +36,10 @@ export type Citation = {
 // translations added later are display-only, resolved by reference (see spec).
 export const SEMANTIC_INDEX_CORPUS = "WEB" as const;
 export const EMBEDDING_MODEL = "text-embedding-3-small";
+
+export function embeddingTextHash(text: string): string {
+  return createHash("sha256").update(text.trim(), "utf8").digest("hex");
+}
 
 // Render a JS number[] as a pgvector text literal: "[0.1,0.2,...]".
 export function formatVectorLiteral(vector: number[]): string {
@@ -81,6 +86,7 @@ export async function searchSemantic(input: {
   query: string;
   keywords?: string;
   book?: string;
+  chapter?: number;
   limit?: number;
 }): Promise<RankedRef[]> {
   const query = input.query.trim();
@@ -92,7 +98,11 @@ export async function searchSemantic(input: {
   const limit = Math.max(1, Math.min(input.limit ?? 5, 25));
   const POOL = 30;
   const vec = formatVectorLiteral(vector);
+  // Scope both halves identically to the deterministic calls: optional book, and —
+  // when the prompt names a single bare chapter — that chapter, so semantic hits don't
+  // bleed in from other chapters.
   const bookFilter = book ? Prisma.sql`AND b."osisId" = ${book}` : Prisma.empty;
+  const chapterFilter = input.chapter !== undefined ? Prisma.sql`AND v."chapter" = ${input.chapter}` : Prisma.empty;
 
   const vectorRows = await prisma.$queryRaw<SemanticRow[]>(Prisma.sql`
     SELECT b."osisId" AS "osisId", v."chapter" AS chapter, v."verse" AS verse, v."text" AS text
@@ -100,7 +110,9 @@ export async function searchSemantic(input: {
     JOIN "Verse" v ON v."id" = e."verseId"
     JOIN "Book" b ON b."id" = v."bookId"
     JOIN "Corpus" c ON c."id" = v."corpusId"
-    WHERE c."abbreviation" = ${SEMANTIC_INDEX_CORPUS} ${bookFilter}
+    WHERE c."abbreviation" = ${SEMANTIC_INDEX_CORPUS}
+      AND e."model" = ${EMBEDDING_MODEL}
+      ${bookFilter} ${chapterFilter}
     ORDER BY e."embedding" <=> ${vec}::vector
     LIMIT ${POOL}
   `);
@@ -114,7 +126,7 @@ export async function searchSemantic(input: {
       FROM "Verse" v
       JOIN "Book" b ON b."id" = v."bookId"
       JOIN "Corpus" c ON c."id" = v."corpusId"
-      WHERE c."abbreviation" = ${SEMANTIC_INDEX_CORPUS} ${bookFilter}
+      WHERE c."abbreviation" = ${SEMANTIC_INDEX_CORPUS} ${bookFilter} ${chapterFilter}
         AND v."textSearch" @@ ${tsquery}
       ORDER BY ts_rank(v."textSearch", ${tsquery}) DESC
       LIMIT ${POOL}

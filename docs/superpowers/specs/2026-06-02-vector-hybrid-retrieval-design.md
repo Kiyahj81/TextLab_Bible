@@ -76,16 +76,18 @@ New in `lib/search.ts`:
 
 - `embedQuery(text): Promise<number[] | null>` — one `text-embedding-3-small` call via the shared
   `getOpenAi()` client. Returns `null` when no API key is set (graceful degradation).
-- `searchSemantic({ query, keywords?, book?, limit })` — embeds **`query`** (the full natural-language
-  prompt) for the vector KNN (`$queryRaw`, `embedding <=> $1::vector` cosine distance, all values bound as
-  parameters — no interpolation), **and** runs a parallel FTS pass over **`keywords`** (the distilled
-  lexical topic words), then RRF-fuses the two rank lists. Returns a fused, ranked list of
-  `{ corpus: SEMANTIC_INDEX_CORPUS, reference, text }`. Returns `[]` when `embedQuery` is null.
+- `searchSemantic({ query, keywords?, book?, chapter?, limit })` — embeds **`query`** (the full
+  natural-language prompt) for the vector KNN (`$queryRaw`, `embedding <=> $1::vector` cosine distance,
+  all values bound as parameters — no interpolation), **and** runs a parallel FTS pass over **`keywords`**
+  (the distilled lexical terms), then RRF-fuses the two rank lists. Both halves apply the optional `book`
+  and `chapter` filters so semantic retrieval honors the same scope as the deterministic calls (a prompt
+  like "verses about love in John 3" must not pull semantic hits from other chapters). Returns a fused,
+  ranked list of `{ corpus: SEMANTIC_INDEX_CORPUS, reference, text }`. Returns `[]` when `embedQuery` is null.
   - **Why two different inputs.** `bible_simple` is a clone of `simple` and therefore *retains
     stopwords*. An FTS `websearch_to_tsquery` over the full prompt would AND every word (including
-    "what"/"does"/"about") and match nothing, so the FTS half uses the distilled `keywords`
-    (`signals.topicWords`) instead. The vector half, by contrast, benefits from the full natural-language
-    phrasing. When `keywords` is empty the FTS half is skipped and RRF degrades to vector-only.
+    "what"/"does"/"about") and match nothing, so the FTS half uses the distilled `keywords` instead. The
+    vector half, by contrast, benefits from the full natural-language phrasing. When `keywords` is empty
+    the FTS half is skipped and RRF degrades to vector-only.
   - **SBL-spine filter (required).** Before returning, drop any hit whose `(book, chapter, verse)` has
     no SBLGNT row. The semantic index is WEB, so KNN can surface a verse that exists in WEB but not in
     the SBLGNT spine (critical-text "missing verses" — e.g. Acts 8:37, Mark 15:28 — or other verse-set
@@ -146,13 +148,18 @@ query cannot blow the evidence budget.
 
 **Query embedded = the full natural-language prompt; FTS half = distilled keywords.** `semanticCall`
 passes the user's whole prompt (e.g. "What does Paul say about reconciliation") as `query` (embedded for
-the vector half) and `signals.topicWords` joined as `keywords` (the FTS half). Embeddings handle natural
-phrasing well and the surrounding context (e.g. "Paul") is meaningful semantic signal, whereas the FTS
-half must use distilled keywords because `bible_simple` retains stopwords (see §3). This requires
-threading the raw prompt into the planner: `runRetrievalPlan(signals, prompt)` and `buildPlan(signals,
-prompt)` (prompt defaults to `""`, so existing callers/tests are unaffected and an empty prompt simply
-yields no embedding). This is also a deliberate contrast with `lemmaCall`, which searches the mapped
-*Greek* lemma — different inputs, complementary result sets.
+the vector half) and the distilled lexical terms as `keywords` (the FTS half). `keywords` =
+`signals.topicWords` **plus `signals.phraseTerms`** (the matched English phrase strings, e.g. "sexual
+immorality") — critically including `phraseTerms`, because a phrase-only prompt ("What is sexual
+immorality?") has empty `topicWords`, so without them the FTS half would receive `""` and silently run
+vector-only, unlike its single-word equivalent. (The corresponding *Greek* phrase lemmas live in
+`greekWords` and drive the deterministic `lemmaCall`; `keywords` must be English to anchor the WEB FTS.)
+Embeddings handle natural phrasing well and the surrounding context (e.g. "Paul") is meaningful semantic
+signal, whereas the FTS half must use distilled keywords because `bible_simple` retains stopwords (see §3).
+This requires threading the raw prompt into the planner: `runRetrievalPlan(signals, prompt)` and
+`buildPlan(signals, prompt)` (prompt defaults to `""`, so existing callers/tests are unaffected and an
+empty prompt simply yields no embedding). This is also a deliberate contrast with `lemmaCall`, which
+searches the mapped *Greek* lemma — different inputs, complementary result sets.
 
 **Semantic search is NOT suppressed when a topic word maps to a known lemma.** A prompt like "What does
 Paul say about reconciliation" intentionally fires *both* `lemmaCall(καταλλαγή)` (precise Greek

@@ -46,14 +46,20 @@ const SEMANTIC_WINDOW = 2;
 
 type Scope = { book?: string; chapter?: number };
 
-// A single, single-chapter reference scopes word searches to that chapter. A
-// cross-chapter reference, multiple references, or none falls back to book scope
-// (or corpus-wide if no book is detected).
+// A single, single-chapter reference scopes word searches to that chapter.
+// Multiple references only retain book scope when all refs are in the same book;
+// cross-book comparisons stay corpus-wide instead of inheriting the first book.
 function scopeFor(signals: Signals): Scope {
   if (signals.references.length === 1) {
     const ref = signals.references[0];
     const singleChapter = ref.chapterEnd === undefined || ref.chapterEnd === ref.chapter;
     if (singleChapter) return { book: ref.book, chapter: ref.chapter };
+    return { book: ref.book };
+  }
+  if (signals.references.length > 1) {
+    const books = new Set(signals.references.map((ref) => ref.book));
+    if (books.size === 1) return { book: signals.references[0].book };
+    return {};
   }
   return signals.book ? { book: signals.book } : {};
 }
@@ -319,13 +325,13 @@ function topLemmasCall(book: string): PlannedCall {
 // Fire semantic search only for conceptual prompts that carry an actual concept term:
 // either extracted topic words, or a mapped multi-word phrase. The phrase case matters
 // because extractSignals strips a matched phrase before computing topicWords (leaving
-// none) but records its lemma in phraseLemmas — so a phrase-only prompt of ANY intent
-// ("What is sexual immorality?", "verses about sexual immorality") still gets hybrid
-// recall, matching how the single-word equivalent ("What is reconciliation?") behaves.
-// A bare, termless book survey ("themes in Hebrews") has neither and stays on the
-// deterministic getTopLemmas path instead of issuing an empty semantic call.
+// none) but records its English text in phraseTerms — so a phrase-only prompt of ANY
+// intent ("What is sexual immorality?", "verses about sexual immorality") still gets
+// hybrid recall, matching how the single-word equivalent ("What is reconciliation?")
+// behaves. A bare, termless book survey ("themes in Hebrews") has neither and stays on
+// the deterministic getTopLemmas path instead of issuing an empty semantic call.
 export function shouldRunSemantic(signals: Signals): boolean {
-  const conceptual = signals.topicWords.length > 0 || (signals.phraseLemmas?.length ?? 0) > 0;
+  const conceptual = signals.topicWords.length > 0 || (signals.phraseTerms?.length ?? 0) > 0;
   if (!conceptual) return false;
   // Skip semantic search when the prompt is fully pinned to specific verses — a
   // pinpointed lookup (one or more exact verse references) is better served by the
@@ -364,17 +370,21 @@ async function expandOnSpineWindow(
 function semanticCall(prompt: string, keywords: string, scope: Scope): PlannedCall {
   // Record `keywords` (the FTS half's query) in the trace so the grounding context
   // and user-visible tool-trace reflect that a keyword FTS pass ran alongside KNN.
-  const args: { query: string; keywords?: string; book?: string } = { query: prompt };
+  const args: { query: string; keywords?: string; book?: string; chapter?: number } = { query: prompt };
   if (keywords) args.keywords = keywords;
   if (scope.book) args.book = scope.book;
+  if (scope.chapter !== undefined) args.chapter = scope.chapter;
   return {
-    key: `semantic:${scope.book ?? ""}`,
+    key: `semantic:${scope.book ?? ""}|${scope.chapter ?? ""}`,
     errorTrace: { tool: "searchSemantic", args },
     run: async () => {
       const hits = await searchSemantic({
         query: prompt,
         keywords,
         book: scope.book,
+        // Honor the same chapter scope as the deterministic calls: a prompt like
+        // "verses about love in John 3" must not pull semantic hits from other chapters.
+        chapter: scope.chapter,
         limit: SEMANTIC_HIT_LIMIT
       });
       const lines: string[] = [];
@@ -448,7 +458,12 @@ function buildPlan(signals: Signals, prompt: string, semanticEnabled: boolean): 
   // when the index is degraded. As a separate slot it can do neither; an empty result
   // simply contributes no section. Total evidence stays bounded by MAX_EVIDENCE_CHARS.
   if (semanticEnabled && shouldRunSemantic(signals)) {
-    plan.push(semanticCall(prompt, signals.topicWords.join(" "), scope));
+    // FTS keywords = topic words PLUS matched English phrase terms. Without the phrase
+    // terms a phrase-only prompt ("What is sexual immorality?") would pass empty
+    // keywords and silently skip the FTS half — leaving it vector-only, unlike its
+    // single-word equivalent which gets full KNN+FTS.
+    const keywords = [...signals.topicWords, ...(signals.phraseTerms ?? [])].join(" ");
+    plan.push(semanticCall(prompt, keywords, scope));
   }
 
   return plan;

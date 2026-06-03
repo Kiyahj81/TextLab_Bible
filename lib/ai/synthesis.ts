@@ -36,7 +36,15 @@ and a "claims" array. For EVERY textual claim, add one entry with the SBLGNT
 "reference", the exact "greekQuote" from that verse (or null), a literal "gloss"
 (or null), and an optional "englishQuote" quoted verbatim from WEB as a labeled
 readable aid (or null). Citations are always anchored to the SBLGNT (Greek)
-source. Never invent lexicon entries, manuscript evidence, or scholarly
+source.
+
+When producing greekQuote values, copy the Greek exactly as it appears in the
+retrieved SBLGNT evidence, including text-critical sigla, brackets, dots,
+accents, breathing marks, punctuation, and repeated words. If you intentionally
+omit intervening Greek text, use an ellipsis (...) between exact copied
+fragments. Do not smooth, normalize, or paraphrase Greek quotes.
+
+Never invent lexicon entries, manuscript evidence, or scholarly
 citations.`;
 
 const REFINEMENT_TOOL = {

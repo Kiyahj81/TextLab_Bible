@@ -41,6 +41,17 @@ afterEach(() => {
   vi.resetModules();
 });
 
+describe("SYNTHESIS_SYSTEM_PROMPT", () => {
+  it("requires exact Greek quotes or ellipses so grounding can verify SBLGNT sigla", async () => {
+    const { SYNTHESIS_SYSTEM_PROMPT } = await import("@/lib/ai/synthesis");
+
+    expect(SYNTHESIS_SYSTEM_PROMPT).toContain("copy the Greek exactly");
+    expect(SYNTHESIS_SYSTEM_PROMPT).toContain("text-critical sigla");
+    expect(SYNTHESIS_SYSTEM_PROMPT).toContain("use an ellipsis");
+    expect(SYNTHESIS_SYSTEM_PROMPT).toContain("Do not smooth, normalize, or paraphrase Greek quotes.");
+  });
+});
+
 describe("synthesizeWithRefinement", () => {
   it("returns the model answer directly when no tool calls are emitted", async () => {
     vi.stubEnv("OPENAI_API_KEY", "key");

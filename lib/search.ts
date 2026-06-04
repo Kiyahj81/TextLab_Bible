@@ -78,6 +78,8 @@ type SemanticRow = { osisId: string; chapter: number; verse: number; text: strin
 // [] when no OpenAI client (embedQuery null).
 // Architecture-doc top-30 → top-5: cap the reranker input to 30 candidates.
 // onSpine can exceed 30 (up to 30 vector + 30 FTS rows fused), so cap explicitly.
+// Set `rerank: false` to skip the Voyage rerank stage and return the RRF-ordered slice
+// (used by the rerank-diff harness); the default reranks when `AI_GATEWAY_API_KEY` is set.
 const RERANK_CANDIDATE_LIMIT = 30;
 
 export async function searchSemantic(input: {

@@ -127,7 +127,7 @@ describe("searchSemantic", () => {
     await searchSemantic({ query: "love", book: "John", chapter: 3 });
     expect(JSON.stringify(prismaMock.$queryRaw.mock.calls[0])).toMatch(chapterFilter);
 
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     getOpenAiMock.mockReturnValue(fakeClient([0.1, 0.2, 0.3]));
     prismaMock.$queryRaw.mockResolvedValue([]);
     prismaMock.verse.findMany.mockResolvedValue([]);
@@ -189,8 +189,9 @@ describe("searchSemantic", () => {
       { chapter: 2, verse: 16, book: { osisId: "Eph" } }
     ]);
 
-    await searchSemantic({ query: "reconciliation", rerank: false });
+    const out = await searchSemantic({ query: "reconciliation", rerank: false });
     expect(rerankCandidatesMock).not.toHaveBeenCalled();
+    expect(out.map((r) => r.reference)).toEqual(["Eph 2:16"]);
   });
 
   it("caps the rerank candidate pool to 30 (top-30 → top-5)", async () => {

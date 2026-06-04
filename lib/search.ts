@@ -1,9 +1,16 @@
 import { Prisma } from "@prisma/client";
-import { createHash } from "node:crypto";
 import { prisma } from "@/lib/db";
 import { bookName, formatReference, normalizeBook } from "@/lib/references";
 import { getOpenAi } from "@/lib/ai/openaiClient";
 import { reciprocalRankFusion, type RankedRef } from "@/lib/search/rrf";
+import { EMBEDDING_MODEL, SEMANTIC_INDEX_CORPUS, formatVectorLiteral } from "@/lib/search/semanticIndex";
+
+export {
+  EMBEDDING_MODEL,
+  SEMANTIC_INDEX_CORPUS,
+  embeddingTextHash,
+  formatVectorLiteral
+} from "@/lib/search/semanticIndex";
 
 type PassageInput = {
   corpus: "SBLGNT" | "WEB";
@@ -31,20 +38,6 @@ export type Citation = {
   searchQuery?: string;
   tokenId?: string;
 };
-
-// The single corpus whose verses are embedded for semantic search. Other English
-// translations added later are display-only, resolved by reference (see spec).
-export const SEMANTIC_INDEX_CORPUS = "WEB" as const;
-export const EMBEDDING_MODEL = "text-embedding-3-small";
-
-export function embeddingTextHash(text: string): string {
-  return createHash("sha256").update(text.trim(), "utf8").digest("hex");
-}
-
-// Render a JS number[] as a pgvector text literal: "[0.1,0.2,...]".
-export function formatVectorLiteral(vector: number[]): string {
-  return `[${vector.join(",")}]`;
-}
 
 export function spineKey(book: string, chapter: number, verse: number): string {
   return `${book}|${chapter}|${verse}`;

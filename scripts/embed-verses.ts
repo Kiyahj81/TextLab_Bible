@@ -7,21 +7,16 @@
 // DATABASE_URL from the environment. To target a different DB (e.g. a Neon test
 // branch), run `tsx --env-file=.env.test scripts/embed-verses.ts`.
 import { PrismaClient, Prisma } from "@prisma/client";
-import { createHash } from "node:crypto";
 import OpenAI from "openai";
+import {
+  EMBEDDING_MODEL,
+  SEMANTIC_INDEX_CORPUS,
+  embeddingTextHash,
+  formatVectorLiteral
+} from "../lib/search/semanticIndex";
 
 const prisma = new PrismaClient();
-const MODEL = "text-embedding-3-small";
-const SEMANTIC_INDEX_CORPUS = "WEB";
 const BATCH = 100;
-
-function vectorLiteral(vector: number[]): string {
-  return `[${vector.join(",")}]`;
-}
-
-function embeddingTextHash(text: string): string {
-  return createHash("sha256").update(text.trim(), "utf8").digest("hex");
-}
 
 async function main() {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
@@ -43,23 +38,25 @@ async function main() {
     WHERE c."abbreviation" = ${SEMANTIC_INDEX_CORPUS}
     ORDER BY v."id"
   `);
-  const pending = candidates.filter((v) => v.model !== MODEL || v.textHash !== embeddingTextHash(v.text));
+  const pending = candidates.filter(
+    (v) => v.model !== EMBEDDING_MODEL || v.textHash !== embeddingTextHash(v.text)
+  );
 
   const embeddable = pending.filter((v) => v.text.trim().length > 0);
   const skipped = pending.length - embeddable.length;
   if (skipped > 0) console.log(`Skipping ${skipped} empty/whitespace-only verse(s).`);
 
-  console.log(`Embedding ${embeddable.length} ${SEMANTIC_INDEX_CORPUS} verses with ${MODEL}…`);
+  console.log(`Embedding ${embeddable.length} ${SEMANTIC_INDEX_CORPUS} verses with ${EMBEDDING_MODEL}…`);
 
   for (let i = 0; i < embeddable.length; i += BATCH) {
     const batch = embeddable.slice(i, i + BATCH);
-    const res = await client.embeddings.create({ model: MODEL, input: batch.map((b) => b.text.trim()) });
+    const res = await client.embeddings.create({ model: EMBEDDING_MODEL, input: batch.map((b) => b.text.trim()) });
     for (let j = 0; j < batch.length; j++) {
-      const vec = vectorLiteral(res.data[j].embedding);
+      const vec = formatVectorLiteral(res.data[j].embedding);
       const textHash = embeddingTextHash(batch[j].text);
       await prisma.$executeRaw(Prisma.sql`
         INSERT INTO "VerseEmbedding" ("verseId", "embedding", "model", "textHash", "createdAt")
-        VALUES (${batch[j].id}, ${vec}::vector, ${MODEL}, ${textHash}, now())
+        VALUES (${batch[j].id}, ${vec}::vector, ${EMBEDDING_MODEL}, ${textHash}, now())
         ON CONFLICT ("verseId") DO UPDATE
           SET "embedding" = EXCLUDED."embedding",
               "model" = EXCLUDED."model",

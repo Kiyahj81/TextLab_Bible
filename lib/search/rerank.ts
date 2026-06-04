@@ -1,7 +1,9 @@
 import { rerank } from "ai";
 
 export const RERANK_MODEL = process.env.RERANK_MODEL ?? "voyage/rerank-2.5";
-const RERANK_TIMEOUT_MS = Number(process.env.RERANK_TIMEOUT_MS ?? 3000);
+const RERANK_TIMEOUT_MS = Number.isFinite(Number(process.env.RERANK_TIMEOUT_MS))
+  ? Number(process.env.RERANK_TIMEOUT_MS)
+  : 3000;
 
 export type RerankCandidate = { reference: string; text: string };
 

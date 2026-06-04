@@ -79,4 +79,19 @@ describe("rerankCandidates", () => {
     const out = await rerankCandidates({ query: "x", candidates: CANDS });
     expect(out).toBeNull();
   });
+
+  it("returns all mapped candidates in ranked order when topN is omitted", async () => {
+    process.env.AI_GATEWAY_API_KEY = "k";
+    rerankMock.mockResolvedValueOnce({
+      ranking: [
+        { originalIndex: 2, score: 0.9, document: CANDS[2].text },
+        { originalIndex: 0, score: 0.4, document: CANDS[0].text },
+        { originalIndex: 1, score: 0.2, document: CANDS[1].text }
+      ]
+    });
+    const out = await rerankCandidates({ query: "reconciliation", candidates: CANDS });
+    expect(out).not.toBeNull();
+    expect(out!.map((c) => c.reference)).toEqual(["Rom 5:10", "John 1:1", "Eph 2:16"]);
+    expect(out!.length).toBe(3);
+  });
 });

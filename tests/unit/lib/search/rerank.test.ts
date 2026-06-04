@@ -48,6 +48,8 @@ describe("rerankCandidates", () => {
     expect(rerankMock.mock.calls[0][0].query).toBe("reconciliation");
     // model is the configured plain gateway model-id string (no @ai-sdk/gateway provider object)
     expect(rerankMock.mock.calls[0][0].model).toBe(RERANK_MODEL);
+    expect(rerankMock.mock.calls[0][0].abortSignal).toBeInstanceOf(AbortSignal);
+    expect(rerankMock.mock.calls[0][0].maxRetries).toBe(1);
   });
 
   it("returns null when the rerank call throws (timeout/network/malformed)", async () => {

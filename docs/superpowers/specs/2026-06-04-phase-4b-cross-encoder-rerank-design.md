@@ -76,7 +76,7 @@ Internals:
    import { gateway } from "@ai-sdk/gateway";
 
    const result = await rerank({
-     model: gateway(RERANK_MODEL),
+     model: gateway.rerankingModel(RERANK_MODEL),
      query,
      documents: candidates.map((c) => c.text),
      topN,

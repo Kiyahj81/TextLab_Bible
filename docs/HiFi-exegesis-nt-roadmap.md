@@ -74,7 +74,7 @@ and explicit token-to-English alignment).
 
 | Target (doc) | Current state | Gap |
 |---|---|---|
-| Hybrid lexical + vector search | ✅ `searchSemantic` fuses current-model WEB vector KNN with keyword FTS and deterministic lemma/keyword/morph/passage calls remain available through the retrieval planner | Phase 4a closed; cross-encoder rerank deferred |
+| Hybrid lexical + vector search | ✅ `searchSemantic` fuses current-model WEB vector KNN with keyword FTS and deterministic lemma/keyword/morph/passage calls remain available through the retrieval planner | Phase 4a + 4b closed |
 | Reciprocal Rank Fusion (k=60) | ✅ `lib/search/rrf.ts` pure RRF helper | Closed |
 | Cross-encoder rerank (top-30→top-5) | ✅ Voyage rerank-2.5 via AI Gateway (graceful fallback to RRF) | Closed |
 | Query expansion (synonyms/lemmas) | ⚠️ hardcoded English→Greek lemma/entity/phrase map plus semantic recall; no broad synonym expansion yet | **Minor/Moderate** |

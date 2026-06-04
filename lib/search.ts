@@ -4,6 +4,7 @@ import { bookName, formatReference, normalizeBook } from "@/lib/references";
 import { getOpenAi } from "@/lib/ai/openaiClient";
 import { reciprocalRankFusion, type RankedRef } from "@/lib/search/rrf";
 import { EMBEDDING_MODEL, SEMANTIC_INDEX_CORPUS, formatVectorLiteral } from "@/lib/search/semanticIndex";
+import { rerankCandidates } from "@/lib/search/rerank";
 
 export {
   EMBEDDING_MODEL,
@@ -75,12 +76,19 @@ type SemanticRow = { osisId: string; chapter: number; verse: number; text: strin
 // natural-language prompt); `keywords` drives the FTS half (distilled topic words —
 // bible_simple keeps stopwords, so the full prompt would AND to nothing). Returns
 // [] when no OpenAI client (embedQuery null).
+// Architecture-doc top-30 → top-5: cap the reranker input to 30 candidates.
+// onSpine can exceed 30 (up to 30 vector + 30 FTS rows fused), so cap explicitly.
+// Set `rerank: false` to skip the Voyage rerank stage and return the RRF-ordered slice
+// (used by the rerank-diff harness); the default reranks when `AI_GATEWAY_API_KEY` is set.
+const RERANK_CANDIDATE_LIMIT = 30;
+
 export async function searchSemantic(input: {
   query: string;
   keywords?: string;
   book?: string;
   chapter?: number;
   limit?: number;
+  rerank?: boolean;
 }): Promise<RankedRef[]> {
   const query = input.query.trim();
   if (!query) return [];
@@ -146,7 +154,23 @@ export async function searchSemantic(input: {
     return r ? spine.has(spineKey(r.osisId, r.chapter, r.verse)) : false;
   });
 
-  return onSpine.slice(0, limit);
+  if (input.rerank === false) return onSpine.slice(0, limit);
+
+  // Top-30 → top-5: rerank only the capped pool; fallback uses the full onSpine.
+  const rerankPool = onSpine.slice(0, RERANK_CANDIDATE_LIMIT);
+  const reranked = await rerankCandidates({
+    query,
+    candidates: rerankPool.map((r) => ({ reference: r.reference, text: r.text })),
+    topN: limit
+  });
+  if (!reranked) return onSpine.slice(0, limit);
+
+  // Map reranked references back to the full RankedRef entries (preserve corpus/text).
+  const onSpineByRef = new Map(onSpine.map((r) => [r.reference, r]));
+  return reranked
+    .map((c) => onSpineByRef.get(c.reference))
+    .filter((r): r is RankedRef => Boolean(r))
+    .slice(0, limit);
 }
 
 export async function getAvailablePassages() {

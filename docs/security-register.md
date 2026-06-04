@@ -75,6 +75,28 @@ sprint and at every Next.js minor upgrade. Cross-check each open row.
 | Opened | 2026-05-30 (Phase 3 Lexical FTS) |
 | Next review | Re-check if the raw query in `searchKeyword` is extended with new parameters. |
 
+### Phase 4b rerank — Vercel AI Gateway / Voyage data flow (accepted)
+
+- **Outbound host:** `ai-gateway.vercel.sh`, called **server-side (Node) only** from
+  `lib/search/rerank.ts`. No browser fetch, so the CSP `connect-src` (which already omits
+  `api.openai.com` for the same reason) needs **no change**. Recorded as a reasoned decision, not an
+  omission.
+- **New processors / trust boundary:** Vercel AI Gateway (proxy) and Voyage AI (rerank provider).
+  The Voyage API key is held in AI Gateway settings (BYOK) or Vercel billing — **never** in the app
+  `.env`; the app holds only `AI_GATEWAY_API_KEY`.
+- **Data sent:** the user prompt + WEB verse text for the candidate pool. WEB is public-domain
+  scripture and the prompt is already sent to OpenAI for synthesis — no new *class* of data, but it
+  now reaches two additional processors.
+- **Gating:** rerank is gated on `AI_GATEWAY_API_KEY`. With the key unset, the wrapper returns
+  `null` before any network call — **nothing is sent**.
+- **Zero Data Retention:** per the Vercel model page, **ZDR is NOT currently available for
+  `voyage/rerank-2.5`** (ZDR is offered per-provider; this model is not covered). Prompts + WEB text
+  sent for reranking may therefore be retained under Voyage's standard policy. **Accepted** given the
+  low-sensitivity, public-domain data and the opt-in gating. If a ZDR guarantee is later required,
+  switch to a ZDR-supporting rerank model/provider or disable rerank. Re-check the model page on AI
+  SDK/Gateway upgrades.
+- **Status: accepted.**
+
 ## Tooling notes
 
 - `npm audit` requires network access to the npm registry. If the

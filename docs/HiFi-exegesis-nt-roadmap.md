@@ -74,9 +74,9 @@ and explicit token-to-English alignment).
 
 | Target (doc) | Current state | Gap |
 |---|---|---|
-| Hybrid lexical + vector search | ✅ `searchSemantic` fuses current-model WEB vector KNN with keyword FTS and deterministic lemma/keyword/morph/passage calls remain available through the retrieval planner | Phase 4a closed; cross-encoder rerank deferred |
+| Hybrid lexical + vector search | ✅ `searchSemantic` fuses current-model WEB vector KNN with keyword FTS and deterministic lemma/keyword/morph/passage calls remain available through the retrieval planner | Phase 4a + 4b closed |
 | Reciprocal Rank Fusion (k=60) | ✅ `lib/search/rrf.ts` pure RRF helper | Closed |
-| Cross-encoder rerank (top-30→top-5) | ❌ none | **Major** |
+| Cross-encoder rerank (top-30→top-5) | ✅ Voyage rerank-2.5 via AI Gateway (graceful fallback to RRF) | Closed |
 | Query expansion (synonyms/lemmas) | ⚠️ hardcoded English→Greek lemma/entity/phrase map plus semantic recall; no broad synonym expansion yet | **Minor/Moderate** |
 | Sentence-window context (V±2) | ✅ semantic hits expand to an on-spine ±2 verse window; WEB display text is used only for references present in SBLGNT | Closed for semantic retrieval |
 | Two design specs drafted | ✅ `docs/superpowers/specs/2026-05-27-{hybrid,agentic}-*.md` | These plan the *next* step but stop short of vectors/RRF/rerank |
@@ -116,7 +116,7 @@ and explicit token-to-English alignment).
 | Real semantic routing + scholarly escalation | Mostly closed | follow-up only if replacing heuristic cues with classifier/embedding routing |
 | FTS (`tsvector`/GIN) + keyword ranking | Closed | done in Phase 3 |
 | Grounding verification + Silence Protocol | Closed | done in Phase 2 |
-| pgvector + embeddings + hybrid + RRF + rerank | Mostly closed | Phase 4a done; rerank remains Phase 4b |
+| pgvector + embeddings + hybrid + RRF + rerank | Closed | Phase 4a + 4b done |
 | Louw-Nida import (data already present) | Small | ~1 day |
 | Strong's numbers (need source + schema) | Medium | ~3–5 days |
 | Speaker quotations (Clear-Bible ingest) | Medium | ~3–5 days |
@@ -218,8 +218,13 @@ WEB-only verses are filtered out of both hits and ±2 neighbors so semantic retr
 spurious withholding. New: `lib/search/rrf.ts`, `scripts/embed-verses.ts`, migrations
 `20260602120000_add_verse_embeddings` and `20260603120000_add_verse_embedding_text_hash`.
 
-**Phase 4b — Cross-encoder rerank (DEFERRED).** Top-30→top-5 rerank. Deferred because it requires a new
-vendor (Cohere/Voyage) or an LLM-as-reranker outside the current OpenAI-only dependency set.
+**Phase 4b — Cross-encoder rerank. ✅ DONE (branch `milestone-3/phase-4b-rerank`).** A
+retrieve-then-rerank stage on the assistant's semantic pool: `lib/search/rerank.ts` reranks the
+RRF-fused, SBL-spine-filtered candidates (top-30 → top-5) on WEB English text via **Voyage
+rerank-2.5** through **Vercel AI Gateway** (AI SDK `rerank`). Gated on `AI_GATEWAY_API_KEY`;
+missing key / error / timeout falls back to RRF order (graceful no-op). RRF remains the
+candidate-assembly + fallback ranker. New: `lib/search/rerank.ts`, `scripts/rerank-diff.ts`,
+dep `ai` (plain model-id string routes through the SDK's built-in gateway provider).
 
 **Phase 4 — Vector + hybrid retrieval (original plan).** Enable `pgvector`; add a `chunks` table (or
 embedding column) at verse / verse-window granularity; build an embedding ingestion script (likely

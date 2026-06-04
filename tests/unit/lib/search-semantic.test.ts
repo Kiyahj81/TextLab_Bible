@@ -11,9 +11,12 @@ vi.mock("@/lib/db", () => ({ prisma: prismaMock }));
 const { getOpenAiMock } = vi.hoisted(() => ({ getOpenAiMock: vi.fn() }));
 vi.mock("@/lib/ai/openaiClient", () => ({ getOpenAi: getOpenAiMock }));
 
+const { rerankCandidatesMock } = vi.hoisted(() => ({ rerankCandidatesMock: vi.fn() }));
+vi.mock("@/lib/search/rerank", () => ({ rerankCandidates: rerankCandidatesMock }));
+
 import { EMBEDDING_MODEL, embeddingTextHash, formatVectorLiteral, spineKey, filterToSblSpine } from "@/lib/search";
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => vi.resetAllMocks());
 
 describe("formatVectorLiteral", () => {
   it("renders a number[] as a pgvector literal", () => {
@@ -124,11 +127,88 @@ describe("searchSemantic", () => {
     await searchSemantic({ query: "love", book: "John", chapter: 3 });
     expect(JSON.stringify(prismaMock.$queryRaw.mock.calls[0])).toMatch(chapterFilter);
 
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     getOpenAiMock.mockReturnValue(fakeClient([0.1, 0.2, 0.3]));
     prismaMock.$queryRaw.mockResolvedValue([]);
     prismaMock.verse.findMany.mockResolvedValue([]);
     await searchSemantic({ query: "love", book: "John" });
     expect(JSON.stringify(prismaMock.$queryRaw.mock.calls[0])).not.toMatch(chapterFilter);
+  });
+
+  it("returns rerank order when rerank succeeds", async () => {
+    getOpenAiMock.mockReturnValue(fakeClient([0.1, 0.2, 0.3]));
+    prismaMock.$queryRaw.mockResolvedValueOnce([
+      { osisId: "Eph", chapter: 2, verse: 16, text: "reconcile both" },
+      { osisId: "Rom", chapter: 5, verse: 10, text: "we were reconciled" }
+    ]);
+    prismaMock.verse.findMany.mockResolvedValueOnce([
+      { chapter: 2, verse: 16, book: { osisId: "Eph" } },
+      { chapter: 5, verse: 10, book: { osisId: "Rom" } }
+    ]);
+    // rerank flips the RRF order
+    rerankCandidatesMock.mockResolvedValueOnce([
+      { reference: "Rom 5:10", text: "we were reconciled" },
+      { reference: "Eph 2:16", text: "reconcile both" }
+    ]);
+
+    const out = await searchSemantic({ query: "reconciliation" });
+
+    expect(out.map((r) => r.reference)).toEqual(["Rom 5:10", "Eph 2:16"]);
+    // rerank received on-spine candidates with WEB text
+    const passed = rerankCandidatesMock.mock.calls[0][0];
+    expect(passed.candidates.map((c: { reference: string }) => c.reference)).toEqual([
+      "Eph 2:16",
+      "Rom 5:10"
+    ]);
+    expect(out.every((r) => r.corpus === "WEB")).toBe(true);
+  });
+
+  it("falls back to RRF order (byte-identical) when rerank returns null", async () => {
+    getOpenAiMock.mockReturnValue(fakeClient([0.1, 0.2, 0.3]));
+    prismaMock.$queryRaw.mockResolvedValueOnce([
+      { osisId: "Eph", chapter: 2, verse: 16, text: "reconcile both" },
+      { osisId: "Rom", chapter: 5, verse: 10, text: "we were reconciled" }
+    ]);
+    prismaMock.verse.findMany.mockResolvedValueOnce([
+      { chapter: 2, verse: 16, book: { osisId: "Eph" } },
+      { chapter: 5, verse: 10, book: { osisId: "Rom" } }
+    ]);
+    rerankCandidatesMock.mockResolvedValueOnce(null);
+
+    const out = await searchSemantic({ query: "reconciliation" });
+    // RRF order preserved (both at rank 0 of the single vector list → input order)
+    expect(out.map((r) => r.reference)).toEqual(["Eph 2:16", "Rom 5:10"]);
+  });
+
+  it("does not call rerank when rerank:false is passed", async () => {
+    getOpenAiMock.mockReturnValue(fakeClient([0.1, 0.2, 0.3]));
+    prismaMock.$queryRaw.mockResolvedValueOnce([
+      { osisId: "Eph", chapter: 2, verse: 16, text: "reconcile both" }
+    ]);
+    prismaMock.verse.findMany.mockResolvedValueOnce([
+      { chapter: 2, verse: 16, book: { osisId: "Eph" } }
+    ]);
+
+    const out = await searchSemantic({ query: "reconciliation", rerank: false });
+    expect(rerankCandidatesMock).not.toHaveBeenCalled();
+    expect(out.map((r) => r.reference)).toEqual(["Eph 2:16"]);
+  });
+
+  it("caps the rerank candidate pool to 30 (top-30 → top-5)", async () => {
+    getOpenAiMock.mockReturnValue(fakeClient([0.1, 0.2, 0.3]));
+    // 40 distinct on-spine vector rows → onSpine > 30
+    const rows = Array.from({ length: 40 }, (_, i) => ({
+      osisId: "John", chapter: 1, verse: i + 1, text: `verse ${i + 1}`
+    }));
+    prismaMock.$queryRaw.mockResolvedValueOnce(rows);
+    prismaMock.verse.findMany.mockResolvedValueOnce(
+      rows.map((r) => ({ chapter: r.chapter, verse: r.verse, book: { osisId: r.osisId } }))
+    );
+    rerankCandidatesMock.mockResolvedValueOnce(null); // fallback path; we only assert the input cap
+
+    await searchSemantic({ query: "love", limit: 5 });
+
+    expect(rerankCandidatesMock.mock.calls[0][0].candidates.length).toBe(30);
+    expect(rerankCandidatesMock.mock.calls[0][0].topN).toBe(5);
   });
 });

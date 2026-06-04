@@ -95,7 +95,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 const { rerankMock } = vi.hoisted(() => ({ rerankMock: vi.fn() }));
 vi.mock("ai", () => ({ rerank: rerankMock }));
 
-import { rerankCandidates } from "@/lib/search/rerank";
+import { RERANK_MODEL, rerankCandidates } from "@/lib/search/rerank";
 
 const CANDS = [
   { reference: "John 1:1", text: "In the beginning was the Word" },
@@ -122,12 +122,13 @@ describe("rerankCandidates", () => {
     expect(rerankMock).not.toHaveBeenCalled();
   });
 
-  it("maps ranking.originalIndex back to references and honors topN", async () => {
+  it("maps ranking.originalIndex back to references and honors topN locally", async () => {
     process.env.AI_GATEWAY_API_KEY = "k";
     rerankMock.mockResolvedValueOnce({
       ranking: [
         { originalIndex: 2, score: 0.9, document: CANDS[2].text },
-        { originalIndex: 1, score: 0.5, document: CANDS[1].text }
+        { originalIndex: 1, score: 0.5, document: CANDS[1].text },
+        { originalIndex: 0, score: 0.1, document: CANDS[0].text }
       ]
     });
     const out = await rerankCandidates({ query: "reconciliation", candidates: CANDS, topN: 2 });
@@ -137,8 +138,8 @@ describe("rerankCandidates", () => {
     // documents sent to the reranker are the candidate texts, in order
     expect(rerankMock.mock.calls[0][0].documents).toEqual(CANDS.map((c) => c.text));
     expect(rerankMock.mock.calls[0][0].query).toBe("reconciliation");
-    // model is the plain gateway model-id string (no @ai-sdk/gateway provider object)
-    expect(rerankMock.mock.calls[0][0].model).toBe("voyage/rerank-2.5");
+    // model is the configured plain gateway model-id string (no @ai-sdk/gateway provider object)
+    expect(rerankMock.mock.calls[0][0].model).toBe(RERANK_MODEL);
   });
 
   it("returns null when the rerank call throws (timeout/network/malformed)", async () => {
@@ -151,6 +152,22 @@ describe("rerankCandidates", () => {
   it("returns null when the response has no ranking array", async () => {
     process.env.AI_GATEWAY_API_KEY = "k";
     rerankMock.mockResolvedValueOnce({});
+    const out = await rerankCandidates({ query: "x", candidates: CANDS });
+    expect(out).toBeNull();
+  });
+
+  it("returns null when the ranking array is empty", async () => {
+    process.env.AI_GATEWAY_API_KEY = "k";
+    rerankMock.mockResolvedValueOnce({ ranking: [] });
+    const out = await rerankCandidates({ query: "x", candidates: CANDS });
+    expect(out).toBeNull();
+  });
+
+  it("returns null when ranking.originalIndex is out of range", async () => {
+    process.env.AI_GATEWAY_API_KEY = "k";
+    rerankMock.mockResolvedValueOnce({
+      ranking: [{ originalIndex: 999, score: 0.9, document: "missing" }]
+    });
     const out = await rerankCandidates({ query: "x", candidates: CANDS });
     expect(out).toBeNull();
   });
@@ -199,17 +216,30 @@ export async function rerankCandidates(input: {
       abortSignal: AbortSignal.timeout(RERANK_TIMEOUT_MS)
     });
     const ranking = result?.ranking;
-    if (!Array.isArray(ranking)) return null;
-    return ranking
-      .map((r) => candidates[r.originalIndex])
-      .filter((c): c is RerankCandidate => Boolean(c));
+    if (!Array.isArray(ranking) || ranking.length === 0) return null;
+
+    const mapped: RerankCandidate[] = [];
+    for (const r of ranking) {
+      const originalIndex = r.originalIndex;
+      if (
+        !Number.isInteger(originalIndex) ||
+        originalIndex < 0 ||
+        originalIndex >= candidates.length
+      ) {
+        return null;
+      }
+      mapped.push(candidates[originalIndex]);
+    }
+
+    const capped = typeof topN === "number" ? mapped.slice(0, topN) : mapped;
+    return capped.length > 0 ? capped : null;
   } catch {
     return null;
   }
 }
 ```
 
-Note: `topN` is forwarded to the reranker, so the returned array is already truncated; the `.map`/`.filter` only guards against an out-of-range index.
+Note: `topN` is forwarded to the reranker and also enforced locally, so the wrapper contract does not depend on provider behavior. Empty rankings and invalid `originalIndex` values return `null`, preserving the RRF fallback instead of treating malformed output as a successful empty rerank.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
@@ -217,7 +247,7 @@ Run:
 ```powershell
 $env:NODE_OPTIONS="--use-system-ca"; npx vitest run tests/unit/lib/search/rerank.test.ts
 ```
-Expected: PASS (5 tests).
+Expected: PASS (7 tests).
 
 - [ ] **Step 5: Prove the `rerank` call shape against the installed `ai` types**
 
@@ -225,7 +255,7 @@ Run:
 ```powershell
 $env:NODE_OPTIONS="--use-system-ca"; npx tsc --noEmit --pretty false
 ```
-Expected: exit 0 (no errors). This is the acceptance anchor confirming `rerank({ model: RERANK_MODEL, query, documents, topN, abortSignal })` — the plain-string `model` form — type-checks against the installed `ai` package. If `model: string` is rejected by the installed version, stop and switch to the gateway-provider form (`import { gateway } from "@ai-sdk/gateway"; model: gateway.rerankingModel(RERANK_MODEL)`, and add the `@ai-sdk/gateway` dep + mock) before continuing.
+Expected: exit 0 (no errors). This is the acceptance anchor confirming `rerank({ model: RERANK_MODEL, query, documents, topN, abortSignal })` — the plain-string `model` form — type-checks against the installed `ai` package. If `model: string` is rejected by the installed version, stop and inspect the installed `ai` / Gateway package types and docs for the actual supported reranking model constructor. Use that verified constructor, update dependencies/mocks accordingly, and re-run this gate before continuing.
 
 - [ ] **Step 6: Commit**
 
@@ -601,7 +631,7 @@ In the `### Assistant pipeline` section, step 2's `**Phase 4a semantic path**` s
 In the snapshot header line at the top, update the parenthetical to mention Phase 4b. In the
 **Test surfaces** list, add a bullet under the Phase 4a additions:
 ```markdown
-  - `tests/unit/lib/search/rerank.test.ts` — `rerankCandidates`: key-gating (no network without `AI_GATEWAY_API_KEY`), empty-input no-op, `originalIndex`→reference mapping + `topN`, and error/timeout → `null`
+  - `tests/unit/lib/search/rerank.test.ts` — `rerankCandidates`: key-gating (no network without `AI_GATEWAY_API_KEY`), empty-input no-op, `originalIndex`→reference mapping + locally enforced `topN`, malformed / empty / out-of-range rankings → `null`, and error/timeout → `null`
 ```
 
 - [ ] **Step 3: Update `README.md`**
@@ -657,7 +687,7 @@ Run:
 ```powershell
 $env:NODE_OPTIONS="--use-system-ca"; npm run verify
 ```
-Expected: lint + tsc + build + coverage all green; coverage stays ≥ 80/80/75/65. The new `lib/search/rerank.ts` branches (key set/unset, success/error, non-array) are covered by Task 2's tests.
+Expected: lint + tsc + build + coverage all green; coverage stays ≥ 80/80/75/65. The new `lib/search/rerank.ts` branches (key set/unset, success/error, non-array, empty ranking, invalid index) are covered by Task 2's tests.
 
 - [ ] **Step 2: Run the integration suite**
 
@@ -705,6 +735,6 @@ git commit -m "chore: Phase 4b verification fixes"
 ## Self-Review Notes
 
 - **Spec coverage:** new module (Task 2), `searchSemantic` integration + fallback + on-spine/WEB input + top-30 cap (Task 3), deps + env (Task 1), graceful degradation (Task 2/3 tests), unit + integration (incl. direct live-gateway reranker proof) + diff validation (Tasks 2–5), all four doc updates incl. expanded security register (Task 6), verification incl. coverage/acceptance/audit (Task 7). The spec's "extend evidence-diff" is realized as a dedicated `rerank-diff.ts` (documented deviation above).
-- **Type consistency:** `RerankCandidate = { reference, text }` used identically in `rerank.ts`, its tests, and the `searchSemantic` mapping; the plain-string `model: RERANK_MODEL` call shape is proven by the `tsc --noEmit` gate in Task 2 Step 5; `rerankCandidates` signature/return (`RerankCandidate[] | null`) is consistent across definition, call site, and mocks.
+- **Type consistency:** `RerankCandidate = { reference, text }` used identically in `rerank.ts`, its tests, and the `searchSemantic` mapping; the plain-string `model: RERANK_MODEL` call shape is proven by the `tsc --noEmit` gate in Task 2 Step 5; `rerankCandidates` signature/return (`RerankCandidate[] | null`) is consistent across definition, call site, and mocks; empty / invalid rankings return `null`, and `topN` is enforced locally.
 - **Fallback safety:** `searchSemantic` treats any non-array (`null`/`undefined`) rerank result as "keep RRF order," so pre-existing tests whose default mock returns `undefined` continue to assert RRF ordering.
 - **Codex review (addressed):** P1 call-shape verified via plain-string form + `tsc` gate (Task 2); P1 top-30 cap enforced via `RERANK_CANDIDATE_LIMIT` (Task 3); P1 direct live-gateway reranker proof added (Task 4); P2 diff harness uses planner-equivalent keyword derivation (Task 5); P2 security register records trust boundary + ZDR-unavailable status (Task 6).

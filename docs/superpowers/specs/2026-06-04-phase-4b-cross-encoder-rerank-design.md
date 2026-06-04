@@ -87,10 +87,14 @@ Internals:
 
    The plain-string form is the AI SDK's documented basic usage; `tsc --noEmit` proves the
    call shape against the installed `ai` types before we rely on it.
-3. Map `result.ranking[].originalIndex` back onto the original `candidates` array to preserve each
+3. Validate `result.ranking` before accepting it as a successful rerank:
+   - no ranking array, an empty ranking array, or any missing / non-integer / out-of-range
+     `originalIndex` → return `null` so the caller keeps RRF order.
+   - only a fully valid ranking is treated as success.
+4. Map `result.ranking[].originalIndex` back onto the original `candidates` array to preserve each
    `reference` (the reranker only sees `text`). Return the mapped candidates in ranked order,
-   truncated to `topN`.
-4. Wrap 2–3 in `try/catch`; any throw (including timeout) → return `null`.
+   truncated locally to `topN` even though `topN` is also forwarded to the provider.
+5. Wrap 2–4 in `try/catch`; any throw (including timeout) → return `null`.
 
 `RERANK_TIMEOUT_MS` defaults to ~3000ms (env-overridable) to bound added latency.
 
@@ -155,7 +159,8 @@ credits — it is **not** stored in our `.env`. We only hold the gateway key.
 ## Error handling / degradation
 
 `rerankCandidates` never throws to its caller. Missing key, network error, timeout (`AbortSignal`),
-or a malformed response all resolve to `null`, and `searchSemantic` returns its RRF-ordered slice.
+empty / invalid ranking output, or any other malformed response all resolve to `null`, and
+`searchSemantic` returns its RRF-ordered slice.
 This preserves two existing guarantees:
 
 1. The app works with no external keys.
@@ -193,7 +198,9 @@ To be recorded in `docs/security-register.md`:
 - Returns `null` on empty candidates.
 - On success, maps `ranking[].originalIndex` back to the correct `reference` (reorders correctly,
   preserves references — guard the index mapping against off-by-one).
-- Honors `topN` (returns at most `topN`).
+- Honors `topN` locally (returns at most `topN` even if the provider returns more rows).
+- Returns `null` for empty rankings and out-of-range / malformed `originalIndex` values, so
+  malformed success-shaped responses cannot suppress the RRF fallback.
 - Swallows a thrown / timed-out rerank call → returns `null`.
 
 ### Unit — extend `tests/unit/lib/search-semantic.test.ts`

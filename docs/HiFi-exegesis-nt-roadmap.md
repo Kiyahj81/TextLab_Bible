@@ -1,6 +1,6 @@
 # Milestone 3 — High-Fidelity NT Exegesis Roadmap
 
-*Status:* Approved 2026-05-28 · *Scope:* NT-Greek subset · *Successor to:* Milestone 2.5 (shipped on `main`)
+*Status:* Approved 2026-05-28; current through 2026-06-03 · *Scope:* NT-Greek subset · *Successor to:* Milestone 2.5 (shipped on `main`)
 
 This is **Milestone 3**: bringing the mechanisms from
 `docs/archived/Technical Architecture for High-Fidelity Biblical Exegesis.md` to the existing NT corpus,
@@ -39,23 +39,21 @@ carries a `strong` column — Strong's remains deferred but is trivially availab
 
 ---
 
-## Verdict: ~25–30% of the way there
+## Verdict: ~60–65% of the way there after Phase 4a
 
-The project has a **solid foundation that already embodies the doc's core philosophy** (relational
-DB as source of truth, original-language tokens, retrieval-first assistant, "don't hallucinate
-lexicon" prompting). But the four signature mechanisms that make the target "high-fidelity"
-— **vector/hybrid retrieval, semantic routing that actually escalates, agentic tool-calling, and
-enforced grounding verification** — are **not implemented**. Several data assets in the doc
-(Hebrew/Aramaic, Strong's, Louw-Nida, speakers, alignments) are also absent or NT-Greek-only.
+The project now implements the doc's core runtime philosophy for the NT-Greek subset: relational DB
+as source of truth, original-language tokens, retrieval-first assistant, user-confirmed scholarly
+escalation, enforced grounding verification, lexical FTS, and Phase 4a vector/hybrid retrieval. The
+remaining high-fidelity gaps are narrower: cross-encoder rerank, a fuller agentic tool loop, Louw-Nida
+import, evaluation gates, and the larger data-expansion work (OT Hebrew/Aramaic, Strong's, speakers,
+and explicit token-to-English alignment).
 
 ---
 
 ## Side-by-side reconciliation
 
-> **Note:** the "Current state" column below is the **Milestone 2.5 baseline snapshot**
-> (the starting point for this roadmap). Several rows have since been closed by completed
-> phases — see the phase list further down. In particular, the FTS / `ILIKE` rows were
-> addressed by **Phase 3 (Lexical FTS, ✅ done)**.
+> **Note:** this table has been refreshed after PR #9. Rows that were gaps in the Milestone 2.5
+> baseline now show the current `main` state where the gap has been closed.
 
 ### A. Database / data layer
 
@@ -69,18 +67,18 @@ enforced grounding verification** — are **not implemented**. Several data asse
 | Louw-Nida domains | ⚠️ present in MACULA TSV source, **not imported** to DB | Minor — data exists upstream, needs column + import |
 | `word_alignments` table | ❌ implicit only (paired by book/ch/verse in `lib/search.ts`) | **Moderate** — no token↔English-word alignment table |
 | `speaker_quotations` (gender/age/divinity/depth) | ❌ none | **Major** — Clear-Bible data not ingested |
-| `chunks` + `pgvector` embeddings | ❌ no extension, no column, no table | **Major** — entire RAG tier missing |
+| `chunks` + `pgvector` embeddings | ✅ pgvector `VerseEmbedding` table with one WEB per-verse `vector(1536)` embedding, model tag, `textHash`, and HNSW/cosine index | Phase 4a closed for verse-level embeddings; generalized chunks/window embeddings deferred |
 | FTS `tsvector` + GIN | ⚠️ M2.5 used `ILIKE` substring → ✅ **closed in Phase 3** (`bible_simple` FTS + GIN) | Was Moderate; now closed |
 
 ### B. Retrieval pipeline
 
 | Target (doc) | Current state | Gap |
 |---|---|---|
-| Hybrid lexical + vector search | ❌ deterministic dispatch table + lemma/morph lookups plus keyword FTS (Phase 3; was `ILIKE` at M2.5) in `lib/search.ts` / `lib/ai/retrievalPlanner.ts`; no vector half yet | **Major** (vector half outstanding) |
-| Reciprocal Rank Fusion (k=60) | ❌ none | **Major** |
+| Hybrid lexical + vector search | ✅ `searchSemantic` fuses current-model WEB vector KNN with keyword FTS and deterministic lemma/keyword/morph/passage calls remain available through the retrieval planner | Phase 4a closed; cross-encoder rerank deferred |
+| Reciprocal Rank Fusion (k=60) | ✅ `lib/search/rrf.ts` pure RRF helper | Closed |
 | Cross-encoder rerank (top-30→top-5) | ❌ none | **Major** |
-| Query expansion (synonyms/lemmas) | ⚠️ only a hardcoded 3-lemma alias branch | **Moderate** |
-| Sentence-window context (V±2) | ❌ none | **Moderate** |
+| Query expansion (synonyms/lemmas) | ⚠️ hardcoded English→Greek lemma/entity/phrase map plus semantic recall; no broad synonym expansion yet | **Minor/Moderate** |
+| Sentence-window context (V±2) | ✅ semantic hits expand to an on-spine ±2 verse window; WEB display text is used only for references present in SBLGNT | Closed for semantic retrieval |
 | Two design specs drafted | ✅ `docs/superpowers/specs/2026-05-27-{hybrid,agentic}-*.md` | These plan the *next* step but stop short of vectors/RRF/rerank |
 
 ### C. Model orchestration & routing
@@ -89,17 +87,17 @@ enforced grounding verification** — are **not implemented**. Several data asse
 |---|---|---|
 | TypeScript orchestration layer | ✅ `lib/ai/assistant.ts` + `lib/ai/modelRouter.ts` | Matches in spirit |
 | OpenAI provider | ✅ `openai@4` SDK, Responses API (`lib/ai/openaiClient.ts`) | Doc shows Vercel AI SDK 6 `ToolLoopAgent`; current is raw OpenAI SDK |
-| Semantic intent routing → model tier | ⚠️ `routeAssistantPrompt` detects "scholarly cues" but only **advises** an upgrade; does not embed/classify or actually escalate to `gpt-5.4` | **Moderate** — keyword heuristic, not vector-prototype routing; escalation unwired (PROJECT_STATE "Step 3") |
-| Tool-calling agent loop | ❌ no tools registered with the model; single-shot synthesis after local retrieval | **Major** (agentic spec drafted, not built) |
+| Semantic intent routing → model tier | ✅ `routeAssistantPrompt` detects scholarly cues and user-confirmed escalation re-runs on `gpt-5.4`; automatic embedding/classifier routing is still deferred | Minor — heuristic routing, but escalation is wired |
+| Tool-calling agent loop | ⚠️ synthesis can call `getPassage` for missing adjacent context, but there is no general multi-tool agent loop | **Moderate** (agentic spec drafted, not fully built) |
 | Stateless <20ms routing | ⚠️ routing is cheap/stateless but keyword-based, not embedding-based | Minor |
 
 ### D. Fact-grounding / Silence Protocol
 
 | Target (doc) | Current state | Gap |
 |---|---|---|
-| Structured citations linked to `verse_id`/`token_id` | ⚠️ assistant returns `citations` + `toolTrace` metadata, but not verified against DB | Partial |
-| Post-retrieval fuzzy-match verification | ❌ none | **Major** |
-| Silence Protocol (refuse < threshold) | ❌ none — relies on prompt instructions only (`SYNTHESIS_SYSTEM_PROMPT`) | **Major** |
+| Structured citations linked to `verse_id`/`token_id` | ✅ citations/tool trace are persisted; token IDs are carried where available | Mostly closed |
+| Post-retrieval fuzzy-match verification | ✅ `verifyGrounding` resolves cited references and fuzzy-matches Greek quotes against SBLGNT | Closed |
+| Silence Protocol (refuse < threshold) | ✅ answers are withheld when SBLGNT quote verification fails or a cited reference is not found | Closed |
 | RAGAS faithfulness eval (>0.90) | ❌ none | **Moderate** |
 
 ### E. Already-strong areas the doc doesn't emphasize (current project is *ahead* here)
@@ -114,20 +112,20 @@ enforced grounding verification** — are **not implemented**. Several data asse
 
 | Capability | Distance | Est. effort |
 |---|---|---|
-| Agentic tool-calling (spec already written) | Closest | ~2–3 days |
-| Real semantic routing + scholarly escalation | Close | ~2–4 days |
-| FTS (`tsvector`/GIN) + keyword ranking | Close | ~1–2 days |
-| Grounding verification + Silence Protocol | Medium | ~3–5 days |
-| pgvector + embeddings + hybrid + RRF + rerank | Far | ~1–2 weeks |
+| Agentic tool-calling (spec already written) | Medium | ~2–4 days for a fuller loop |
+| Real semantic routing + scholarly escalation | Mostly closed | follow-up only if replacing heuristic cues with classifier/embedding routing |
+| FTS (`tsvector`/GIN) + keyword ranking | Closed | done in Phase 3 |
+| Grounding verification + Silence Protocol | Closed | done in Phase 2 |
+| pgvector + embeddings + hybrid + RRF + rerank | Mostly closed | Phase 4a done; rerank remains Phase 4b |
 | Louw-Nida import (data already present) | Small | ~1 day |
 | Strong's numbers (need source + schema) | Medium | ~3–5 days |
 | Speaker quotations (Clear-Bible ingest) | Medium | ~3–5 days |
 | Hebrew + Aramaic OT corpus (OSHB/WLC + alignment) | Far | ~2–4 weeks |
 | RAGAS-style eval harness | Medium | ~2–3 days |
 
-**Net:** the *orchestration/grounding* half of the doc is reachable in roughly 2–4 focused weeks.
-The *data completeness* half (OT, Strong's, speakers, full alignment) is a larger, multi-week
-data-engineering effort that is largely independent of the app code — and is deferred past Milestone 3.
+**Net:** the orchestration/grounding/lexical/vector retrieval core is now in place for the NT. The
+remaining Milestone 3 work is mainly enrichment and evaluation; the larger data-completeness half
+(OT, Strong's, speakers, full alignment) remains a deferred multi-week data-engineering effort.
 
 ---
 
@@ -209,13 +207,16 @@ evidence-diff harness (`scripts/evidence-diff.ts`). Original plan below.
 `ILIKE` substring match in `searchKeyword` (`lib/search.ts`) with ranked full-text search. Lexical
 half of hybrid retrieval; also improves the standalone search UI.
 
-**Phase 4a — Vector + hybrid retrieval. ✅ DONE (branch `milestone-3/phase-4a-vector-hybrid`).** pgvector
-`VerseEmbedding` table (WEB per-verse, `text-embedding-3-small`, HNSW/cosine); `searchSemantic` fuses
-vector KNN + keyword FTS via Reciprocal Rank Fusion (`lib/search/rrf.ts`), filtered to the SBLGNT spine;
-a gated `semanticCall` in the planner fires only on topical prompts and expands each hit to an on-spine
-±2 window; `npm run embed:verses` ingestion script. Citations resolve to the SBLGNT spine; WEB-only
-verses are filtered out of both hits and ±2 neighbors so semantic retrieval cannot trigger a spurious
-withholding. New: `lib/search/rrf.ts`, `scripts/embed-verses.ts`, migration `20260602120000_add_verse_embeddings`.
+**Phase 4a — Vector + hybrid retrieval. ✅ DONE (merged via PR #9).** pgvector
+`VerseEmbedding` table (WEB per-verse, `text-embedding-3-small`, HNSW/cosine) plus `textHash` stale-text
+detection; `searchSemantic` filters to the current embedding model, fuses vector KNN + keyword FTS via
+Reciprocal Rank Fusion (`lib/search/rrf.ts`), and filters hits to the SBLGNT spine; a gated
+`semanticCall` in the planner fires only on conceptual prompts with real topic/phrase evidence and
+expands each hit to an on-spine ±2 window; `npm run embed:verses` ingestion script re-embeds only when
+the row is missing, the model differs, or WEB text changed. Citations resolve to the SBLGNT spine;
+WEB-only verses are filtered out of both hits and ±2 neighbors so semantic retrieval cannot trigger a
+spurious withholding. New: `lib/search/rrf.ts`, `scripts/embed-verses.ts`, migrations
+`20260602120000_add_verse_embeddings` and `20260603120000_add_verse_embedding_text_hash`.
 
 **Phase 4b — Cross-encoder rerank (DEFERRED).** Top-30→top-5 rerank. Deferred because it requires a new
 vendor (Cohere/Voyage) or an LLM-as-reranker outside the current OpenAI-only dependency set.
@@ -245,10 +246,15 @@ word-alignment table.
 
 ---
 
-## Database hosting: migrate Docker Postgres → Neon
+## Database hosting: Neon status and Docker migration notes
 
-Goal: stop depending on a local Docker Postgres (`localhost:5433`) for dev/testing by hosting the DB on
-Neon (serverless Postgres). Current setup: `prisma/schema.prisma` datasource uses only
+**Status 2026-06-03:** implemented for the maintainer/dev and test workflows. The checked-in Prisma
+schema has both `DATABASE_URL` and `DIRECT_URL`, `.env.test` targets a separate Neon branch, and
+`db:push` is disabled so handwritten SQL migrations are applied through `npm run db:migrate:deploy`.
+The notes below remain as the historical migration rationale and setup reference.
+
+Original goal: stop depending on a local Docker Postgres (`localhost:5433`) for dev/testing by hosting
+the DB on Neon (serverless Postgres). Current setup: `prisma/schema.prisma` datasource uses only
 `url = env("DATABASE_URL")`; `lib/db.ts` uses a plain `PrismaClient` (no driver adapter); Prisma 6.7.
 
 **This is mostly a connection-string + config change — minimal code.** Neon speaks standard Postgres
@@ -299,7 +305,7 @@ over TLS, and Prisma 6 connects with no driver-adapter required for a Next.js No
 - Manual: run app, ask the assistant a word-study, a passage, and a deliberately unsupported
   question — confirm citations resolve to real DB verses and (Phase 2+) unsupported claims trigger
   refusal rather than fabrication.
-- Update `docs/PROJECT_STATE.md`, `ReadMe.md`, and `docs/security-register.md` per CLAUDE.md after
+- Update `docs/PROJECT_STATE.md`, `README.md`, and `docs/security-register.md` per CLAUDE.md after
   any major change.
 
 ---

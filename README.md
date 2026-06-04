@@ -17,8 +17,8 @@ Milestone 2.5 of the TextLab Bible MVP: a single full-stack Next.js app deliveri
 - **Notes** index with keyword search, tag dropdown, reference filter, sort, and server-side pagination
 - Highlights, notes, saved searches, and assistant sessions scoped to the signed-in user — verse-level on Greek tokens, word-level on English text
 - **AI Study Assistant** at `/assistant`:
-  - Deterministic-first retrieval: signal extraction (references, Greek words, topics, morphology, intent) → parallel corpus search → model synthesis with a single `getPassage` refinement step; the planner scopes word searches to the named book/chapter, returns whole chapters and cross-chapter passages in full (assembled from per-chapter fetches), and samples large corpus surveys with a true-count marker (e.g. `116 hit(s) … (91 more)`); passage assembly is bounded for safety (a per-corpus line ceiling plus pathological-span guards) and total evidence is capped so even large or malformed prompts stay within request and saved-note limits
-  - **Hybrid semantic retrieval** on topical questions (Phase 4a): `searchSemantic` fuses pgvector KNN over WEB verse embeddings with keyword FTS via Reciprocal Rank Fusion, filters hits to the SBLGNT citation spine, and expands each hit to an on-spine ±2 verse window. Requires `OPENAI_API_KEY` and the `add_verse_embeddings` migration applied; gracefully no-ops to deterministic retrieval otherwise. One-time ingestion: `npm run embed:verses` (idempotent, skips empty verses)
+  - Deterministic-first retrieval: signal extraction (references, Greek words, topics, morphology, intent) → parallel corpus search → model synthesis with a single `getPassage` refinement step; signal extraction uses longest-first book aliases, strips parsed references/book aliases/morphology codes before topic extraction, maps stable entity topics (Jesus, Christ, God, Lord, Jerusalem) to Greek lemmas, and preserves known or quoted multi-word phrases for phrase-aware retrieval; the planner scopes word searches to the named book/chapter, returns whole chapters and cross-chapter passages in full (assembled from per-chapter fetches), and samples large corpus surveys with a true-count marker (e.g. `116 hit(s) … (91 more)`); passage assembly is bounded for safety (a per-corpus line ceiling plus pathological-span guards) and total evidence is capped so even large or malformed prompts stay within request and saved-note limits
+  - **Hybrid semantic retrieval** on topical questions (Phase 4a): `searchSemantic` fuses pgvector KNN over WEB verse embeddings with keyword FTS via Reciprocal Rank Fusion, filters hits to the SBLGNT citation spine, filters embeddings to the current model, and expands each hit to an on-spine ±2 verse window. Requires `OPENAI_API_KEY` and the Phase 4a migrations applied; gracefully no-ops to deterministic retrieval otherwise. Ingestion: `npm run embed:verses` (idempotent, skips empty verses, and re-embeds when the embedding model or WEB text hash changes)
   - User-confirmed **scholarly-model escalation** — a "Use scholarly model" affordance re-runs the prompt on `gpt-5.4` (never automatic)
   - Live OpenAI synthesis when `OPENAI_API_KEY` is set; deterministic local fallback otherwise
   - **Grounding / Silence Protocol** — before any answer is returned or stored, the assistant verifies its citations against the SBLGNT. If a Greek quote falls below the 0.90 similarity threshold or a reference cannot be resolved, the answer is withheld and the UI displays "Withheld — insufficient textual evidence" rather than risk an unsupported claim. WEB (English) citations are a display aid only: a WEB mismatch appends a caveat but does not withhold.
@@ -59,11 +59,11 @@ cp .env.example .env
 3. **Apply migrations and seed the corpus:**
 
 ```bash
-npm run db:migrate
+npm run db:migrate:deploy
 npm run db:seed
 ```
 
-> **Use `db:migrate`, not `db:push`.** The Lexical FTS feature lives in a hand-written migration that creates the `unaccent` extension, the `bible_simple` text-search config, and the **generated** `Verse.textSearch` column. `npm run db:push` only syncs the Prisma schema — it skips that SQL, so `textSearch` is created as a plain (never-populated) column and `bible_simple` is absent, leaving keyword search broken. `db:push` is therefore not a safe shortcut for this project.
+> **Use migrations, not `db:push`.** The Lexical FTS and vector-search features live in hand-written migrations that create `unaccent`, `bible_simple`, the **generated** `Verse.textSearch` column, `pgvector`, `VerseEmbedding`, and the embedding `textHash` column. `npm run db:push` is intentionally disabled because schema-push cannot recreate those SQL details safely; run `npm run db:migrate:deploy` to apply the checked-in migrations.
 
 4. **Start the app:**
 
@@ -102,7 +102,7 @@ Verification gate (matches the `verify` npm script, runs lint + tsc + build + co
 npm run verify
 ```
 
-`npm run verify` exits 0 on the current `main`. The full Phase 3.0 release gate adds `npm run test:integration`, `npm run test:acceptance`, and `npm run security:audit`.
+`npm run verify` exits 0 on the current `main`. The full release gate adds `npm run test:integration`, `npm run test:acceptance`, and `npm run security:audit`.
 
 ## Open Text Imports
 
@@ -138,7 +138,7 @@ npm run import:open-bible -- --web-usfm-dir ./data/web-usfm
 npm run import:macula-glosses
 ```
 
-After the corpus is imported, generate the semantic-search embeddings (one-time, idempotent; requires `OPENAI_API_KEY` in `.env`):
+After the corpus is imported, generate or refresh the semantic-search embeddings (idempotent; requires `OPENAI_API_KEY` in `.env`). The script re-embeds only rows whose embedding is missing, whose model differs from `text-embedding-3-small`, or whose stored `textHash` no longer matches the current WEB verse text:
 
 ```bash
 npm run embed:verses

@@ -1,6 +1,6 @@
 # Milestone 3 Phase 4a — Vector + Hybrid Retrieval (design)
 
-*Status:* Approved 2026-06-02 · *Scope:* NT-Greek subset · *Part of:* Milestone 3 (`docs/HiFi-exegesis-nt-roadmap.md`)
+*Status:* Implemented and merged via PR #9 on 2026-06-03 · *Scope:* NT-Greek subset · *Part of:* Milestone 3 (`docs/HiFi-exegesis-nt-roadmap.md`)
 
 ## Phase split (naming)
 
@@ -42,7 +42,8 @@ Fusion and expands each hit to ±2 neighbor verses for synthesis context.
 
 ### 1. Data layer
 
-Migration `add_verse_embeddings` (raw SQL, mirroring the `lexical_fts` migration pattern):
+Migrations `20260602120000_add_verse_embeddings` and `20260603120000_add_verse_embedding_text_hash`
+(raw SQL, mirroring the `lexical_fts` migration pattern):
 
 - `CREATE EXTENSION IF NOT EXISTS vector;`
 - New table `VerseEmbedding`:
@@ -51,6 +52,8 @@ Migration `add_verse_embeddings` (raw SQL, mirroring the `lexical_fts` migration
     the typed client (KNN goes through `$queryRaw`, exactly like `Verse.textSearch`).
   - `model String` — the embedding model tag (e.g. `text-embedding-3-small`), so a future model change
     is detectable and re-embeddable.
+  - `textHash String @default("")` — SHA-256 of the trimmed WEB verse text that was embedded, so
+    importer/text changes can be detected without comparing vectors.
   - `createdAt DateTime @default(now())`.
 - HNSW index on `embedding` using `vector_cosine_ops`.
 
@@ -61,9 +64,11 @@ Migration `add_verse_embeddings` (raw SQL, mirroring the `lexical_fts` migration
 
 `scripts/embed-verses.ts` + `npm run embed:verses`:
 
-- Selects verses in the semantic-index corpus (`SEMANTIC_INDEX_CORPUS`) that have **no** current
-  `VerseEmbedding` row → resumable / idempotent (re-runs only fill gaps).
-- Batches verse text to OpenAI `text-embedding-3-small`; upserts `VerseEmbedding` rows tagged with `model`.
+- Selects verses in the semantic-index corpus (`SEMANTIC_INDEX_CORPUS`) whose `VerseEmbedding` row is
+  missing, whose `model` differs from the current `EMBEDDING_MODEL`, or whose `textHash` differs from
+  `embeddingTextHash(Verse.text)` → resumable and stale-text safe.
+- Batches verse text to OpenAI `text-embedding-3-small`; upserts `VerseEmbedding` rows tagged with
+  `model` and `textHash`.
 - Reads `DATABASE_URL` like the other import scripts → targets Neon automatically. ~8k NT verses,
   one-time, pennies.
 
@@ -81,8 +86,10 @@ New in `lib/search.ts`:
   all values bound as parameters — no interpolation), **and** runs a parallel FTS pass over **`keywords`**
   (the distilled lexical terms), then RRF-fuses the two rank lists. Both halves apply the optional `book`
   and `chapter` filters so semantic retrieval honors the same scope as the deterministic calls (a prompt
-  like "verses about love in John 3" must not pull semantic hits from other chapters). Returns a fused,
-  ranked list of `{ corpus: SEMANTIC_INDEX_CORPUS, reference, text }`. Returns `[]` when `embedQuery` is null.
+  like "verses about love in John 3" must not pull semantic hits from other chapters). The vector half
+  also filters `VerseEmbedding.model` to the current `EMBEDDING_MODEL`, so stale rows from an older model
+  cannot mix into current results. Returns a fused, ranked list of
+  `{ corpus: SEMANTIC_INDEX_CORPUS, reference, text }`. Returns `[]` when `embedQuery` is null.
   - **Why two different inputs.** `bible_simple` is a clone of `simple` and therefore *retains
     stopwords*. An FTS `websearch_to_tsquery` over the full prompt would AND every word (including
     "what"/"does"/"about") and match nothing, so the FTS half uses the distilled `keywords` instead. The
@@ -110,12 +117,16 @@ New `lib/search/rrf.ts`:
 
 In `lib/ai/retrievalPlanner.ts`:
 
+- **Signal cleanup for Phase 4a routing:** `extractSignals` matches book aliases longest-first, strips
+  parsed references/book aliases/morphology codes before topic extraction, keeps stable entity topics
+  (`jesus`, `christ`, `god`, `lord`, `jerusalem`) as mapped Greek-lemma topics, and preserves known or
+  quoted multi-word phrases as English `phraseTerms` for phrase-aware FTS.
 - **Topical gate** `shouldRunSemantic(signals): boolean` — fires only when the prompt is conceptual:
-  there are `topicWords` **and** the prompt is not fully pinned to exact verses (i.e. skip when there is
-  at least one reference and *every* reference carries a `verseStart`). A bare-chapter reference,
-  pure-lemma, or pure-morphology prompt still runs; a single- or multi-verse pinpointed lookup skips.
-  Reuses the existing `Signals`; no new signal extraction.
-- **`semanticCall(query, scope)`** — a new `PlannedCall`, added by `buildPlan` only when
+  there are `topicWords` or `phraseTerms`, and the prompt is not fully pinned to exact verses (i.e. skip
+  when there is at least one reference and *every* reference carries a `verseStart`). Bare-chapter
+  topical prompts can run; pure lemma/morphology prompts without topic/phrase evidence skip.
+  Reuses the existing `Signals`.
+- **`semanticCall(query, keywords, scope)`** — a new `PlannedCall`, added by `buildPlan` only when
   `shouldRunSemantic` passes. It runs in **addition to** the `MAX_PLANNED_CALLS` deterministic budget (at
   most one extra call), never inside it: the deterministic calls are sliced to the budget first, then the
   semantic call is appended. This avoids two opposite failure modes — being crowded out of the slice by
@@ -144,15 +155,18 @@ In `lib/ai/retrievalPlanner.ts`:
   null when there is no client, as a backstop.
 
 The V±2 expansion respects the existing `MAX_PASSAGE_LINES` / `MAX_EVIDENCE_CHARS` ceilings so a topical
-query cannot blow the evidence budget.
+query cannot blow the evidence budget. `semanticCall` receives the same `book`/`chapter` scope as the
+deterministic calls: one single-chapter reference scopes to that chapter; multiple references in one book
+scope to the book; cross-book prompts stay corpus-wide.
 
 **Query embedded = the full natural-language prompt; FTS half = distilled keywords.** `semanticCall`
 passes the user's whole prompt (e.g. "What does Paul say about reconciliation") as `query` (embedded for
 the vector half) and the distilled lexical terms as `keywords` (the FTS half). `keywords` =
 `signals.topicWords` **plus `signals.phraseTerms`** (the matched English phrase strings, e.g. "sexual
-immorality") — critically including `phraseTerms`, because a phrase-only prompt ("What is sexual
-immorality?") has empty `topicWords`, so without them the FTS half would receive `""` and silently run
-vector-only, unlike its single-word equivalent. (The corresponding *Greek* phrase lemmas live in
+immorality", or quoted phrase terms such as `"new creation"`) — critically including `phraseTerms`,
+because a phrase-only prompt ("What is sexual immorality?") has empty `topicWords`, so without them the
+FTS half would receive `""` and silently run vector-only, unlike its single-word equivalent. (The
+corresponding *Greek* phrase lemmas live in
 `greekWords` and drive the deterministic `lemmaCall`; `keywords` must be English to anchor the WEB FTS.)
 Embeddings handle natural phrasing well and the surrounding context (e.g. "Paul") is meaningful semantic
 signal, whereas the FTS half must use distilled keywords because `bible_simple` retains stopwords (see §3).
@@ -201,8 +215,12 @@ The architecture supports it, and the recommended path keeps it cheap:
 - **Unit:**
   - `tests/unit/lib/search/rrf.test.ts` — fusion math, dedupe by reference, k-weighting, empty lists.
   - `searchSemantic` query-building + null-key short-circuit (mocked OpenAI returns no client → `[]`) +
-    SBL-spine filter drops a WEB-only reference before returning.
-  - planner `shouldRunSemantic` gate — topical prompt fires; bare-reference / pure-lemma / pure-morph skip.
+    SBL-spine filter drops a WEB-only reference before returning; current-model filtering and
+    `embeddingTextHash` behavior.
+  - `extractSignals` — longest-first book aliases, reference/book/morph stripping, entity-topic lemma
+    mappings, `describe` stop word, and quoted/mapped phrase terms.
+  - planner `shouldRunSemantic` gate — topical/phrase prompt fires; exact-reference and morphology-only
+    prompts skip; multi-reference scoping is explicit.
   - `semanticCall` — V±2 expansion shape (per-verse lines with discrete references, hit as citation
     anchor), on-spine window (a WEB-only neighbor in the ±2 range is omitted), citation shape, SBL-only
     fallback labeled SBLGNT, and slot behavior (runs as a separate slot beyond `MAX_PLANNED_CALLS`;
@@ -216,15 +234,15 @@ The architecture supports it, and the recommended path keeps it cheap:
   assertion and confirm the suite still exits 0.
 - **Coverage gate** (80/80/75/65) stays green.
 
-## Docs to update (per CLAUDE.md)
+## Docs maintained (per CLAUDE.md)
 
-- `docs/HiFi-exegesis-nt-roadmap.md` — mark Phase 4a done; record Phase 4b (cross-encoder rerank) as the
-  named deferred follow-up.
-- `docs/Project_State.md` — new snapshot: hybrid retrieval, `VerseEmbedding`, `searchSemantic`, RRF, the
-  topical gate, V±2 windows, the `embed:verses` script, new migration.
-- `ReadMe.md` — note hybrid semantic retrieval + the `embed:verses` step.
-- `docs/security-register.md` — note that topical query text is sent to OpenAI's embeddings endpoint (same
-  trust boundary as existing synthesis calls).
+- `docs/HiFi-exegesis-nt-roadmap.md` — Phase 4a done on `main`; Phase 4b (cross-encoder rerank) remains
+  the named deferred follow-up.
+- `docs/PROJECT_STATE.md` — current snapshot: hybrid retrieval, signal extraction fixes,
+  `VerseEmbedding`, `textHash`, `searchSemantic`, RRF, topical/phrase gate, V±2 windows, migrations,
+  and tests.
+- `README.md` — setup and operations for migrations, `embed:verses`, and disabled `db:push`.
+- `docs/security-register.md` — embeddings endpoint data-egress note and migration/tooling caveats.
 
 ## Out of scope (Phase 4b and beyond)
 

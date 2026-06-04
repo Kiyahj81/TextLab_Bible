@@ -1,5 +1,13 @@
 # Vector + Hybrid Retrieval (Phase 4a) Implementation Plan
 
+> **Status 2026-06-03:** Executed and merged to `main` via PR #9. The detailed task list below is
+> retained as the original implementation record. Final merged state includes the original vector/RRF
+> plan plus follow-up fixes: explicit multi-reference scoping, longest-first book aliases, reference/book
+> and morphology-code stripping before topic extraction, stable entity-topic lemma mappings, quoted and
+> mapped phrase terms, semantic search filtered by current embedding model, `VerseEmbedding.textHash`
+> stale-text detection, `embed:verses` re-embedding on model/text changes, `db:push` disabled in favor of
+> migrations, and synthesis prompt hardening for exact Greek quotes/text-critical sigla/ellipses.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add semantic (vector) retrieval to the NT assistant: embed WEB verses with OpenAI, fuse vector + FTS results with Reciprocal Rank Fusion, expand hits to ±2 on-spine context, and fire it only on topical/conceptual prompts — citations always resolving to the SBLGNT spine.
@@ -15,19 +23,22 @@
 | File | Responsibility | Change |
 |---|---|---|
 | `lib/search/rrf.ts` | Pure Reciprocal Rank Fusion over ranked reference lists | Create |
-| `prisma/schema.prisma` | `VerseEmbedding` model + relation on `Verse` | Modify |
+| `prisma/schema.prisma` | `VerseEmbedding` model + relation on `Verse`; final schema also includes `textHash` | Modify |
 | `prisma/migrations/20260602120000_add_verse_embeddings/migration.sql` | pgvector extension + table + HNSW index | Create |
+| `prisma/migrations/20260603120000_add_verse_embedding_text_hash/migration.sql` | add `VerseEmbedding.textHash` for stale-text detection | Create |
 | `lib/search.ts` | `SEMANTIC_INDEX_CORPUS`, `EMBEDDING_MODEL`, `formatVectorLiteral`, `spineKey`, `filterToSblSpine`, `embedQuery`, `searchSemantic` | Modify |
-| `scripts/embed-verses.ts` | Idempotent embedding ingestion over WEB verses | Create |
-| `package.json` | `embed:verses` script | Modify |
-| `lib/ai/retrievalPlanner.ts` | `shouldRunSemantic` gate, `semanticCall`, on-spine ±2 window, thread `prompt` | Modify |
+| `scripts/embed-verses.ts` | Idempotent embedding ingestion over WEB verses; final script re-embeds on missing row, model mismatch, or text-hash mismatch | Create |
+| `package.json` | `embed:verses` script; final scripts also disable `db:push` and add `db:migrate:deploy` | Modify |
+| `lib/ai/signals.ts` | Final follow-up signal fixes: longest-first aliases, reference/book/morph stripping, entity topics, phrase terms, `describe` stop word | Modify |
+| `lib/ai/retrievalPlanner.ts` | `shouldRunSemantic` gate, `semanticCall`, on-spine ±2 window, thread `prompt`; final follow-up includes explicit multi-reference scope and morphology-only semantic skip | Modify |
 | `lib/ai/assistant.ts` | Pass `prompt` into `runRetrievalPlan` | Modify |
+| `lib/ai/synthesis.ts` | Final follow-up prompt hardening for exact Greek quotes, text-critical sigla, and ellipses | Modify |
 | `tests/unit/lib/search/rrf.test.ts` | RRF unit tests | Create |
 | `tests/unit/lib/search-semantic.test.ts` | `searchSemantic` + helpers unit tests (mocked) | Create |
 | `tests/unit/lib/ai/retrievalPlanner.test.ts` | Gate + `semanticCall` tests; extend `@/lib/search` mock | Modify |
 | `tests/integration/semantic-search.test.ts` | Real KNN against the Neon test branch | Create |
 | `scripts/acceptance-test.js` | One topical-query interaction | Modify |
-| `docs/HiFi-exegesis-nt-roadmap.md`, `docs/Project_State.md`, `ReadMe.md`, `docs/security-register.md` | Docs | Modify |
+| `docs/HiFi-exegesis-nt-roadmap.md`, `docs/PROJECT_STATE.md`, `README.md`, `docs/security-register.md` | Docs | Modify |
 
 **Note on environment:** unit tests (mocked) run anywhere. The migration, ingestion script, integration test, and acceptance test require `DATABASE_URL`/`DIRECT_URL` pointed at a Neon branch with the migration applied and embeddings ingested, and `OPENAI_API_KEY` set. Use `$env:NODE_OPTIONS="--use-system-ca"` on the maintainer's Windows machine (see `docs/security-register.md`).
 
@@ -945,7 +956,7 @@ git commit -m "test(integration): real semantic KNN against the Neon test branch
 
 **Files:**
 - Modify: `scripts/acceptance-test.js`
-- Modify: `docs/HiFi-exegesis-nt-roadmap.md`, `docs/Project_State.md`, `ReadMe.md`, `docs/security-register.md`
+- Modify: `docs/HiFi-exegesis-nt-roadmap.md`, `docs/PROJECT_STATE.md`, `README.md`, `docs/security-register.md`
 
 - [ ] **Step 1: Read the acceptance harness to match its interaction style**
 
@@ -981,11 +992,11 @@ and ±2 neighbors so semantic retrieval cannot trigger a spurious withholding.
 vendor (Cohere/Voyage) or an LLM-as-reranker outside the current OpenAI-only dependency set.
 ```
 
-- [ ] **Step 4: Update `docs/Project_State.md`**
+- [ ] **Step 4: Update `docs/PROJECT_STATE.md`**
 
-Bump the snapshot line to "post Milestone 3 Phase 4a — Vector + Hybrid Retrieval" and add to the assistant-pipeline / database / test sections: the `VerseEmbedding` table + migration `20260602120000_add_verse_embeddings`, `searchSemantic`/RRF, the topical gate + on-spine ±2 windows, the `embed:verses` script, and the new unit + integration tests. Add the new migration to the migrations list.
+Bump the snapshot line to the post-PR #9 Phase 4a state and add to the assistant-pipeline / database / test sections: the `VerseEmbedding` table, migrations `20260602120000_add_verse_embeddings` and `20260603120000_add_verse_embedding_text_hash`, `searchSemantic`/RRF, current-model filtering, text-hash stale-embedding detection, the topical/phrase gate + on-spine ±2 windows, the `embed:verses` script, and the new unit + integration tests. Add the new migrations to the migrations list.
 
-- [ ] **Step 5: Update `ReadMe.md`**
+- [ ] **Step 5: Update `README.md`**
 
 Add a short note under the assistant/search section: hybrid semantic retrieval (vector + FTS RRF) on topical questions, and the one-time `npm run embed:verses` step (requires `OPENAI_API_KEY` + the migration applied).
 
@@ -996,7 +1007,7 @@ Add a note: topical query text and WEB verse text are sent to OpenAI's embedding
 - [ ] **Step 7: Commit**
 
 ```bash
-git add scripts/acceptance-test.js docs/HiFi-exegesis-nt-roadmap.md docs/Project_State.md ReadMe.md docs/security-register.md
+git add scripts/acceptance-test.js docs/HiFi-exegesis-nt-roadmap.md docs/PROJECT_STATE.md README.md docs/security-register.md
 git commit -m "test+docs: acceptance topical interaction; document Phase 4a"
 ```
 

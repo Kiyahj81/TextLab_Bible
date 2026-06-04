@@ -1,10 +1,10 @@
 # TextLab Bible — Project State
 
-*Snapshot: 2026-06-02 (post Milestone 3 Phase 4a — Vector + Hybrid Retrieval)*
+*Snapshot: 2026-06-03 (post PR #9 merge — Milestone 3 Phase 4a Vector + Hybrid Retrieval plus search-routing fixes)*
 
 ## Where the project stands
 
-Milestone 2.5 (retrieval-first multi-model assistant foundation) is on `main`. On top of that, a three-pass UI review documented **55 findings** which were addressed across PRs 1–11; PRs 12–16 then added follow-up features and UX refinements based on hands-on testing. After PR 16, a single follow-up commit (`d754ffe`) closed three import-accuracy bugs surfaced during hands-on reading. Most recently, a four-sprint **Phase 3.0 security and testing remediation** landed real authentication, request hardening, browser-security headers, and a coverage gate — see [Phase 3.0 remediation](#phase-30-security-and-testing-remediation-sprints-14) below. All gates green: `npm run verify` (lint + tsc + build + coverage) and `npm run test:acceptance` exit 0.
+Milestone 2.5 (retrieval-first multi-model assistant foundation) is on `main`. On top of that, a three-pass UI review documented **55 findings** which were addressed across PRs 1–11; PRs 12–16 then added follow-up features and UX refinements based on hands-on testing. After PR 16, a single follow-up commit (`d754ffe`) closed three import-accuracy bugs surfaced during hands-on reading. The four-sprint **Phase 3.0 security and testing remediation** landed real authentication, request hardening, browser-security headers, and a coverage gate — see [Phase 3.0 remediation](#phase-30-security-and-testing-remediation-sprints-14) below. Most recently, PR #9 merged Milestone 3 Phase 4a vector/hybrid retrieval into `main`, followed by search-routing fixes for entity topics, numbered books, phrase terms, morphology prompts, stale embeddings, and migration safety.
 
 ### UI review remediation (PRs 1–11) — closed
 
@@ -72,7 +72,7 @@ Two latent client bugs surfaced during the acceptance-test wiring: `SearchPanel`
 The assistant route follows a clear retrieval-first contract:
 
 1. **Route the prompt** (`routeAssistantPrompt`) — returns `{ modelRole, modelUsed, routingDecision }` and an optional advisory `recommendedUpgrade` if scholarly cues are detected.
-2. **Run local retrieval first** (`extractSignals` → `runRetrievalPlan`) — the Paradigm C deterministic-first pipeline (`lib/ai/signals.ts`, `lib/ai/retrievalPlanner.ts`): signals are extracted from the prompt, `buildPlan` turns them into a bounded set of DB-backed calls (passage/lemma/keyword/morphology/top-lemmas), and `runRetrievalPlan` executes them into an `EvidencePacket` (citations, tool trace, formatted evidence). Signal extraction now parses cross-chapter references (e.g. `2 Cor 4:16–5:10`) via `ParsedReference.chapterEnd`. The retrieval planner applies these completeness rules with bounded, safe assembly: (a) word searches (`searchLemma`/`searchKeyword`/`searchMorphology`) are scoped to the named chapter when the prompt names exactly one single-chapter reference, falling back to book or corpus otherwise; (b) large surveys return 25 results plus the true total count (e.g. `searchLemma(ἀγάπη) — 116 hit(s) … (91 more)`), while small ones (≤ 25 hits) return all results; (c) `passageCall` assembles complete passages — whole chapters, in-chapter ranges, and cross-chapter ranges built from per-chapter `getPassage` calls — subject to a `MAX_PASSAGE_LINES = 120` hard ceiling with a `…(N more)` marker. Cross-chapter expansion is bounded against pathological prompts (the chapter span is clamped, the fetch loop stops once a chapter returns no rows, it probes past a leading out-of-range segment so a valid tail is not dropped, the tool trace lists only chapters actually fetched, and an explicit truncation marker is shown when the ceiling cuts a span short). (d) The total assembled evidence is capped at `MAX_EVIDENCE_CHARS = 58_000` (with an honest omission marker): the deterministic-fallback answer embeds the evidence verbatim and the user may save it, so this keeps that answer within the generated-study-note persistence caps by construction — single/few-reference answers are never trimmed; only a pathological multi-range prompt is. (e) **Phase 4a semantic path**: on topical prompts (where no single exact verse reference is detected), the planner also runs a gated `semanticCall` — `searchSemantic` fuses pgvector KNN over WEB verse embeddings with keyword FTS via Reciprocal Rank Fusion (`lib/search/rrf.ts`), filters hits to the SBLGNT spine, and expands each hit to an on-spine ±2 verse window. Requires `OPENAI_API_KEY`; gracefully no-ops to deterministic retrieval when unset.
+2. **Run local retrieval first** (`extractSignals` → `runRetrievalPlan`) — the Paradigm C deterministic-first pipeline (`lib/ai/signals.ts`, `lib/ai/retrievalPlanner.ts`): signals are extracted from the prompt, `buildPlan` turns them into a bounded set of DB-backed calls (passage/lemma/keyword/morphology/top-lemmas), and `runRetrievalPlan` executes them into an `EvidencePacket` (citations, tool trace, formatted evidence). Signal extraction parses cross-chapter references (e.g. `2 Cor 4:16–5:10`) via `ParsedReference.chapterEnd`, matches book aliases longest-first, strips parsed references/book aliases/morphology codes before topic extraction, preserves known and quoted multi-word phrases as `phraseTerms`, and maps stable entity topics (`jesus`, `christ`, `god`, `lord`, `jerusalem`) to Greek lemmas instead of dropping them as proper nouns. The retrieval planner applies these completeness rules with bounded, safe assembly: (a) word searches (`searchLemma`/`searchKeyword`/`searchMorphology`) are scoped to a chapter only for exactly one single-chapter reference; multiple references in one book use book scope, and cross-book prompts stay corpus-wide; (b) large surveys return 25 results plus the true total count (e.g. `searchLemma(ἀγάπη) — 116 hit(s) … (91 more)`), while small ones (≤ 25 hits) return all results; (c) `passageCall` assembles complete passages — whole chapters, in-chapter ranges, and cross-chapter ranges built from per-chapter `getPassage` calls — subject to a `MAX_PASSAGE_LINES = 120` hard ceiling with a `…(N more)` marker. Cross-chapter expansion is bounded against pathological prompts (the chapter span is clamped, the fetch loop stops once a chapter returns no rows, it probes past a leading out-of-range segment so a valid tail is not dropped, the tool trace lists only chapters actually fetched, and an explicit truncation marker is shown when the ceiling cuts a span short). (d) The total assembled evidence is capped at `MAX_EVIDENCE_CHARS = 58_000` (with an honest omission marker): the deterministic-fallback answer embeds the evidence verbatim and the user may save it, so this keeps that answer within the generated-study-note persistence caps by construction — single/few-reference answers are never trimmed; only a pathological multi-range prompt is. (e) **Phase 4a semantic path**: on conceptual prompts with real topic words or phrase terms, the planner also runs a gated `semanticCall` outside the deterministic 8-call budget — `searchSemantic` fuses pgvector KNN over current-model WEB verse embeddings with keyword FTS via Reciprocal Rank Fusion (`lib/search/rrf.ts`), filters hits to the SBLGNT spine, and expands each hit to an on-spine ±2 verse window. Semantic search skips morphology-only prompts and exact-verse lookups, honors the same book/chapter scope as deterministic retrieval, requires `OPENAI_API_KEY`, and gracefully no-ops to deterministic retrieval when unset or disabled.
 3. **Optionally synthesize** (`synthesizeWithRefinement`) — when `OPENAI_API_KEY` is set, calls the official `openai@4` SDK's `responses.create` with the local answer + citations (capped at 20 entries) + structured tool trace as context. The model returns structured JSON (`answer` + `claims[]`) via a strict json\_schema output format. Throws are caught and the deterministic local answer is returned with `mode: "fallback"`.
 4. **Verify grounding** (`verifyGrounding` in `lib/ai/grounding.ts`) — each claim's cited reference is resolved and the quoted text is fuzzy-matched against the real DB verse. SBLGNT is the citation authority: a Greek-quote score below 0.90 or an unresolvable reference fails the claim and `answerBibleQuestion` returns a structured refusal (`grounded: false`) instead of the draft — the withheld answer is what gets stored, never the draft. WEB is a non-authoritative display aid: a WEB mismatch or missing verse appends an alignment caveat but does not refuse. The `grounded` boolean and optional `groundingReport` are recorded in `AssistantMessageMetadata`; `AiAssistant` renders a "Withheld — insufficient evidence" banner when `grounded === false`. Deterministic fallback paths are grounded-by-construction; a verification infra-throw falls back deterministically.
 5. **Persist the exchange** — `startAssistantExchange` initiates the user-message DB write before `answerBibleQuestion` runs (parallelizing the user write with synthesis); `finishAssistantExchange` writes the assistant message with typed `AssistantMessageMetadata` JSON (including `grounded` + `groundingReport`).
@@ -81,8 +81,10 @@ The assistant route follows a clear retrieval-first contract:
 
 - **Unit and integration tests** (vitest 4 + jsdom + RTL). Coverage gate via v8 over `app/api/**` + `lib/**`. Additions from Phase 4a (Vector + Hybrid Retrieval):
   - `tests/unit/lib/search/rrf.test.ts` — `reciprocalRankFusion` unit tests (RRF score computation, tie-breaking, empty-list edge cases)
-  - `tests/unit/lib/search-semantic.test.ts` — `searchSemantic`: vector KNN + FTS fusion, SBLGNT-spine filter, ±2 window expansion, behavior when `OPENAI_API_KEY` is unset
-  - `tests/unit/lib/ai/retrievalPlanner.test.ts` (extended) — `shouldRunSemantic` gate (fires on topical prompts, skips exact-verse references); `semanticCall` on-spine ±2 window assembly
+  - `tests/unit/lib/search-semantic.test.ts` — `searchSemantic`: vector KNN + FTS fusion, SBLGNT-spine filter, current-model filter, embedding text-hash helper, chapter scope, and behavior when `OPENAI_API_KEY` is unset
+  - `tests/unit/lib/ai/signals.test.ts` (extended) — longest-first book aliases, reference/book/morph stripping before topic extraction, `describe` as a stop word, entity-topic lemma mappings, and quoted phrase preservation
+  - `tests/unit/lib/ai/retrievalPlanner.test.ts` (extended) — `shouldRunSemantic` gate (fires on topical/phrase prompts, skips exact-verse and morphology-only prompts); multi-reference scoping; `semanticCall` on-spine ±2 window assembly
+  - `tests/unit/lib/ai/synthesis.test.ts` (extended) — prompt requires exact Greek copying, text-critical sigla preservation, and ellipsis use for omitted Greek spans
   - `tests/integration/semantic-search.test.ts` — end-to-end semantic search against the seeded Neon test branch (with embeddings ingested)
 
   Additions from Phase 3 (Lexical FTS):
@@ -115,12 +117,12 @@ The assistant route follows a clear retrieval-first contract:
   - `tests/unit/components/AiAssistant-output-safety.test.tsx` — XSS payloads in assistant response render as text, not parsed HTML
   - Plus all earlier suites still in place: highlights, notes, saved-searches, search helpers, import parser, etc.
 - **DB integration suite** (`tests/integration/db-ownership.test.ts`, 7 tests) — real Prisma against the configured PostgreSQL. Covers per-user scoping for notes/highlights/saved-searches/generated-notes/ai-sessions plus the `onDelete: Cascade` FK chain from `User`. Runs via `npm run test:integration` through a separate `vitest.integration.config.ts`; skips itself when `DATABASE_URL` is unset.
-- **Playwright acceptance suite** (`scripts/acceptance-test.js`) — 11 end-to-end interactions including dev-credentials sign-in. Includes a PostgreSQL preflight that fails fast with a clear message when Docker isn't running.
+- **Playwright acceptance suite** (`scripts/acceptance-test.js`) — 11 end-to-end interactions including dev-credentials sign-in. Includes a PostgreSQL preflight that fails fast with a clear message when the configured `.env.test` database cannot be reached.
 
 ### Database
 
-- Prisma 6 over PostgreSQL on `localhost:5433`
-- 7 migrations on disk:
+- Prisma 6 over PostgreSQL. Current maintainer/dev and test environments use Neon branches (`DATABASE_URL` pooled for runtime, `DIRECT_URL` direct for migrations); local PostgreSQL remains possible if the same migrations are applied.
+- 9 migrations on disk:
   - `0_init` — baseline reflecting pre-rename schema
   - `20260521162527_assistant_message_metadata` — `AiMessage.citations → metadata`
   - `20260522193249_token_lemma_index` — composite `(corpusId, bookId, partOfSpeech, lemma)` for `getTopLemmas`
@@ -128,7 +130,8 @@ The assistant route follows a clear retrieval-first contract:
   - `20260526022206_auth_user_models` — Sprint 2: `User` / `Account` / `Session` / `VerificationToken` + FK relations from `Note` / `Highlight` / `SavedSearch` / `GeneratedStudyNote` / `AiSession` to `User.id` (`onDelete: Cascade`)
   - `20260526200447_session_revocation` — Sprint 4: `User.sessionsValidFrom DateTime?` watermark that rejects replayed JWTs after sign-out
   - `20260530120000_lexical_fts` — Phase 3: `CREATE EXTENSION unaccent`; custom immutable `bible_simple` FTS config; `Verse.textSearch` stored GENERATED `tsvector` column; `Verse_textSearch_idx` GIN index; all ~15.9 k rows backfilled
-  - `20260602120000_add_verse_embeddings` — Phase 4a: `CREATE EXTENSION vector` (pgvector); `VerseEmbedding` table (WEB per-verse `vector(1536)` + foreign-key to `Verse`); HNSW cosine index. Embeddings ingested via `npm run embed:verses` (requires `OPENAI_API_KEY`, model `text-embedding-3-small`; idempotent — skips empty verses, retries transient 5xx).
+  - `20260602120000_add_verse_embeddings` — Phase 4a: `CREATE EXTENSION vector` (pgvector); `VerseEmbedding` table (WEB per-verse `vector(1536)` + foreign-key to `Verse`); HNSW cosine index.
+  - `20260603120000_add_verse_embedding_text_hash` — Phase 4a follow-up: `VerseEmbedding.textHash` so ingestion can detect stale embeddings when WEB text changes. Embeddings are ingested via `npm run embed:verses` (requires `OPENAI_API_KEY`, model `text-embedding-3-small`; idempotent — skips empty verses, retries transient 5xx, and re-embeds when the row is missing, the model differs, or `textHash` differs).
 
 ### Tech stack
 
@@ -193,7 +196,7 @@ reconciliation/gap analysis, and the Docker→Neon hosting plan live in
    accent-insensitive Greek, whole-lexeme (not substring) matching, multi-word AND queries. English
    Snowball stemming deferred — follow-up tracked. Evidence-diff harness added
    (`scripts/evidence-diff.ts`). Unit + integration tests all green.
-4. **Vector + hybrid retrieval** — ✅ **Phase 4a done** (branch `milestone-3/phase-4a-vector-hybrid`): pgvector `VerseEmbedding` table, `text-embedding-3-small` WEB embeddings, `searchSemantic` (vector KNN + FTS RRF), SBLGNT-spine filter, on-spine ±2 window expansion, `npm run embed:verses` ingestion. **Phase 4b deferred**: cross-encoder rerank (top-30→top-5) requires Cohere/Voyage or LLM-as-reranker outside the current OpenAI-only dependency set.
+4. **Vector + hybrid retrieval** — ✅ **Phase 4a done** (merged via PR #9): pgvector `VerseEmbedding` table, `text-embedding-3-small` WEB embeddings, `textHash` stale-embedding detection, `searchSemantic` (current-model vector KNN + FTS RRF), SBLGNT-spine filter, on-spine ±2 window expansion, `npm run embed:verses` ingestion, and safer search routing for entity topics, numbered books, morphology prompts, references, and phrases. **Phase 4b deferred**: cross-encoder rerank (top-30→top-5) requires Cohere/Voyage or LLM-as-reranker outside the current OpenAI-only dependency set.
 5. **Louw-Nida enrichment** — import the `domain`/`ln` columns already in the MACULA TSV.
 6. **Evaluation harness** — RAGAS-style faithfulness/context-precision gates.
 
@@ -238,9 +241,9 @@ Closed across the UI review remediation:
 
 Three concrete gaps worth closing:
 
-- `**searchKeyword` and `searchMorphology` unit tests** — currently only `searchLemma` and `findLemmaExamples` have direct unit coverage. The shape is similar; mostly copy-and-adapt.
+- **`searchMorphology` unit tests** — `searchKeyword` now has direct FTS unit coverage; morphology still lacks the same direct helper-level coverage.
 - **Empty-retrieval safe response** — the milestone plan calls for "empty retrieval produces a safe no-evidence response" but no unit test exists for the path where every search returns zero results.
-- **Scholarly-recommendation routing test** — the milestone plan calls for "Scholarly prompts can return `recommendedUpgrade`, but no Milestone 2.5 path calls gpt-5.4." Worth a direct test that asserts the upgrade is advisory-only today (and won't be regressed when Step 3 lands).
+- **Semantic degradation smoke tests** — current unit tests cover no-key behavior; a focused end-to-end smoke for "embedding index empty/partial but deterministic retrieval still answers" would lock the intended graceful-degradation behavior.
 
 ### 4. Dev onboarding doc (S-sized)
 
@@ -288,7 +291,7 @@ Phase 3.0 (Sprints 1–4) closed the production-readiness blockers that this sec
 
 What's still outside Phase 3.0 scope for a real public launch:
 
-- A hosted PostgreSQL (not Docker on `localhost:5433`)
+- Production database policy and branch lifecycle for Neon (the maintainer/dev and test branches exist, but public-launch retention, backups, and storage-budget policy still need an explicit decision)
 - Production OAuth credentials and a stable `AUTH_URL`
 - Move the in-memory rate limiter to Upstash / Vercel KV / Cloudflare KV before deploying to a serverless host (the current limiter no-ops on serverless by design)
 
@@ -307,8 +310,8 @@ A few open questions that aren't blockers but will need a call before the next v
 ```powershell
 $env:NODE_OPTIONS="--use-system-ca"
 npm run verify          # lint + tsc + build + coverage gate
-npm run test:integration # real-Prisma ownership + FK suite (needs Docker)
-npm run test:acceptance  # Playwright end-to-end (needs Docker)
+npm run test:integration # real-Prisma ownership + FK suite (uses .env.test / Neon test branch)
+npm run test:acceptance  # Playwright end-to-end (uses .env.test / Neon test branch)
 ```
 
 All three should exit 0.

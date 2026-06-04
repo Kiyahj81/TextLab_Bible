@@ -54,11 +54,11 @@ sprint and at every Next.js minor upgrade. Cross-check each open row.
 | Field | Value |
 | --- | --- |
 | Severity | Low (data-egress consideration) |
-| Change | Phase 4a sends query text (at search time) and WEB verse text (at ingest time) to OpenAI's embeddings API (`text-embedding-3-small`) via the existing `lib/ai/openaiClient.ts` shared client. |
+| Change | Phase 4a sends query text (at search time) and WEB verse text (at ingest/backfill time) to OpenAI's embeddings API (`text-embedding-3-small`) via the existing `lib/ai/openaiClient.ts` shared client. |
 | Trust boundary | Same as the existing synthesis calls — OpenAI is already a trusted sub-processor. No new vendor or secret is introduced; the existing `OPENAI_API_KEY` is reused. |
 | Data sensitivity | WEB verse text is public domain. Query text is the same user prompt already sent to the synthesis model; no new user data category is exposed to OpenAI. |
 | Status | Accepted — same trust boundary as synthesis |
-| Mitigation | `embed:verses` ingestion is a one-time offline script run by the maintainer, not a per-request server path. The search-time embedding call (`embedQuery`) sends only the user's assistant prompt, already covered by the existing synthesis data-handling posture. |
+| Mitigation | `embed:verses` ingestion is an offline script run by the maintainer, not a per-request server path. It is idempotent and re-embeds only when a row is missing, the stored model differs, or the stored WEB text hash differs. The search-time embedding call (`embedQuery`) sends only the user's assistant prompt, already covered by the existing synthesis data-handling posture. `searchSemantic` filters `VerseEmbedding.model` to the current embedding model so stale model rows are not mixed into retrieval. |
 | Owner | Maintainer (kiyahj81) |
 | Opened | 2026-06-02 (Phase 4a vector + hybrid retrieval) |
 
@@ -94,6 +94,10 @@ sprint and at every Next.js minor upgrade. Cross-check each open row.
   `NODE_EXTRA_CA_CERTS=<path-to-that-pem>`.
 - Fallback: run audits from CI or any machine with clean registry
   access before declaring the gate met.
+- `npm run db:push` is intentionally disabled. This project depends on
+  handwritten SQL migrations for `bible_simple`, generated `tsvector`,
+  `pgvector`, HNSW, and embedding `textHash`; use
+  `npm run db:migrate:deploy` to apply the checked-in migrations.
 
 ## Closed
 

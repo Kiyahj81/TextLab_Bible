@@ -40,7 +40,7 @@ OpenAI-only dependency set. This design adopts that vendor (Voyage) through Verc
 | Fallback | Graceful no-op → current RRF order on missing key / error / timeout |
 | Scope | Assistant `searchSemantic` pool only; `/search` UI unchanged |
 | Rerank input text | WEB English verse text vs. the English natural-language prompt |
-| Validation | Unit + integration tests, extended `scripts/evidence-diff.ts`, manual |
+| Validation | Unit + integration tests (incl. a direct gateway-keyed reranker proof), dedicated `scripts/rerank-diff.ts`, manual |
 | Integration shape | Approach 1 — rerank as a stage inside `searchSemantic`; RRF = fallback |
 
 ## Architecture
@@ -73,16 +73,20 @@ Internals:
 2. Otherwise call the AI SDK:
    ```ts
    import { rerank } from "ai";
-   import { gateway } from "@ai-sdk/gateway";
 
+   // A plain model-id string routes through the AI SDK's built-in Vercel AI Gateway
+   // global provider, authenticated by AI_GATEWAY_API_KEY — no @ai-sdk/gateway needed.
    const result = await rerank({
-     model: gateway.rerankingModel(RERANK_MODEL),
+     model: RERANK_MODEL,
      query,
      documents: candidates.map((c) => c.text),
      topN,
      abortSignal: AbortSignal.timeout(RERANK_TIMEOUT_MS),
    });
    ```
+
+   The plain-string form is the AI SDK's documented basic usage; `tsc --noEmit` proves the
+   call shape against the installed `ai` types before we rely on it.
 3. Map `result.ranking[].originalIndex` back onto the original `candidates` array to preserve each
    `reference` (the reranker only sees `text`). Return the mapped candidates in ranked order,
    truncated to `topN`.
@@ -101,18 +105,25 @@ vector KNN (POOL=30) + FTS (POOL=30)
         ↓
    SBL-spine filter → onSpine   (unchanged)
         ↓
-   reranked = await rerankCandidates({ query, candidates: onSpine, topN: limit })
+   cap to RERANK_CANDIDATE_LIMIT (30) → rerankPool
+        ↓
+   reranked = await rerankCandidates({ query, candidates: rerankPool, topN: limit })
         ↓
    return (reranked ?? onSpine).slice(0, limit)
 ```
 
 Notes:
+- **Top-30 → top-5 is enforced explicitly.** `searchSemantic` pools up to 30 vector + 30 FTS rows,
+  so the post-RRF `onSpine` set can exceed 30. The rerank input is capped to
+  `RERANK_CANDIDATE_LIMIT = 30` (`rerankPool = onSpine.slice(0, RERANK_CANDIDATE_LIMIT)`) so the
+  reranker always sees the architecture doc's top-30, and `topN: limit` (5) returns the top-5.
 - `query` passed to rerank is the same natural-language `input.query` already embedded for the
   vector half (English prompt).
 - Candidates carry WEB `text` (already present on `RankedRef` from the RRF stage) and `reference`.
 - Rerank runs on **on-spine candidates only** — we never rerank a verse we cannot cite, and the
   spine filter still runs first so a citation can never become unresolvable due to reranking.
-- On `null`, output is byte-identical to today's behavior.
+- On `null`, output is byte-identical to today's behavior (fallback uses the full `onSpine`, not the
+  capped pool, so the no-rerank path is unchanged from Phase 4a).
 
 `RankedRef` already includes `reference`, `corpus`, and `text`, so `rerankCandidates` consumes it
 directly (mapping `{ reference, text }`); the reranked result is mapped back to the full `RankedRef`
@@ -122,8 +133,9 @@ entries by `reference` before slicing.
 
 Additive, scoped to rerank. Existing embeddings + synthesis stay on `openai@4`.
 
-- `ai` — provides `rerank`.
-- `@ai-sdk/gateway` — provides the `gateway(modelId)` provider.
+- `ai` — provides `rerank`. A plain model-id string (`"voyage/rerank-2.5"`) routes through the AI
+  SDK's built-in Vercel AI Gateway global provider, authenticated by `AI_GATEWAY_API_KEY`, so a
+  separate `@ai-sdk/gateway` package is **not** required.
 
 Pin to the current major. Run `npm run security:audit` after install; expect no new advisories
 beyond the tracked postcss one (`docs/security-register.md`).
@@ -158,9 +170,20 @@ To be recorded in `docs/security-register.md`:
   already excludes `api.openai.com` because OpenAI calls are server-side, not browser fetches;
   rerank is likewise server-side, so **no CSP change is needed**. Record this as a reasoned decision,
   not an omission.
-- **Third-party data flow:** WEB verse text + the user prompt are sent to Voyage via the gateway.
-  WEB is public-domain scripture and the prompt is already sent to OpenAI for synthesis, so no new
-  class of data leaves the system. Record this rationale.
+- **New processor / trust boundary:** Vercel AI Gateway (proxy) and Voyage AI (rerank provider) are
+  new third-party processors. The Voyage API key is managed in AI Gateway settings (BYOK) or via
+  Vercel billing — **never** in the app `.env`; the app holds only `AI_GATEWAY_API_KEY`.
+- **Data sent:** the user prompt + WEB verse text for the candidate pool. WEB is public-domain
+  scripture and the prompt is already sent to OpenAI for synthesis, so no new *class* of data leaves
+  the system — but it now reaches two additional processors.
+- **Gating:** rerank is gated on `AI_GATEWAY_API_KEY`. With the key unset, **no data is sent** to the
+  gateway or Voyage (the wrapper returns `null` before any network call).
+- **Zero Data Retention:** per the Vercel model page, **ZDR is NOT currently available for
+  `voyage/rerank-2.5`** (ZDR is offered per-provider and this model is not covered). So prompts +
+  WEB text sent for reranking may be retained under Voyage's standard policy. Accepted given the
+  low-sensitivity, public-domain nature of the data and the opt-in gating; if a ZDR guarantee is
+  later required, switch to a ZDR-supporting rerank model/provider or disable rerank. Record status
+  as **accepted**.
 
 ## Testing
 
@@ -181,14 +204,24 @@ To be recorded in `docs/security-register.md`:
 
 ### Integration — extend `tests/integration/semantic-search.test.ts`
 
-- Run the rerank path against the Neon test branch when `AI_GATEWAY_API_KEY` is present; **skip**
-  when unset (mirrors existing OpenAI-key-gated skips), so `npm run verify` stays green without
-  secrets.
+- **Direct reranker proof (gated on `AI_GATEWAY_API_KEY`):** call `rerankCandidates` with synthetic
+  documents and assert the *real* gateway/Voyage path works — result is **not `null`**, length > 0,
+  every returned `reference` came from the input candidates, and `topN` is respected. This is the
+  only test that proves the external call succeeded (the `searchSemantic` test below cannot, because
+  the wrapper falls back to RRF on any failure).
+- **`searchSemantic` rerank path:** run against the Neon test branch when both `OPENAI_API_KEY` and
+  `AI_GATEWAY_API_KEY` are present; assert results are non-empty and on-spine. Kept as a smoke test,
+  **not** treated as proof the rerank call worked.
+- Both **skip** when their keys are unset (mirrors existing OpenAI-key-gated skips), so
+  `npm run verify` stays green without secrets.
 
-### Evidence-diff — extend `scripts/evidence-diff.ts`
+### Evidence-diff — `scripts/rerank-diff.ts` (dedicated harness)
 
 - Print before/after (RRF vs reranked) ordering for a few sample conceptual prompts for manual
-  quality inspection.
+  quality inspection. **Keywords are derived exactly as the planner does** —
+  `extractSignals(prompt)` then `[...signals.topicWords, ...(signals.phraseTerms ?? [])].join(" ")`
+  — so the RRF baseline matches production behavior. A dedicated script (not the OpenAI-free
+  `scripts/evidence-diff.ts`, whose reproducible/no-key contract this would break).
 
 ### Gates
 
@@ -200,7 +233,7 @@ To be recorded in `docs/security-register.md`:
 
 ## Documentation updates (per CLAUDE.md)
 
-- `docs/Project_State.md` — Phase 4b done; update assistant-pipeline step 2 semantic-path text.
+- `docs/PROJECT_STATE.md` — Phase 4b done; update assistant-pipeline step 2 semantic-path text.
 - `docs/HiFi-exegesis-nt-roadmap.md` — flip Phase 4b from DEFERRED to DONE; update the
   reconciliation rerank rows (B. Retrieval pipeline; capability table).
 - `README.md` — new env vars + the optional rerank dependency.

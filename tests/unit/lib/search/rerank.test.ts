@@ -82,6 +82,18 @@ describe("rerankCandidates", () => {
     expect(out).toBeNull();
   });
 
+  it("returns null when ranking has duplicate originalIndex values", async () => {
+    process.env.AI_GATEWAY_API_KEY = "k";
+    rerankMock.mockResolvedValueOnce({
+      ranking: [
+        { originalIndex: 0, score: 0.9, document: CANDS[0].text },
+        { originalIndex: 0, score: 0.5, document: CANDS[0].text }
+      ]
+    });
+    const out = await rerankCandidates({ query: "x", candidates: CANDS });
+    expect(out).toBeNull();
+  });
+
   it("returns all mapped candidates in ranked order when topN is omitted", async () => {
     process.env.AI_GATEWAY_API_KEY = "k";
     rerankMock.mockResolvedValueOnce({

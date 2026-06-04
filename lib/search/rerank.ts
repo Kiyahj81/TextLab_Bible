@@ -32,16 +32,22 @@ export async function rerankCandidates(input: {
     const ranking = result?.ranking;
     if (!Array.isArray(ranking) || ranking.length === 0) return null;
 
+    // A well-behaved reranker returns each candidate index at most once. Treat a
+    // non-integer / out-of-range / DUPLICATE index as malformed → null fallback,
+    // so a bad response can never produce duplicate verse references downstream.
     const mapped: RerankCandidate[] = [];
+    const seen = new Set<number>();
     for (const r of ranking) {
       const originalIndex = r.originalIndex;
       if (
         !Number.isInteger(originalIndex) ||
         originalIndex < 0 ||
-        originalIndex >= candidates.length
+        originalIndex >= candidates.length ||
+        seen.has(originalIndex)
       ) {
         return null;
       }
+      seen.add(originalIndex);
       mapped.push(candidates[originalIndex]);
     }
 

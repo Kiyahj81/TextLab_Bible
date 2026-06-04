@@ -8,8 +8,7 @@ import {
   searchKeyword,
   searchLemma,
   searchMorphology,
-  searchSemantic,
-  SEMANTIC_INDEX_CORPUS
+  searchSemanticDetailed
 } from "@/lib/search";
 import { parseReference } from "@/lib/references";
 
@@ -342,14 +341,19 @@ export function shouldRunSemantic(signals: Signals): boolean {
   return !allExactVerses;
 }
 
+type SemanticWindowVerse = {
+  reference: string;
+  sblText: string;
+  webText?: string;
+};
+
 // Build an on-spine ±2 window for a hit: SBLGNT range defines which references are
 // citable; WEB supplies readable display text. A WEB-only verse in the window is
-// omitted because it is absent from the SBL range. When SBL has a verse WEB lacks,
-// fall back to the Greek text AND label that line SBLGNT — never present Greek under a
-// WEB label, which would violate the citation-spine / display-aid corpus distinction.
+// omitted because it is absent from the SBL range. When WEB exists, keep it beside
+// the SBLGNT line so synthesis has exact Greek for greekQuote plus a readable aid.
 async function expandOnSpineWindow(
   reference: string
-): Promise<{ reference: string; corpus: "SBLGNT" | "WEB"; text: string }[]> {
+): Promise<SemanticWindowVerse[]> {
   const parsed = parseReference(reference);
   if (!parsed) return [];
   const verseStart = Math.max(1, parsed.verse - SEMANTIC_WINDOW);
@@ -359,12 +363,11 @@ async function expandOnSpineWindow(
     getPassage({ corpus: "WEB", book: parsed.book, chapter: parsed.chapter, verseStart, verseEnd })
   ]);
   const webText = new Map(web.references.map((r) => [r.verse, r.text]));
-  return sbl.references.map((r) => {
-    const web = webText.get(r.verse);
-    return web !== undefined
-      ? { reference: r.reference, corpus: "WEB" as const, text: web }
-      : { reference: r.reference, corpus: "SBLGNT" as const, text: r.text };
-  });
+  return sbl.references.map((r) => ({
+    reference: r.reference,
+    sblText: r.text,
+    webText: webText.get(r.verse)
+  }));
 }
 
 function semanticCall(prompt: string, keywords: string, scope: Scope): PlannedCall {
@@ -378,7 +381,7 @@ function semanticCall(prompt: string, keywords: string, scope: Scope): PlannedCa
     key: `semantic:${scope.book ?? ""}|${scope.chapter ?? ""}`,
     errorTrace: { tool: "searchSemantic", args },
     run: async () => {
-      const hits = await searchSemantic({
+      const semantic = await searchSemanticDetailed({
         query: prompt,
         keywords,
         book: scope.book,
@@ -387,6 +390,12 @@ function semanticCall(prompt: string, keywords: string, scope: Scope): PlannedCa
         chapter: scope.chapter,
         limit: SEMANTIC_HIT_LIMIT
       });
+      const hits = semantic.results;
+      const traceArgs = {
+        ...args,
+        rerankStatus: semantic.rerank.status,
+        rerankCandidateCount: semantic.rerank.candidateCount
+      };
       const lines: string[] = [];
       const citations: AssistantCitation[] = [];
       const windows = await Promise.all(hits.map((h) => expandOnSpineWindow(h.reference)));
@@ -394,10 +403,13 @@ function semanticCall(prompt: string, keywords: string, scope: Scope): PlannedCa
         const window = windows[i];
         if (window.length === 0) return;
         lines.push(`#### ${hit.reference} (semantic hit)`);
-        for (const v of window) lines.push(`- ${v.reference}, ${v.corpus}: ${v.text}`);
+        for (const v of window) {
+          lines.push(`- ${v.reference}, SBLGNT: ${v.sblText}`);
+          if (v.webText !== undefined) lines.push(`- ${v.reference}, WEB: ${v.webText}`);
+        }
         citations.push({
           reference: hit.reference,
-          corpus: SEMANTIC_INDEX_CORPUS,
+          corpus: "SBLGNT",
           searchQuery: "semantic",
           toolName: "searchSemantic"
         });
@@ -408,7 +420,7 @@ function semanticCall(prompt: string, keywords: string, scope: Scope): PlannedCa
         // trace still records the attempt for observability.
         citations: citations.slice(0, MAX_SECTION_LINES),
         section: lines.length > 0 ? sectionBlock("searchSemantic — top hits with ±2 context", lines, lines.length) : "",
-        traces: [{ tool: "searchSemantic", args }]
+        traces: [{ tool: "searchSemantic", args: traceArgs }]
       };
     }
   };

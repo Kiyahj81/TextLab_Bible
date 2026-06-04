@@ -82,18 +82,40 @@ type SemanticRow = { osisId: string; chapter: number; verse: number; text: strin
 // (used by the rerank-diff harness); the default reranks when `AI_GATEWAY_API_KEY` is set.
 const RERANK_CANDIDATE_LIMIT = 30;
 
-export async function searchSemantic(input: {
+type SemanticSearchInput = {
   query: string;
   keywords?: string;
   book?: string;
   chapter?: number;
   limit?: number;
   rerank?: boolean;
-}): Promise<RankedRef[]> {
+};
+
+export type SemanticRerankStatus = "applied" | "fallback" | "disabled";
+
+export type SemanticRerankTrace = {
+  status: SemanticRerankStatus;
+  candidateCount: number;
+};
+
+export type SemanticSearchDetailedResult = {
+  results: RankedRef[];
+  rerank: SemanticRerankTrace;
+};
+
+function semanticResult(results: RankedRef[], rerank: SemanticRerankTrace): SemanticSearchDetailedResult {
+  return { results, rerank };
+}
+
+export async function searchSemantic(input: SemanticSearchInput): Promise<RankedRef[]> {
+  return (await searchSemanticDetailed(input)).results;
+}
+
+export async function searchSemanticDetailed(input: SemanticSearchInput): Promise<SemanticSearchDetailedResult> {
   const query = input.query.trim();
-  if (!query) return [];
+  if (!query) return semanticResult([], { status: "disabled", candidateCount: 0 });
   const vector = await embedQuery(query);
-  if (!vector) return [];
+  if (!vector) return semanticResult([], { status: "disabled", candidateCount: 0 });
 
   const book = normalizeBook(input.book);
   const limit = Math.max(1, Math.min(input.limit ?? 5, 25));
@@ -154,7 +176,9 @@ export async function searchSemantic(input: {
     return r ? spine.has(spineKey(r.osisId, r.chapter, r.verse)) : false;
   });
 
-  if (input.rerank === false) return onSpine.slice(0, limit);
+  if (input.rerank === false) {
+    return semanticResult(onSpine.slice(0, limit), { status: "disabled", candidateCount: onSpine.length });
+  }
 
   // Top-30 → top-5: rerank only the capped pool; fallback uses the full onSpine.
   const rerankPool = onSpine.slice(0, RERANK_CANDIDATE_LIMIT);
@@ -163,14 +187,17 @@ export async function searchSemantic(input: {
     candidates: rerankPool.map((r) => ({ reference: r.reference, text: r.text })),
     topN: limit
   });
-  if (!reranked) return onSpine.slice(0, limit);
+  if (!reranked) {
+    return semanticResult(onSpine.slice(0, limit), { status: "fallback", candidateCount: rerankPool.length });
+  }
 
   // Map reranked references back to the full RankedRef entries (preserve corpus/text).
   const onSpineByRef = new Map(onSpine.map((r) => [r.reference, r]));
-  return reranked
+  const results = reranked
     .map((c) => onSpineByRef.get(c.reference))
     .filter((r): r is RankedRef => Boolean(r))
     .slice(0, limit);
+  return semanticResult(results, { status: "applied", candidateCount: rerankPool.length });
 }
 
 export async function getAvailablePassages() {

@@ -57,7 +57,7 @@ describe("embeddingTextHash", () => {
   });
 });
 
-import { searchSemantic } from "@/lib/search";
+import { searchSemantic, searchSemanticDetailed } from "@/lib/search";
 
 const fakeClient = (embedding: number[]) => ({
   embeddings: { create: vi.fn().mockResolvedValue({ data: [{ embedding }] }) }
@@ -163,6 +163,27 @@ describe("searchSemantic", () => {
     expect(out.every((r) => r.corpus === "WEB")).toBe(true);
   });
 
+  it("reports applied rerank metadata when rerank succeeds", async () => {
+    getOpenAiMock.mockReturnValue(fakeClient([0.1, 0.2, 0.3]));
+    prismaMock.$queryRaw.mockResolvedValueOnce([
+      { osisId: "Eph", chapter: 2, verse: 16, text: "reconcile both" },
+      { osisId: "Rom", chapter: 5, verse: 10, text: "we were reconciled" }
+    ]);
+    prismaMock.verse.findMany.mockResolvedValueOnce([
+      { chapter: 2, verse: 16, book: { osisId: "Eph" } },
+      { chapter: 5, verse: 10, book: { osisId: "Rom" } }
+    ]);
+    rerankCandidatesMock.mockResolvedValueOnce([
+      { reference: "Rom 5:10", text: "we were reconciled" },
+      { reference: "Eph 2:16", text: "reconcile both" }
+    ]);
+
+    const out = await searchSemanticDetailed({ query: "reconciliation", limit: 5 });
+
+    expect(out.results.map((r) => r.reference)).toEqual(["Rom 5:10", "Eph 2:16"]);
+    expect(out.rerank).toEqual({ status: "applied", candidateCount: 2 });
+  });
+
   it("falls back to RRF order (byte-identical) when rerank returns null", async () => {
     getOpenAiMock.mockReturnValue(fakeClient([0.1, 0.2, 0.3]));
     prismaMock.$queryRaw.mockResolvedValueOnce([
@@ -180,6 +201,24 @@ describe("searchSemantic", () => {
     expect(out.map((r) => r.reference)).toEqual(["Eph 2:16", "Rom 5:10"]);
   });
 
+  it("reports fallback rerank metadata when rerank returns null", async () => {
+    getOpenAiMock.mockReturnValue(fakeClient([0.1, 0.2, 0.3]));
+    prismaMock.$queryRaw.mockResolvedValueOnce([
+      { osisId: "Eph", chapter: 2, verse: 16, text: "reconcile both" },
+      { osisId: "Rom", chapter: 5, verse: 10, text: "we were reconciled" }
+    ]);
+    prismaMock.verse.findMany.mockResolvedValueOnce([
+      { chapter: 2, verse: 16, book: { osisId: "Eph" } },
+      { chapter: 5, verse: 10, book: { osisId: "Rom" } }
+    ]);
+    rerankCandidatesMock.mockResolvedValueOnce(null);
+
+    const out = await searchSemanticDetailed({ query: "reconciliation", limit: 5 });
+
+    expect(out.results.map((r) => r.reference)).toEqual(["Eph 2:16", "Rom 5:10"]);
+    expect(out.rerank).toEqual({ status: "fallback", candidateCount: 2 });
+  });
+
   it("does not call rerank when rerank:false is passed", async () => {
     getOpenAiMock.mockReturnValue(fakeClient([0.1, 0.2, 0.3]));
     prismaMock.$queryRaw.mockResolvedValueOnce([
@@ -192,6 +231,22 @@ describe("searchSemantic", () => {
     const out = await searchSemantic({ query: "reconciliation", rerank: false });
     expect(rerankCandidatesMock).not.toHaveBeenCalled();
     expect(out.map((r) => r.reference)).toEqual(["Eph 2:16"]);
+  });
+
+  it("reports disabled rerank metadata when rerank:false is passed", async () => {
+    getOpenAiMock.mockReturnValue(fakeClient([0.1, 0.2, 0.3]));
+    prismaMock.$queryRaw.mockResolvedValueOnce([
+      { osisId: "Eph", chapter: 2, verse: 16, text: "reconcile both" }
+    ]);
+    prismaMock.verse.findMany.mockResolvedValueOnce([
+      { chapter: 2, verse: 16, book: { osisId: "Eph" } }
+    ]);
+
+    const out = await searchSemanticDetailed({ query: "reconciliation", rerank: false });
+
+    expect(rerankCandidatesMock).not.toHaveBeenCalled();
+    expect(out.results.map((r) => r.reference)).toEqual(["Eph 2:16"]);
+    expect(out.rerank).toEqual({ status: "disabled", candidateCount: 1 });
   });
 
   it("caps the rerank candidate pool to 30 (top-30 → top-5)", async () => {

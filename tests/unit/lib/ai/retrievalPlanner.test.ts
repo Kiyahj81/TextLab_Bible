@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import type { Signals } from "@/lib/ai/signals";
 
-const { getPassage, searchLemma, searchKeyword, searchMorphology, getTopLemmas, findLemmaExamples, searchSemantic } =
+const { getPassage, searchLemma, searchKeyword, searchMorphology, getTopLemmas, findLemmaExamples, searchSemanticDetailed } =
   vi.hoisted(() => ({
     getPassage: vi.fn(),
     searchLemma: vi.fn(),
@@ -9,7 +9,7 @@ const { getPassage, searchLemma, searchKeyword, searchMorphology, getTopLemmas, 
     searchMorphology: vi.fn(),
     getTopLemmas: vi.fn(),
     findLemmaExamples: vi.fn(),
-    searchSemantic: vi.fn()
+    searchSemanticDetailed: vi.fn()
   }));
 
 vi.mock("@/lib/search", () => ({
@@ -19,7 +19,7 @@ vi.mock("@/lib/search", () => ({
   searchMorphology,
   getTopLemmas,
   findLemmaExamples,
-  searchSemantic,
+  searchSemanticDetailed,
   SEMANTIC_INDEX_CORPUS: "WEB"
 }));
 
@@ -32,6 +32,13 @@ const emptySignals: Signals = {
   morphCodes: [],
   intent: "general"
 };
+
+function semanticResult(
+  results: Array<{ reference: string; corpus: string; text: string }>,
+  status: "applied" | "fallback" | "disabled" = "fallback"
+) {
+  return { results, rerank: { status, candidateCount: results.length } };
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -84,7 +91,7 @@ beforeEach(() => {
     ],
     pagination: {}
   }));
-  searchSemantic.mockResolvedValue([]);
+  searchSemanticDetailed.mockResolvedValue(semanticResult([]));
   getTopLemmas.mockResolvedValue([{ lemma: "λόγος", partOfSpeech: "N-", count: 10 }]);
   findLemmaExamples.mockResolvedValue(
     new Map([
@@ -312,7 +319,7 @@ describe("runRetrievalPlan", () => {
       expect.objectContaining({ morphCode: "V-PAI-3S", matchMode: "exact", book: "1Pet" })
     );
     expect(searchKeyword).not.toHaveBeenCalled();
-    expect(searchSemantic).not.toHaveBeenCalled();
+    expect(searchSemanticDetailed).not.toHaveBeenCalled();
   });
 
   it("returns all word hits when the count is at or below the sample size", async () => {
@@ -587,9 +594,11 @@ describe("shouldRunSemantic", () => {
 });
 
 describe("semanticCall via runRetrievalPlan", () => {
-  it("expands each hit to an on-spine ±2 window with per-verse WEB lines", async () => {
-    searchSemantic.mockResolvedValueOnce([{ reference: "Eph 2:16", corpus: "WEB", text: "reconcile" }]);
-    // SBL window 14..18 has 14,15,16,17,18; WEB has the same → all on-spine.
+  it("expands each hit to an on-spine ±2 window with paired SBLGNT and WEB lines", async () => {
+    searchSemanticDetailed.mockResolvedValueOnce(
+      semanticResult([{ reference: "Eph 2:16", corpus: "WEB", text: "reconcile" }])
+    );
+    // SBL window 14..18 has 14,15,16,17,18; WEB has the same → paired display lines.
     getPassage.mockImplementation(async (input: { corpus: string; book: string; chapter: number; verseStart: number; verseEnd: number }) => ({
       corpus: input.corpus,
       references: [14, 15, 16, 17, 18].map((verse) => ({
@@ -606,18 +615,67 @@ describe("semanticCall via runRetrievalPlan", () => {
       "what does Paul say about reconciliation"
     );
 
-    expect(searchSemantic).toHaveBeenCalledWith(
+    expect(searchSemanticDetailed).toHaveBeenCalledWith(
       expect.objectContaining({ query: "what does Paul say about reconciliation", keywords: "reconciliation" })
     );
     expect(evidence.formattedEvidence).toContain("Eph 2:16, WEB:");
+    expect(evidence.formattedEvidence).toContain("Eph 2:16, SBLGNT:");
     expect(evidence.formattedEvidence).toContain("Eph 2:14, WEB:"); // ±2 neighbor
-    expect(evidence.citations.some((c) => c.reference === "Eph 2:16" && c.toolName === "searchSemantic")).toBe(true);
+    expect(evidence.formattedEvidence).toContain("Eph 2:14, SBLGNT:"); // paired SBL text
+    expect(evidence.citations).toContainEqual(
+      expect.objectContaining({ reference: "Eph 2:16", corpus: "SBLGNT", toolName: "searchSemantic" })
+    );
+    expect(
+      evidence.citations.some((c) => c.reference === "Eph 2:16" && c.corpus === "WEB" && c.toolName === "searchSemantic")
+    ).toBe(false);
+  });
+
+  it("includes exact SBLGNT Greek beside WEB semantic context for prayer hits", async () => {
+    searchSemanticDetailed.mockResolvedValueOnce(
+      semanticResult([{ reference: "Matt 6:5", corpus: "WEB", text: "pray in secret" }])
+    );
+    getPassage.mockImplementation(async (input: { corpus: string; book: string; chapter: number }) => {
+      if (input.corpus === "SBLGNT") {
+        return {
+          corpus: "SBLGNT",
+          references: [5].map((verse) => ({
+            book: input.book,
+            chapter: input.chapter,
+            verse,
+            reference: `${input.book} ${input.chapter}:${verse}`,
+            text: "Καὶ ὅταν ⸂προσεύχησθε, οὐκ ἔσεσθε ὡς⸃ οἱ ὑποκριταί"
+          }))
+        };
+      }
+      return {
+        corpus: "WEB",
+        references: [5].map((verse) => ({
+          book: input.book,
+          chapter: input.chapter,
+          verse,
+          reference: `${input.book} ${input.chapter}:${verse}`,
+          text: "When you pray, you shall not be as the hypocrites"
+        }))
+      };
+    });
+
+    const evidence = await runRetrievalPlan(
+      { references: [], greekWords: [], topicWords: ["jesus", "prayer"], morphCodes: [], intent: "general" },
+      "what did Jesus teach about prayer?"
+    );
+
+    expect(evidence.formattedEvidence).toContain("Matt 6:5, SBLGNT:");
+    expect(evidence.formattedEvidence).toContain("Καὶ ὅταν ⸂προσεύχησθε");
+    expect(evidence.formattedEvidence).toContain("Matt 6:5, WEB:");
+    expect(evidence.formattedEvidence).toContain("When you pray");
   });
 
   it("keeps the semantic call when many topic words would otherwise saturate the plan", async () => {
     // 9 unmapped topic words → 9 keyword calls; with MAX_PLANNED_CALLS = 8 the
     // semantic call must still survive the slice because it is added first.
-    searchSemantic.mockResolvedValueOnce([{ reference: "John 3:16", corpus: "WEB", text: "loved" }]);
+    searchSemanticDetailed.mockResolvedValueOnce(
+      semanticResult([{ reference: "John 3:16", corpus: "WEB", text: "loved" }])
+    );
     const manyWords = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta", "iota"];
 
     const evidence = await runRetrievalPlan(
@@ -625,23 +683,30 @@ describe("semanticCall via runRetrievalPlan", () => {
       "a long conceptual prompt about many things"
     );
 
-    expect(searchSemantic).toHaveBeenCalled();
+    expect(searchSemanticDetailed).toHaveBeenCalled();
     expect(evidence.formattedEvidence).toContain("(semantic hit)");
   });
 
-  it("records keywords in the semantic tool trace", async () => {
-    searchSemantic.mockResolvedValueOnce([]);
+  it("records keywords and rerank state in the semantic tool trace", async () => {
+    searchSemanticDetailed.mockResolvedValueOnce(
+      semanticResult([{ reference: "Eph 2:16", corpus: "WEB", text: "mercy" }], "applied")
+    );
     const evidence = await runRetrievalPlan(
       { references: [], greekWords: [], topicWords: ["mercy"], morphCodes: [], intent: "general" },
       "what is mercy"
     );
-    expect(
-      evidence.toolTrace.some((t) => t.tool === "searchSemantic" && (t.args as { keywords?: string })?.keywords === "mercy")
-    ).toBe(true);
+    const trace = evidence.toolTrace.find((t) => t.tool === "searchSemantic");
+    expect(trace?.args).toMatchObject({
+      keywords: "mercy",
+      rerankStatus: "applied",
+      rerankCandidateCount: 1
+    });
   });
 
   it("omits a window verse missing from the SBL spine", async () => {
-    searchSemantic.mockResolvedValueOnce([{ reference: "Acts 8:36", corpus: "WEB", text: "what hinders" }]);
+    searchSemanticDetailed.mockResolvedValueOnce(
+      semanticResult([{ reference: "Acts 8:36", corpus: "WEB", text: "what hinders" }])
+    );
     getPassage.mockImplementation(async (input: { corpus: string; book: string; chapter: number }) => {
       if (input.corpus === "SBLGNT") {
         // SBL lacks 8:37 (WEB-only verse) → window returns 34,35,36,38.
@@ -672,42 +737,42 @@ describe("semanticCall via runRetrievalPlan", () => {
   });
 
   it("forwards the English phrase as FTS keywords for a phrase-only prompt (hybrid, not vector-only)", async () => {
-    searchSemantic.mockResolvedValueOnce([]);
+    searchSemanticDetailed.mockResolvedValueOnce(semanticResult([]));
     await runRetrievalPlan(
       { references: [], greekWords: ["πορνεία"], topicWords: [], morphCodes: [], intent: "general", phraseTerms: ["sexual immorality"] },
       "What is sexual immorality?"
     );
-    expect(searchSemantic).toHaveBeenCalledWith(
+    expect(searchSemanticDetailed).toHaveBeenCalledWith(
       expect.objectContaining({ query: "What is sexual immorality?", keywords: "sexual immorality" })
     );
   });
 
   it("preserves quoted phrase terms in semantic FTS keywords", async () => {
-    searchSemantic.mockResolvedValueOnce([]);
+    searchSemanticDetailed.mockResolvedValueOnce(semanticResult([]));
     await runRetrievalPlan(
       { references: [], greekWords: [], topicWords: [], morphCodes: [], intent: "topic-survey", phraseTerms: ['"new creation"'] },
       'verses about "new creation"'
     );
 
-    expect(searchSemantic).toHaveBeenCalledWith(
+    expect(searchSemanticDetailed).toHaveBeenCalledWith(
       expect.objectContaining({ query: 'verses about "new creation"', keywords: '"new creation"' })
     );
   });
 
   it("threads chapter scope into semantic search for a single-bare-chapter prompt", async () => {
-    searchSemantic.mockResolvedValueOnce([]);
+    searchSemanticDetailed.mockResolvedValueOnce(semanticResult([]));
     await runRetrievalPlan(
       { references: [{ book: "John", chapter: 3 }], greekWords: [], topicWords: ["love"], morphCodes: [], intent: "passage-study" },
       "verses about love in John 3"
     );
-    expect(searchSemantic).toHaveBeenCalledWith(
+    expect(searchSemanticDetailed).toHaveBeenCalledWith(
       expect.objectContaining({ book: "John", chapter: 3, keywords: "love" })
     );
   });
 
   it("preserves all deterministic slots when semantic is enabled but returns no hits (degraded index)", async () => {
     // Live mode on, but the embedding index yields nothing (empty/partial/rollout).
-    searchSemantic.mockResolvedValue([]);
+    searchSemanticDetailed.mockResolvedValue(semanticResult([]));
     const eightWords = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta"];
 
     const evidence = await runRetrievalPlan(
@@ -716,7 +781,7 @@ describe("semanticCall via runRetrievalPlan", () => {
       true // semanticEnabled
     );
 
-    expect(searchSemantic).toHaveBeenCalled(); // attempted
+    expect(searchSemanticDetailed).toHaveBeenCalled(); // attempted
     expect(evidence.formattedEvidence).not.toContain("(semantic hit)");
     // Empty semantic result contributes no section (no "(no matches)" noise)…
     expect(evidence.formattedEvidence).not.toContain("searchSemantic — top hits");
@@ -729,7 +794,9 @@ describe("semanticCall via runRetrievalPlan", () => {
   it("does not call searchSemantic or consume a plan slot when semantic retrieval is disabled", async () => {
     // Even if searchSemantic WOULD return a hit, a disabled (no key / kill switch)
     // run must not call it (no embedding egress) and must not steal a deterministic slot.
-    searchSemantic.mockResolvedValue([{ reference: "John 3:16", corpus: "WEB", text: "x" }]);
+    searchSemanticDetailed.mockResolvedValue(
+      semanticResult([{ reference: "John 3:16", corpus: "WEB", text: "x" }])
+    );
     const eightWords = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta"];
 
     const evidence = await runRetrievalPlan(
@@ -738,7 +805,7 @@ describe("semanticCall via runRetrievalPlan", () => {
       false // semanticEnabled = false
     );
 
-    expect(searchSemantic).not.toHaveBeenCalled();
+    expect(searchSemanticDetailed).not.toHaveBeenCalled();
     expect(evidence.formattedEvidence).not.toContain("(semantic hit)");
     // All 8 deterministic keyword slots are preserved (none crowded out by a no-op call).
     for (const w of eightWords) {
@@ -747,7 +814,9 @@ describe("semanticCall via runRetrievalPlan", () => {
   });
 
   it("labels an SBL-only window verse as SBLGNT, never WEB (corpus fallback)", async () => {
-    searchSemantic.mockResolvedValueOnce([{ reference: "Luke 1:36", corpus: "WEB", text: "Elizabeth" }]);
+    searchSemanticDetailed.mockResolvedValueOnce(
+      semanticResult([{ reference: "Luke 1:36", corpus: "WEB", text: "Elizabeth" }])
+    );
     getPassage.mockImplementation(async (input: { corpus: string; book: string; chapter: number }) => {
       if (input.corpus === "SBLGNT") {
         return {

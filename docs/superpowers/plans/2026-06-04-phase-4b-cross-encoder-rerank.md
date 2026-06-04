@@ -573,7 +573,7 @@ git commit -m "chore(scripts): add rerank-vs-RRF diff harness"
 ### Task 6: Documentation updates
 
 **Files:**
-- Modify: `docs/Project_State.md`, `docs/HiFi-exegesis-nt-roadmap.md`, `README.md`, `docs/security-register.md`
+- Modify: `docs/PROJECT_STATE.md`, `docs/HiFi-exegesis-nt-roadmap.md`, `README.md`, `docs/security-register.md`
 
 - [ ] **Step 1: Update `docs/HiFi-exegesis-nt-roadmap.md`**
 
@@ -592,7 +592,7 @@ Also in the **B. Retrieval pipeline** table, change the `Cross-encoder rerank (t
 and the Gap to `Closed`. In the capability table, change the `pgvector + embeddings + hybrid + RRF +
 rerank` row's distance to `Closed` and effort to `Phase 4a + 4b done`.
 
-- [ ] **Step 2: Update `docs/Project_State.md`**
+- [ ] **Step 2: Update `docs/PROJECT_STATE.md`**
 
 In the `### Assistant pipeline` section, step 2's `**Phase 4a semantic path**` sentence, append:
 ```markdown
@@ -641,7 +641,7 @@ Add a new entry:
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add docs/Project_State.md docs/HiFi-exegesis-nt-roadmap.md README.md docs/security-register.md
+git add docs/PROJECT_STATE.md docs/HiFi-exegesis-nt-roadmap.md README.md docs/security-register.md
 git commit -m "docs: record Phase 4b rerank (roadmap, project state, README, security)"
 ```
 

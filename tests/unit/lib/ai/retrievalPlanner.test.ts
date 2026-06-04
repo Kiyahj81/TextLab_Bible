@@ -1,5 +1,10 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import type { Signals } from "@/lib/ai/signals";
+import {
+  ENGLISH_PHRASE_TO_GREEK_LEMMA,
+  ENGLISH_TO_GREEK_LEMMA,
+  extractSignals,
+  type Signals
+} from "@/lib/ai/signals";
 
 const { getPassage, searchLemma, searchKeyword, searchMorphology, getTopLemmas, findLemmaExamples, searchSemanticDetailed } =
   vi.hoisted(() => ({
@@ -594,6 +599,106 @@ describe("shouldRunSemantic", () => {
 });
 
 describe("semanticCall via runRetrievalPlan", () => {
+  it("keeps broad entity words in semantic context instead of deterministic lemma evidence", async () => {
+    for (const entity of ["jesus", "christ", "god", "lord"] as const) {
+      vi.clearAllMocks();
+      searchSemanticDetailed.mockResolvedValue(semanticResult([]));
+
+      const prompt = `what does ${entity} say about prayer`;
+      await runRetrievalPlan(extractSignals(prompt), prompt);
+
+      expect(searchLemma).not.toHaveBeenCalledWith(
+        expect.objectContaining({ lemma: ENGLISH_TO_GREEK_LEMMA[entity] })
+      );
+      expect(searchLemma).toHaveBeenCalledWith(
+        expect.objectContaining({ lemma: ENGLISH_TO_GREEK_LEMMA.prayer })
+      );
+      expect(searchSemanticDetailed).toHaveBeenCalledWith(
+        expect.objectContaining({ query: prompt, keywords: "prayer" })
+      );
+    }
+  });
+
+  it("uses broad entity lemma evidence for mention-count prompts", async () => {
+    const prompt = "how many times is Jesus mentioned";
+
+    await runRetrievalPlan(extractSignals(prompt), prompt);
+
+    expect(searchLemma).toHaveBeenCalledWith(
+      expect.objectContaining({ lemma: ENGLISH_TO_GREEK_LEMMA.jesus })
+    );
+  });
+
+  it("keeps a broad entity as the real topic in teaching-about-broad-entity prompts", async () => {
+    const prompt = "what does the Bible teach about Jesus";
+
+    await runRetrievalPlan(extractSignals(prompt), prompt);
+
+    expect(searchKeyword).not.toHaveBeenCalledWith(expect.objectContaining({ query: "teach" }));
+    expect(searchLemma).toHaveBeenCalledWith(
+      expect.objectContaining({ lemma: ENGLISH_TO_GREEK_LEMMA.jesus })
+    );
+    expect(searchSemanticDetailed).toHaveBeenCalledWith(
+      expect.objectContaining({ query: prompt, keywords: "jesus" })
+    );
+  });
+
+  it("preserves local lemma fallback for broad-entity-only prompts when semantic is disabled", async () => {
+    const prompt = "verses about Jesus";
+
+    await runRetrievalPlan(extractSignals(prompt), prompt, false);
+
+    expect(searchSemanticDetailed).not.toHaveBeenCalled();
+    expect(searchLemma).toHaveBeenCalledWith(
+      expect.objectContaining({ lemma: ENGLISH_TO_GREEK_LEMMA.jesus })
+    );
+  });
+
+  it("treats teach as framing in teaching-about prompts without dropping the real topic", async () => {
+    const prompt = "what did jesus teach about prayer";
+
+    await runRetrievalPlan(extractSignals(prompt), prompt);
+
+    expect(searchKeyword).not.toHaveBeenCalledWith(expect.objectContaining({ query: "teach" }));
+    expect(searchLemma).toHaveBeenCalledWith(
+      expect.objectContaining({ lemma: ENGLISH_TO_GREEK_LEMMA.prayer })
+    );
+    expect(searchLemma).not.toHaveBeenCalledWith(
+      expect.objectContaining({ lemma: ENGLISH_TO_GREEK_LEMMA.jesus })
+    );
+    expect(searchSemanticDetailed).toHaveBeenCalledWith(
+      expect.objectContaining({ query: prompt, keywords: "prayer" })
+    );
+  });
+
+  it("treats a known phrase as the narrower topic when paired with a broad entity", async () => {
+    const prompt = "what did Jesus teach about sexual immorality";
+
+    await runRetrievalPlan(extractSignals(prompt), prompt);
+
+    expect(searchKeyword).not.toHaveBeenCalledWith(expect.objectContaining({ query: "teach" }));
+    expect(searchLemma).not.toHaveBeenCalledWith(
+      expect.objectContaining({ lemma: ENGLISH_TO_GREEK_LEMMA.jesus })
+    );
+    expect(searchLemma).toHaveBeenCalledWith(
+      expect.objectContaining({ lemma: ENGLISH_PHRASE_TO_GREEK_LEMMA["sexual immorality"] })
+    );
+    expect(searchSemanticDetailed).toHaveBeenCalledWith(
+      expect.objectContaining({ query: prompt, keywords: "sexual immorality" })
+    );
+  });
+
+  it("keeps teach as keyword evidence when teaching itself is the topic", async () => {
+    const prompt = "who is qualified to teach in the church";
+
+    await runRetrievalPlan(extractSignals(prompt), prompt);
+
+    expect(searchKeyword).toHaveBeenCalledWith(expect.objectContaining({ query: "teach" }));
+    expect(searchSemanticDetailed).toHaveBeenCalledWith(
+      expect.objectContaining({ query: prompt, keywords: expect.stringContaining("teach") })
+    );
+  });
+
   it("expands each hit to an on-spine ±2 window with paired SBLGNT and WEB lines", async () => {
     searchSemanticDetailed.mockResolvedValueOnce(
       semanticResult([{ reference: "Eph 2:16", corpus: "WEB", text: "reconcile" }])

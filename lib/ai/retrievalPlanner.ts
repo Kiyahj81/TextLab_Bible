@@ -42,8 +42,14 @@ const MAX_TOTAL_CITATIONS = 40;
 // Semantic search: how many fused hits to expand, and the ± window per hit.
 const SEMANTIC_HIT_LIMIT = 5;
 const SEMANTIC_WINDOW = 2;
+const BROAD_ENTITY_TOPIC_WORDS: ReadonlySet<string> = new Set(["jesus", "christ", "god", "lord"]);
+const TEACH_FRAMING_TOPIC_WORDS: ReadonlySet<string> = new Set(["teach", "teaches", "taught", "teaching"]);
+const BROAD_ENTITY_LEMMA_CUE = /\b(?:lemma|lemmas|greek\s+word|word\s+study|occurrences?|appearances?|appears?|appeared|mentions?|mentioned|named|name|how\s+many\s+times)\b/i;
+const TEACH_ABOUT_FRAME = /\b(?:teach|teaches|taught)\b[\s\S]{0,80}\b(?:about|on|concerning)\b/i;
+const TEACHING_TOPIC_CUE = /\b(?:qualified|qualification|qualifications|teacher|teachers|gift\s+of\s+teaching|able\s+to\s+teach|apt\s+to\s+teach)\b/i;
 
 type Scope = { book?: string; chapter?: number };
+type PlannedTopicTerms = { deterministicWords: string[]; semanticKeywordTerms: string[] };
 
 // A single, single-chapter reference scopes word searches to that chapter.
 // Multiple references only retain book scope when all refs are in the same book;
@@ -61,6 +67,40 @@ function scopeFor(signals: Signals): Scope {
     return {};
   }
   return signals.book ? { book: signals.book } : {};
+}
+
+function isTeachFramingWord(word: string, prompt: string, topicWords: string[]): boolean {
+  if (!TEACH_FRAMING_TOPIC_WORDS.has(word)) return false;
+  if (!TEACH_ABOUT_FRAME.test(prompt)) return false;
+  if (TEACHING_TOPIC_CUE.test(prompt)) return false;
+  return topicWords.some((topicWord) => !TEACH_FRAMING_TOPIC_WORDS.has(topicWord));
+}
+
+function classifyTopicTerms(signals: Signals, prompt: string): PlannedTopicTerms {
+  const deterministicWords: string[] = [];
+  const semanticKeywordTerms: string[] = [];
+  const broadEntityLemmaRequested = BROAD_ENTITY_LEMMA_CUE.test(prompt);
+  const teachFrameWords = new Set(
+    signals.topicWords.filter((word) => isTeachFramingWord(word, prompt, signals.topicWords))
+  );
+  const hasNarrowerTopic =
+    (signals.phraseTerms?.length ?? 0) > 0 ||
+    signals.topicWords.some((word) => (
+      !BROAD_ENTITY_TOPIC_WORDS.has(word) && !teachFrameWords.has(word)
+    ));
+
+  for (const word of signals.topicWords) {
+    const broadEntity = BROAD_ENTITY_TOPIC_WORDS.has(word);
+    const teachFrame = teachFrameWords.has(word);
+    const broadEntityIsRealTopic = broadEntity && !hasNarrowerTopic;
+
+    if ((!broadEntity || broadEntityIsRealTopic) && !teachFrame) semanticKeywordTerms.push(word);
+    if (teachFrame) continue;
+    if (broadEntity && !broadEntityLemmaRequested && !broadEntityIsRealTopic) continue;
+    deterministicWords.push(word);
+  }
+
+  return { deterministicWords, semanticKeywordTerms };
 }
 
 type CallResult = { citations: AssistantCitation[]; section: string; traces: ToolTraceEntry[] };
@@ -435,6 +475,7 @@ function buildPlan(signals: Signals, prompt: string, semanticEnabled: boolean): 
     calls.push(call);
   };
   const scope = scopeFor(signals);
+  const topicTerms = classifyTopicTerms(signals, prompt);
 
   for (const ref of signals.references) {
     add(passageCall("SBLGNT", ref));
@@ -445,7 +486,7 @@ function buildPlan(signals: Signals, prompt: string, semanticEnabled: boolean): 
     add(lemmaCall(lemma, scope));
   }
 
-  for (const word of signals.topicWords) {
+  for (const word of topicTerms.deterministicWords) {
     const mapped = ENGLISH_TO_GREEK_LEMMA[word];
     if (mapped) add(lemmaCall(mapped, scope));
     else add(keywordCall(word, scope));
@@ -474,7 +515,7 @@ function buildPlan(signals: Signals, prompt: string, semanticEnabled: boolean): 
     // terms a phrase-only prompt ("What is sexual immorality?") would pass empty
     // keywords and silently skip the FTS half — leaving it vector-only, unlike its
     // single-word equivalent which gets full KNN+FTS.
-    const keywords = [...signals.topicWords, ...(signals.phraseTerms ?? [])].join(" ");
+    const keywords = [...topicTerms.semanticKeywordTerms, ...(signals.phraseTerms ?? [])].join(" ");
     plan.push(semanticCall(prompt, keywords, scope));
   }
 

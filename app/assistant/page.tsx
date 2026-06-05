@@ -1,6 +1,6 @@
 import { AiAssistant } from "@/components/AiAssistant";
 import { DismissibleIntro } from "@/components/DismissibleIntro";
-import { aiSystemPrompt } from "@/lib/ai/systemPrompt";
+import { assistantGuardrailsDisplay } from "@/lib/ai/assistantGuardrailsDisplay";
 import { requirePageAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 
@@ -27,8 +27,8 @@ export default async function AssistantPage() {
       </div>
 
       <details className="rounded-md border border-stone-300 bg-white p-4 text-sm text-slate-700">
-        <summary className="cursor-pointer font-semibold text-slate-950">System prompt guardrails</summary>
-        <pre className="mt-3 whitespace-pre-wrap leading-6">{aiSystemPrompt}</pre>
+        <summary className="cursor-pointer font-semibold text-slate-950">Assistant guardrails</summary>
+        <pre className="mt-3 whitespace-pre-wrap leading-6">{assistantGuardrailsDisplay}</pre>
       </details>
 
       <AiAssistant

@@ -150,7 +150,8 @@ dispatch table with the deterministic-first pipeline from
 - Modify: `lib/ai/assistant.ts` (delete branches, keep `detectBookFromPrompt`), `lib/ai/modelRouter.ts`.
 - Resolve the C spec's four open questions (§10) during implementation: multi-`getPassage` handling
   (recommend "execute all in first round"), proper-noun filtering, whether `ENGLISH_TO_GREEK_LEMMA`
-  moves to JSON, and deleting the now-unused `lib/ai/systemPrompt.ts`.
+  moves to JSON, and separating UI-facing guardrails copy from the live synthesis prompt
+  (`lib/ai/assistantGuardrailsDisplay.ts` vs. `SYNTHESIS_SYSTEM_PROMPT` in `lib/ai/synthesis.ts`).
 
 > **How the two specs factor in (important — two different meanings of "hybrid"):**
 > - Paradigms **B** and **C** are competing designs for the *orchestration style* over the
@@ -320,8 +321,9 @@ over TLS, and Prisma 6 connects with no driver-adapter required for a Next.js No
 - Data: `prisma/schema.prisma`, `prisma/seed.ts`, `scripts/import-open-bible.ts`,
   `data/macula-greek/macula-greek-SBLGNT.tsv`, `data/web-usfm/`
 - Retrieval: `lib/search.ts`, `lib/search-highlight.ts`
-- Assistant: `lib/ai/assistant.ts`, `lib/ai/modelRouter.ts`, `lib/ai/openaiClient.ts`,
-  `lib/ai/systemPrompt.ts` (vestigial), `app/api/assistant/route.ts`
+- Assistant: `lib/ai/assistant.ts`, `lib/ai/signals.ts`, `lib/ai/retrievalPlanner.ts`,
+  `lib/ai/synthesis.ts`, `lib/ai/modelRouter.ts`, `lib/ai/openaiClient.ts`,
+  `lib/ai/assistantGuardrailsDisplay.ts`, `app/api/assistant/route.ts`
 - Specs (orchestration designs): `docs/superpowers/specs/2026-05-27-hybrid-assistant-retrieval-design.md`,
   `docs/superpowers/specs/2026-05-27-agentic-assistant-tool-calling-design.md`
 - Source architecture: `docs/archived/Technical Architecture for High-Fidelity Biblical Exegesis.md`

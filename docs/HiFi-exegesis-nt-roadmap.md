@@ -1,6 +1,6 @@
 # Milestone 3 — High-Fidelity NT Exegesis Roadmap
 
-*Status:* Approved 2026-05-28; current through 2026-06-03 · *Scope:* NT-Greek subset · *Successor to:* Milestone 2.5 (shipped on `main`)
+*Status:* Approved 2026-05-28; current through 2026-06-04 · *Scope:* NT-Greek subset · *Successor to:* Milestone 2.5 (shipped on `main`)
 
 This is **Milestone 3**: bringing the mechanisms from
 `docs/archived/Technical Architecture for High-Fidelity Biblical Exegesis.md` to the existing NT corpus,

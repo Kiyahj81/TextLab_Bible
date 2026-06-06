@@ -692,6 +692,88 @@ export function domainTokenWhere(filter: DomainFilter, domainCodes: string[]): P
   return { lnDomain: { hasSome: domainCodes } };
 }
 
+export async function searchDomain(
+  input: {
+    domain?: string;
+    subdomain?: string;
+    ln?: string;
+    corpus?: "SBLGNT";
+    book?: string;
+    chapter?: number;
+  } & PaginationInput
+) {
+  const filter = resolveDomainFilter(input);
+  const book = normalizeBook(input.book);
+  const pagination = normalizePagination(input);
+  const empty = {
+    filter,
+    count: 0,
+    results: [] as Awaited<ReturnType<typeof hydrateTokens>>,
+    pagination: { ...pagination, total: 0, pageCount: 0 }
+  };
+
+  if (!filter) return empty;
+
+  let domainCodes: string[] = [];
+  if (filter.kind === "domain") {
+    const rows = await prisma.louwNidaDomain.findMany({
+      where: { OR: [{ code: filter.value }, { parentCode: filter.value }] },
+      select: { code: true }
+    });
+    domainCodes = rows.map((r) => r.code);
+    if (domainCodes.length === 0) return empty;
+  }
+
+  const where: Prisma.TokenWhereInput = {
+    ...domainTokenWhere(filter, domainCodes),
+    corpus: { abbreviation: input.corpus ?? "SBLGNT" },
+    book: book ? { osisId: book } : undefined,
+    chapter: input.chapter
+  };
+
+  const [total, tokens] = await Promise.all([
+    prisma.token.count({ where }),
+    prisma.token.findMany({
+      where,
+      include: { book: true, corpus: true },
+      orderBy: [{ book: { order: "asc" } }, { chapter: "asc" }, { verse: "asc" }, { wordIndex: "asc" }],
+      skip: (pagination.page - 1) * pagination.pageSize,
+      take: pagination.pageSize
+    })
+  ]);
+
+  const results = await hydrateTokens(tokens);
+
+  return { filter, count: total, pagination: paginationResult(pagination, total), results };
+}
+
+export type DomainOption = { code: string; number: number; label: string };
+export type DomainOptions = {
+  domains: DomainOption[];
+  subdomainsByDomain: Record<string, { code: string; label: string }[]>;
+};
+
+export async function getLouwNidaDomainOptions(): Promise<DomainOptions> {
+  const rows = await prisma.louwNidaDomain.findMany({
+    where: { level: { in: [1, 2] } },
+    select: { code: true, level: true, label: true, parentCode: true }
+  });
+  const domains = rows
+    .filter((r) => r.level === 1)
+    .map((r) => ({ code: r.code, number: Number.parseInt(r.code, 10), label: r.label }))
+    .sort((a, b) => a.number - b.number);
+  const subdomainsByDomain: Record<string, { code: string; label: string }[]> = {};
+  for (const r of rows) {
+    if (r.level === 2 && r.parentCode) {
+      (subdomainsByDomain[r.parentCode] ??= []).push({ code: r.code, label: r.label });
+    }
+  }
+  for (const code of Object.keys(subdomainsByDomain)) {
+    subdomainsByDomain[code].sort((a, b) => a.code.localeCompare(b.code));
+  }
+  return { domains, subdomainsByDomain };
+}
+
 function normalizePagination(input: PaginationInput) {
   const page = Number.isFinite(input.page) && input.page && input.page > 0 ? Math.floor(input.page) : 1;
   const requestedPageSize =

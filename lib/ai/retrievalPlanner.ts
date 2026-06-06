@@ -1,10 +1,11 @@
 import type { AssistantCitation } from "@/lib/ai/assistant";
 import { type ToolTraceEntry } from "@/lib/ai/toolTrace";
-import { ENGLISH_TO_GREEK_LEMMA, type ParsedReference, type Signals } from "@/lib/ai/signals";
+import { ENGLISH_TO_GREEK_LEMMA, type DomainQuerySignal, type ParsedReference, type Signals } from "@/lib/ai/signals";
 import {
   findLemmaExamples,
   getPassage,
   getTopLemmas,
+  searchDomain,
   searchKeyword,
   searchLemma,
   searchMorphology,
@@ -273,6 +274,39 @@ function lemmaCall(lemma: string, scope: Scope): PlannedCall {
   };
 }
 
+function domainCall(query: DomainQuerySignal, scope: Scope): PlannedCall {
+  const args: { domain?: string; ln?: string; book?: string; chapter?: number } = {};
+  if (query.kind === "domain") args.domain = query.code;
+  else args.ln = query.ref;
+  if (scope.book) args.book = scope.book;
+  if (scope.chapter !== undefined) args.chapter = scope.chapter;
+  const value = query.kind === "domain" ? `domain ${query.code}` : `ln ${query.ref}`;
+  const label = `${value}${scope.book ? `, ${scope.book}` : ""}${scope.chapter !== undefined ? ` ${scope.chapter}` : ""}`;
+  const searchQuery = query.kind === "domain" ? `domain:${query.code}` : `ln:${query.ref}`;
+  return {
+    key: `domain:${searchQuery}|${scope.book ?? ""}|${scope.chapter ?? ""}`,
+    errorTrace: { tool: "searchDomain", args },
+    run: async () => {
+      const res = await searchDomain({ ...args, pageSize: MAX_WORD_SAMPLE });
+      const citations = res.results.slice(0, MAX_SECTION_LINES).map((r) => ({
+        reference: r.reference,
+        corpus: r.corpus,
+        searchQuery,
+        toolName: "searchDomain",
+        tokenId: r.tokenId
+      }));
+      const lines = res.results
+        .slice(0, MAX_WORD_SAMPLE)
+        .map((r) => `| ${r.reference} | ${r.surface} | ${r.morphCode} | ${r.verseText} |`);
+      return {
+        citations,
+        section: sectionBlock(`searchDomain(${label}) — ${res.count} hit(s)`, lines, res.count),
+        traces: [{ tool: "searchDomain", args }]
+      };
+    }
+  };
+}
+
 function keywordCall(word: string, scope: Scope): PlannedCall {
   const args: { query: string; book?: string; chapter?: number } = { query: word };
   if (scope.book) args.book = scope.book;
@@ -476,6 +510,10 @@ function buildPlan(signals: Signals, prompt: string, semanticEnabled: boolean): 
   };
   const scope = scopeFor(signals);
   const topicTerms = classifyTopicTerms(signals, prompt);
+
+  if (signals.domainQuery) {
+    add(domainCall(signals.domainQuery, scope));
+  }
 
   for (const ref of signals.references) {
     add(passageCall("SBLGNT", ref));

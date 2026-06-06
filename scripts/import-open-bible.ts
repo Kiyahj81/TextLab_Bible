@@ -338,7 +338,7 @@ async function importMaculaGreekGlosses(args: Args) {
       if (osisId) overriddenVerses.add(`${osisId}|${refMatch[2]}|${refMatch[3]}`);
     }
 
-    const updates: { id: string; gloss: string | null }[] = [];
+    const updates: { id: string; gloss: string | null; louwNida: string[]; lnDomain: string[] }[] = [];
     let missing = 0;
     let inserted = 0;
     let refreshed = 0;
@@ -368,7 +368,9 @@ async function importMaculaGreekGlosses(args: Args) {
             lemma: row.lemma,
             morphCode: row.morph,
             partOfSpeech: row.partOfSpeech,
-            gloss: row.gloss
+            gloss: row.gloss,
+            louwNida: row.louwNida,
+            lnDomain: row.lnDomain
           },
           create: {
             corpusId: corpus.id,
@@ -381,7 +383,9 @@ async function importMaculaGreekGlosses(args: Args) {
             lemma: row.lemma,
             morphCode: row.morph,
             partOfSpeech: row.partOfSpeech,
-            gloss: row.gloss
+            gloss: row.gloss,
+            louwNida: row.louwNida,
+            lnDomain: row.lnDomain
           }
         });
         inserted++;
@@ -403,7 +407,9 @@ async function importMaculaGreekGlosses(args: Args) {
             lemma: row.lemma,
             morphCode: row.morph,
             partOfSpeech: row.partOfSpeech,
-            gloss: row.gloss
+            gloss: row.gloss,
+            louwNida: row.louwNida,
+            lnDomain: row.lnDomain
           }
         });
         refreshed++;
@@ -417,7 +423,12 @@ async function importMaculaGreekGlosses(args: Args) {
         surfaceMismatch++;
         continue;
       }
-      updates.push({ id: token.id, gloss: row.gloss });
+      updates.push({
+        id: token.id,
+        gloss: row.gloss,
+        louwNida: row.louwNida,
+        lnDomain: row.lnDomain
+      });
     }
 
     const batchSize = 500;
@@ -426,7 +437,10 @@ async function importMaculaGreekGlosses(args: Args) {
       const batch = updates.slice(i, i + batchSize);
       await prisma.$transaction(
         batch.map((u) =>
-          prisma.token.update({ where: { id: u.id }, data: { gloss: u.gloss } })
+          prisma.token.update({
+            where: { id: u.id },
+            data: { gloss: u.gloss, louwNida: u.louwNida, lnDomain: u.lnDomain }
+          })
         )
       );
       applied += batch.length;

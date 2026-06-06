@@ -4,6 +4,7 @@ import Link from "next/link";
 import { BookmarkPlus, Pencil, Search, Trash2, X } from "lucide-react";
 import { Fragment, useState } from "react";
 import { splitWithMatches } from "@/lib/search-highlight";
+import type { DomainOptions } from "@/lib/search";
 import { useAutoDismissMap, useAutoDismissString } from "@/lib/useAutoDismissStatus";
 
 export type SearchPanelResult =
@@ -50,7 +51,13 @@ export function SearchPanel({
   pageCount,
   results,
   books,
-  savedSearches
+  savedSearches,
+  domain,
+  subdomain,
+  ln,
+  domainOptions,
+  hasSearch,
+  searchLabel
 }: {
   mode: string;
   query: string;
@@ -64,9 +71,17 @@ export function SearchPanel({
   results: SearchPanelResult[];
   books: SearchBookOption[];
   savedSearches: SavedSearchRow[];
+  domain: string;
+  subdomain: string;
+  ln: string;
+  domainOptions: DomainOptions;
+  hasSearch: boolean;
+  searchLabel: string;
 }) {
   const [activeMode, setActiveMode] = useState(mode);
   const [queryValue, setQueryValue] = useState(query);
+  const [selectedDomain, setSelectedDomain] = useState(domain);
+  const [selectedSubdomain, setSelectedSubdomain] = useState(subdomain);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(savedSearches);
@@ -79,6 +94,11 @@ export function SearchPanel({
 
   function setRowStatus(id: string, message: string | null) {
     setItemStatus((current) => ({ ...current, [id]: message ?? "" }));
+  }
+
+  function onDomainChange(value: string) {
+    setSelectedDomain(value);
+    setSelectedSubdomain("");
   }
 
   async function saveSearch() {
@@ -183,41 +203,95 @@ export function SearchPanel({
               <option value="keyword">Keyword</option>
               <option value="lemma">Lemma</option>
               <option value="morphology">Morphology</option>
+              <option value="domain">Domain</option>
             </select>
           </label>
-          <label className="space-y-1">
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Query</span>
-            <div className="relative">
-              <input
-                name="q"
-                value={queryValue}
-                onChange={(event) => setQueryValue(event.target.value)}
-                className="w-full rounded-md border border-stone-300 px-3 py-2 pr-20 text-sm outline-none focus:border-accent-600"
-                placeholder="λόγος, N-NSM, righteousness"
-              />
-              <div className="absolute inset-y-0 right-1 flex items-center gap-0.5">
-                {queryValue ? (
-                  <button
-                    type="button"
-                    onClick={() => setQueryValue("")}
-                    aria-label="Clear query"
-                    title="Clear"
-                    className="flex h-7 w-7 items-center justify-center rounded text-slate-400 transition-colors hover:bg-stone-100 hover:text-slate-700"
-                  >
-                    <X size={16} aria-hidden />
-                  </button>
-                ) : null}
-                <button
-                  type="submit"
-                  aria-label="Search"
-                  title="Search"
-                  className="flex h-7 w-7 items-center justify-center rounded bg-accent-700 text-white transition-colors hover:bg-accent-800"
+          {activeMode === "domain" ? (
+            <div className="grid gap-3 sm:grid-cols-3">
+              <label className="space-y-1">
+                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Domain</span>
+                <select
+                  name="domain"
+                  value={selectedDomain}
+                  onChange={(event) => onDomainChange(event.target.value)}
+                  className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm"
                 >
-                  <Search size={16} aria-hidden />
-                </button>
-              </div>
+                  <option value="">Any domain</option>
+                  {domainOptions.domains.map((d) => (
+                    <option key={d.code} value={d.code}>{`${d.number} — ${d.label}`}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Subdomain</span>
+                <select
+                  name="subdomain"
+                  value={selectedSubdomain}
+                  onChange={(event) => setSelectedSubdomain(event.target.value)}
+                  disabled={!selectedDomain}
+                  className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm disabled:opacity-50"
+                >
+                  <option value="">Any subdomain</option>
+                  {(domainOptions.subdomainsByDomain[selectedDomain] ?? []).map((s) => (
+                    <option key={s.code} value={s.code}>{s.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">LN reference</span>
+                <div className="flex items-center gap-2">
+                  <input
+                    name="ln"
+                    defaultValue={ln}
+                    placeholder="e.g. 33.55"
+                    className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-accent-600"
+                  />
+                  <button
+                    type="submit"
+                    aria-label="Search"
+                    title="Search"
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-accent-700 text-white transition-colors hover:bg-accent-800"
+                  >
+                    <Search size={16} aria-hidden />
+                  </button>
+                </div>
+              </label>
             </div>
-          </label>
+          ) : (
+            <label className="space-y-1">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Query</span>
+              <div className="relative">
+                <input
+                  name="q"
+                  value={queryValue}
+                  onChange={(event) => setQueryValue(event.target.value)}
+                  className="w-full rounded-md border border-stone-300 px-3 py-2 pr-20 text-sm outline-none focus:border-accent-600"
+                  placeholder="λόγος, N-NSM, righteousness"
+                />
+                <div className="absolute inset-y-0 right-1 flex items-center gap-0.5">
+                  {queryValue ? (
+                    <button
+                      type="button"
+                      onClick={() => setQueryValue("")}
+                      aria-label="Clear query"
+                      title="Clear"
+                      className="flex h-7 w-7 items-center justify-center rounded text-slate-400 transition-colors hover:bg-stone-100 hover:text-slate-700"
+                    >
+                      <X size={16} aria-hidden />
+                    </button>
+                  ) : null}
+                  <button
+                    type="submit"
+                    aria-label="Search"
+                    title="Search"
+                    className="flex h-7 w-7 items-center justify-center rounded bg-accent-700 text-white transition-colors hover:bg-accent-800"
+                  >
+                    <Search size={16} aria-hidden />
+                  </button>
+                </div>
+              </div>
+            </label>
+          )}
         </div>
         <div className="grid gap-3 border-t border-stone-200 pt-3 sm:grid-cols-2 md:grid-cols-4">
           <label className="space-y-1">
@@ -271,8 +345,8 @@ export function SearchPanel({
         <div className="border-b border-stone-200 p-4">
           <h2 className="font-semibold text-slate-950">Results</h2>
           <p className="mt-1 text-sm text-slate-600">
-            {query
-              ? `${count} result${count === 1 ? "" : "s"} for "${query}"${pageCount ? `, page ${page} of ${pageCount}` : ""}`
+            {hasSearch
+              ? `${count} result${count === 1 ? "" : "s"} for ${searchLabel}${pageCount ? `, page ${page} of ${pageCount}` : ""}`
               : "Enter a search query."}
           </p>
           {query ? (
@@ -317,17 +391,17 @@ export function SearchPanel({
               )}
             </article>
           ))}
-          {query && results.length === 0 ? (
+          {hasSearch && results.length === 0 ? (
             <div className="p-4 text-sm text-slate-600">No matching sample-data results.</div>
           ) : null}
         </div>
-        {query && pageCount > 1 ? (
+        {hasSearch && pageCount > 1 ? (
           <nav className="flex flex-wrap items-center justify-between gap-3 border-t border-stone-200 p-4 text-sm">
             <Link
               className={`rounded-md border border-stone-300 px-3 py-2 ${
                 page <= 1 ? "pointer-events-none opacity-50" : "hover:border-slate-500"
               }`}
-              href={searchHref({ mode: activeMode, query, book, chapter, matchMode, page: previousPage, pageSize })}
+              href={searchHref({ mode, query, book, chapter, matchMode, domain, subdomain, ln, page: previousPage, pageSize })}
             >
               Previous
             </Link>
@@ -338,7 +412,7 @@ export function SearchPanel({
               className={`rounded-md border border-stone-300 px-3 py-2 ${
                 page >= pageCount ? "pointer-events-none opacity-50" : "hover:border-slate-500"
               }`}
-              href={searchHref({ mode: activeMode, query, book, chapter, matchMode, page: nextPage, pageSize })}
+              href={searchHref({ mode, query, book, chapter, matchMode, domain, subdomain, ln, page: nextPage, pageSize })}
             >
               Next
             </Link>
@@ -445,6 +519,9 @@ function searchHref({
   book,
   chapter,
   matchMode,
+  domain,
+  subdomain,
+  ln,
   page,
   pageSize
 }: {
@@ -453,19 +530,25 @@ function searchHref({
   book: string;
   chapter: string;
   matchMode: string;
+  domain?: string;
+  subdomain?: string;
+  ln?: string;
   page: number;
   pageSize: number;
 }) {
-  const params = new URLSearchParams({
-    mode,
-    q: query,
-    page: String(page),
-    pageSize: String(pageSize)
-  });
+  const params = new URLSearchParams({ mode, page: String(page), pageSize: String(pageSize) });
+
+  if (mode === "domain") {
+    if (domain) params.set("domain", domain);
+    if (subdomain) params.set("subdomain", subdomain);
+    if (ln) params.set("ln", ln);
+  } else {
+    params.set("q", query);
+    if (mode === "morphology") params.set("matchMode", matchMode);
+  }
 
   if (book) params.set("book", book);
   if (chapter) params.set("chapter", chapter);
-  if (mode === "morphology") params.set("matchMode", matchMode);
 
   return `/search?${params.toString()}`;
 }

@@ -21,6 +21,7 @@
     "prisma:generate": "prisma generate",
     "import:open-bible": "tsx --env-file=.env scripts/import-open-bible.ts",
     "import:macula-glosses": "tsx --env-file=.env scripts/import-open-bible.ts --macula-greek-url https://raw.githubusercontent.com/Clear-Bible/macula-greek/main/SBLGNT/tsv/macula-greek-SBLGNT.tsv",
+    "import:louw-nida": "tsx --env-file=.env scripts/import-louw-nida.ts",
     "embed:verses": "tsx --env-file=.env scripts/embed-verses.ts"
   },
   "dependencies": {

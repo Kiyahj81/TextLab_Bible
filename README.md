@@ -109,13 +109,14 @@ npm run verify
 
 The project includes an import script for three Greek/English NT data sources. Each run is tracked in the `ImportRun` table.
 
-> These data scripts (`import:open-bible`, `import:macula-glosses`, `embed:verses`) run through `tsx --env-file=.env`, so they read `DATABASE_URL` (and, for `embed:verses`, `OPENAI_API_KEY`) from your `.env`. Set those there before running, or pass a different file explicitly, e.g. `tsx --env-file=.env.test scripts/embed-verses.ts` to target the test branch. Already-set shell/system env vars are preserved.
+> These data scripts (`import:open-bible`, `import:macula-glosses`, `import:louw-nida`, `embed:verses`) run through `tsx --env-file=.env`, so they read `DATABASE_URL` (and, for `embed:verses`, `OPENAI_API_KEY`) from your `.env`. Set those there before running, or pass a different file explicitly, e.g. `tsx --env-file=.env.test scripts/embed-verses.ts` to target the test branch. Already-set shell/system env vars are preserved.
 
 | Source | Purpose | Provides |
 |---|---|---|
 | MorphGNT SBLGNT | Per-word Greek tokens + morphology | `Token` rows + `Verse.text` for the SBLGNT corpus |
 | WEB USFM | English text | `Verse.text` for the WEB corpus |
-| MACULA Greek (SBLGNT) | English glosses + lexical/morph augmentation | Updates `Token.gloss` on existing rows; **inserts tokens and verses for the Pericope Adulterae** (John 7:53–8:11), which MorphGNT omits per the SBL bracketed-text convention |
+| MACULA Greek (SBLGNT) | English glosses + lexical/morph augmentation | Updates `Token.gloss` on existing rows; **inserts tokens and verses for the Pericope Adulterae** (John 7:53–8:11), which MorphGNT omits per the SBL bracketed-text convention; populates `Token.louwNida` and `Token.lnDomain` Louw-Nida code arrays |
+| UBS Louw-Nida lexical domains | Semantic-domain reference labels | `LouwNidaDomain` reference table (738 domain/subdomain nodes) — seed with `import:louw-nida` before re-running `import:macula-glosses` |
 
 Full import (all three sources, from local files):
 
@@ -139,13 +140,27 @@ npm run import:open-bible -- --web-usfm-dir ./data/web-usfm
 npm run import:macula-glosses
 ```
 
+Seed the Louw-Nida semantic-domain reference table (738 domain/subdomain nodes from the vendored UBS dataset), then re-run MACULA glosses to backfill token codes:
+
+```bash
+# 1. Seed LouwNidaDomain reference table (idempotent upsert)
+npm run import:louw-nida
+
+# 2. Backfill Token.louwNida / Token.lnDomain code arrays
+npm run import:macula-glosses
+```
+
+The morphology popover in the reader now shows **Domain** and **Subdomain** labels for Greek tokens that carry Louw-Nida codes. Domain-aware assistant retrieval and a `/search` domain mode are planned for Phase 5b.
+
 After the corpus is imported, generate or refresh the semantic-search embeddings (idempotent; requires `OPENAI_API_KEY` in `.env`). The script re-embeds only rows whose embedding is missing, whose model differs from `text-embedding-3-small`, or whose stored `textHash` no longer matches the current WEB verse text:
 
 ```bash
 npm run embed:verses
 ```
 
-Source repositories: MorphGNT at `https://github.com/morphgnt/sblgnt`, WEB USFM at `https://ebible.org/Scriptures/engwebp_usfm.zip` (the downloaded zip is checked in at the project root as `engwebp_usfm.zip`; unzipped contents live in `data/web-usfm/`), MACULA Greek at `https://github.com/Clear-Bible/macula-greek`.
+Source repositories: MorphGNT at `https://github.com/morphgnt/sblgnt`, WEB USFM at `https://ebible.org/Scriptures/engwebp_usfm.zip` (the downloaded zip is checked in at the project root as `engwebp_usfm.zip`; unzipped contents live in `data/web-usfm/`), MACULA Greek at `https://github.com/Clear-Bible/macula-greek`, UBS Louw-Nida lexical domains (`ubsicap/ubs-open-license`) vendored at `data/louw-nida/UBSGreekNTDicLexicalDomains-v1.1-en.JSON`.
+
+**Louw-Nida data attribution:** *A Greek-English Lexicon of the New Testament Based on Semantic Domains* domain labels © UBS (`ubsicap/ubs-open-license`), licensed **CC-BY-SA 4.0**. Attribution and ShareAlike notice: `data/louw-nida/NOTICE.md`. The ShareAlike obligation applies to redistribution of the data or any adapted database derived from it.
 
 ### MACULA Pericope Adulterae overrides
 

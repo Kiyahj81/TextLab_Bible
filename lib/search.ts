@@ -5,6 +5,7 @@ import { getOpenAi } from "@/lib/ai/openaiClient";
 import { reciprocalRankFusion, type RankedRef } from "@/lib/search/rrf";
 import { EMBEDDING_MODEL, SEMANTIC_INDEX_CORPUS, formatVectorLiteral } from "@/lib/search/semanticIndex";
 import { rerankCandidates } from "@/lib/search/rerank";
+import { resolveTokenDomains } from "@/lib/louwNida";
 
 export {
   EMBEDDING_MODEL,
@@ -312,6 +313,21 @@ export async function getReaderPassage(bookInput = "John", chapter = 1, userId: 
     })
   ]);
 
+  const domainCodes = new Set<string>();
+  for (const token of tokens) {
+    for (const code of token.lnDomain) {
+      domainCodes.add(code);
+      if (code.length > 3) domainCodes.add(code.slice(0, 3));
+    }
+  }
+  const domainLabelRows = domainCodes.size
+    ? await prisma.louwNidaDomain.findMany({
+        where: { code: { in: Array.from(domainCodes) } },
+        select: { code: true, label: true }
+      })
+    : [];
+  const domainLabels = new Map(domainLabelRows.map((row) => [row.code, row.label]));
+
   const tokensByVerse = tokens.reduce<Record<number, typeof tokens>>((acc, token) => {
     acc[token.verse] = acc[token.verse] ?? [];
     acc[token.verse].push(token);
@@ -349,6 +365,7 @@ export async function getReaderPassage(bookInput = "John", chapter = 1, userId: 
         morphCode: token.morphCode,
         partOfSpeech: token.partOfSpeech,
         gloss: token.gloss,
+        domains: resolveTokenDomains(token.louwNida, token.lnDomain, domainLabels),
         noteCount: token.notes.length,
         highlightColor: latestHighlightColor(token.highlights)
       }))

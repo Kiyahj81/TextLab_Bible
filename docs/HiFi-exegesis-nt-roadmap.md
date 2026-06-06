@@ -1,6 +1,6 @@
 # Milestone 3 — High-Fidelity NT Exegesis Roadmap
 
-*Status:* Approved 2026-05-28; current through 2026-06-04 · *Scope:* NT-Greek subset · *Successor to:* Milestone 2.5 (shipped on `main`)
+*Status:* Approved 2026-05-28; current through 2026-06-06 · *Scope:* NT-Greek subset · *Successor to:* Milestone 2.5 (shipped on `main`)
 
 This is **Milestone 3**: bringing the mechanisms from
 `docs/archived/Technical Architecture for High-Fidelity Biblical Exegesis.md` to the existing NT corpus,
@@ -39,14 +39,15 @@ carries a `strong` column — Strong's remains deferred but is trivially availab
 
 ---
 
-## Verdict: ~60–65% of the way there after Phase 4a
+## Verdict: ~65–70% of the way there after Phase 5a
 
 The project now implements the doc's core runtime philosophy for the NT-Greek subset: relational DB
 as source of truth, original-language tokens, retrieval-first assistant, user-confirmed scholarly
-escalation, enforced grounding verification, lexical FTS, and Phase 4a vector/hybrid retrieval. The
-remaining high-fidelity gaps are narrower: cross-encoder rerank, a fuller agentic tool loop, Louw-Nida
-import, evaluation gates, and the larger data-expansion work (OT Hebrew/Aramaic, Strong's, speakers,
-and explicit token-to-English alignment).
+escalation, enforced grounding verification, lexical FTS, Phase 4a vector/hybrid retrieval, and
+Phase 5a Louw-Nida semantic-domain enrichment (schema, reference table, popover display). The
+remaining high-fidelity gaps are narrower: a fuller agentic tool loop, domain-aware retrieval routing
+(Phase 5b), evaluation gates, and the larger data-expansion work (OT Hebrew/Aramaic, Strong's,
+speakers, and explicit token-to-English alignment).
 
 ---
 
@@ -64,7 +65,7 @@ and explicit token-to-English alignment).
 | Greek tokens w/ lemma, morph | ✅ `Token` (surface, normalized, lemma, morphCode, partOfSpeech, gloss) | None for Greek |
 | Hebrew + Aramaic tokens | ❌ NT-only (SBLGNT + WEB) | **Major** — no OT at all |
 | Strong's numbers (G/H) | ❌ no column | **Major** — core to doc's concordance queries |
-| Louw-Nida domains | ⚠️ present in MACULA TSV source, **not imported** to DB | Minor — data exists upstream, needs column + import |
+| Louw-Nida domains | ✅ **Phase 5a done** — `Token.louwNida`/`lnDomain` arrays + GIN index; `LouwNidaDomain` reference table (738 nodes, migration `20260606070628_add_louw_nida`); `scripts/import-louw-nida.ts`; popover shows Domain/Subdomain labels | Phase 5b (assistant domain-retrieval routing + `/search` domain mode) still pending |
 | `word_alignments` table | ❌ implicit only (paired by book/ch/verse in `lib/search.ts`) | **Moderate** — no token↔English-word alignment table |
 | `speaker_quotations` (gender/age/divinity/depth) | ❌ none | **Major** — Clear-Bible data not ingested |
 | `chunks` + `pgvector` embeddings | ✅ pgvector `VerseEmbedding` table with one WEB per-verse `vector(1536)` embedding, model tag, `textHash`, and HNSW/cosine index | Phase 4a closed for verse-level embeddings; generalized chunks/window embeddings deferred |
@@ -117,7 +118,7 @@ and explicit token-to-English alignment).
 | FTS (`tsvector`/GIN) + keyword ranking | Closed | done in Phase 3 |
 | Grounding verification + Silence Protocol | Closed | done in Phase 2 |
 | pgvector + embeddings + hybrid + RRF + rerank | Closed | Phase 4a + 4b done |
-| Louw-Nida import (data already present) | Small | ~1 day |
+| Louw-Nida import (data + schema + popover) | **Closed (5a)** | done — Phase 5b (retrieval routing + `/search` mode) still pending |
 | Strong's numbers (need source + schema) | Medium | ~3–5 days |
 | Speaker quotations (Clear-Bible ingest) | Medium | ~3–5 days |
 | Hebrew + Aramaic OT corpus (OSHB/WLC + alignment) | Far | ~2–4 weeks |
@@ -233,16 +234,13 @@ OpenAI embeddings given existing integration, or a multilingual model for Greek)
 fusion of FTS + vector results (k=60), then cross-encoder rerank (top-30→top-5) and sentence-window
 (V±2) context assembly. Completes the doc's hybrid pipeline for the NT.
 
-**Phase 5 — Louw-Nida enrichment (IN scope, cheap, parallelizable).** Concrete steps:
-1. `prisma/schema.prisma`: add `louwNida String?` (the `ln` ref, e.g. "37.36") and `domain String?`
-   (semantic-domain label) to `Token`; add an index on `louwNida` for domain queries.
-2. New migration via `prisma migrate dev`.
-3. `scripts/import-open-bible.ts`: in `parseMaculaTsv`, add `col("ln")` / `col("domain")` lookups,
-   extend `ParsedMaculaRow`, and carry the values through the insert/update path (the `updates` array
-   in `importMaculaGreekGlosses` currently carries only `gloss` — extend it).
-4. Re-run `npm run import:macula-glosses`.
-5. Surface in the morphology popover and (optionally) let the assistant route "semantic domain"
-   queries through Phase 1 retrieval signals.
+**Phase 5 — Louw-Nida enrichment. IN PROGRESS (5a done, branch `milestone-3/phase-5-louw-nida`).** Phase 5a delivered: `Token.louwNida String[] @default([])` (ln refs, e.g. `33.38`) + `Token.lnDomain String[] @default([])` (MARBLE numeric codes, e.g. `033005`) + GIN index on `lnDomain`; `LouwNidaDomain` reference table (`code` PK, `level`, `label`, `parentCode`); migration `20260606070628_add_louw_nida`; `scripts/import-louw-nida.ts` (`npm run import:louw-nida`) — idempotent upsert of 738 domain/subdomain rows vendored from the UBS lexical-domains JSON (CC-BY-SA 4.0, `data/louw-nida/NOTICE.md`); `parseMaculaTsv` now parses `domain`/`ln` TSV columns into arrays; `importMaculaGreekGlosses` persists codes through all three token write paths; `lib/louwNida.ts` (`flattenLouwNidaDomains`, `resolveTokenDomains`); `getReaderPassage` batch-resolves codes to labels; `MorphologyPopover` renders Domain/Subdomain rows. **Phase 5b** (assistant domain-retrieval routing + `/search` domain mode) is still pending. Original concrete steps below (for reference):
+
+1. ✅ `prisma/schema.prisma`: added `louwNida String[]` + `lnDomain String[]` arrays + GIN index.
+2. ✅ New migration `20260606070628_add_louw_nida` via `prisma migrate dev`.
+3. ✅ `scripts/import-open-bible.ts`: `parseMaculaTsv` now parses `ln`/`domain` columns; `importMaculaGreekGlosses` carries codes through all write paths.
+4. ✅ Re-run `npm run import:louw-nida` (seed reference table), then `npm run import:macula-glosses` (backfill token codes).
+5. ✅ Morphology popover surfaces Domain/Subdomain labels. Assistant domain-routing — Phase 5b.
 
 **Phase 6 — Evaluation harness.** RAGAS-style faithfulness (target >0.90) + context-precision checks
 to guard quality and catch grounding regressions as phases land.

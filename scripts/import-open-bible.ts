@@ -37,6 +37,8 @@ type ParsedMaculaRow = {
   morph: string | null;
   partOfSpeech: string | null;
   gloss: string | null;
+  louwNida: string[];
+  lnDomain: string[];
 };
 
 const DEFAULT_MACULA_GREEK_URL =
@@ -336,7 +338,7 @@ async function importMaculaGreekGlosses(args: Args) {
       if (osisId) overriddenVerses.add(`${osisId}|${refMatch[2]}|${refMatch[3]}`);
     }
 
-    const updates: { id: string; gloss: string | null }[] = [];
+    const updates: { id: string; gloss: string | null; louwNida: string[]; lnDomain: string[] }[] = [];
     let missing = 0;
     let inserted = 0;
     let refreshed = 0;
@@ -366,7 +368,9 @@ async function importMaculaGreekGlosses(args: Args) {
             lemma: row.lemma,
             morphCode: row.morph,
             partOfSpeech: row.partOfSpeech,
-            gloss: row.gloss
+            gloss: row.gloss,
+            louwNida: row.louwNida,
+            lnDomain: row.lnDomain
           },
           create: {
             corpusId: corpus.id,
@@ -379,7 +383,9 @@ async function importMaculaGreekGlosses(args: Args) {
             lemma: row.lemma,
             morphCode: row.morph,
             partOfSpeech: row.partOfSpeech,
-            gloss: row.gloss
+            gloss: row.gloss,
+            louwNida: row.louwNida,
+            lnDomain: row.lnDomain
           }
         });
         inserted++;
@@ -401,7 +407,9 @@ async function importMaculaGreekGlosses(args: Args) {
             lemma: row.lemma,
             morphCode: row.morph,
             partOfSpeech: row.partOfSpeech,
-            gloss: row.gloss
+            gloss: row.gloss,
+            louwNida: row.louwNida,
+            lnDomain: row.lnDomain
           }
         });
         refreshed++;
@@ -415,7 +423,12 @@ async function importMaculaGreekGlosses(args: Args) {
         surfaceMismatch++;
         continue;
       }
-      updates.push({ id: token.id, gloss: row.gloss });
+      updates.push({
+        id: token.id,
+        gloss: row.gloss,
+        louwNida: row.louwNida,
+        lnDomain: row.lnDomain
+      });
     }
 
     const batchSize = 500;
@@ -424,7 +437,10 @@ async function importMaculaGreekGlosses(args: Args) {
       const batch = updates.slice(i, i + batchSize);
       await prisma.$transaction(
         batch.map((u) =>
-          prisma.token.update({ where: { id: u.id }, data: { gloss: u.gloss } })
+          prisma.token.update({
+            where: { id: u.id },
+            data: { gloss: u.gloss, louwNida: u.louwNida, lnDomain: u.lnDomain }
+          })
         )
       );
       applied += batch.length;
@@ -651,6 +667,14 @@ export function parseMaculaTsv(content: string): ParsedMaculaRow[] {
   const lemmaIdx = col("lemma");
   const normalizedIdx = col("normalized");
   const morphIdx = col("morph");
+  // `domain`/`ln` are optional Louw-Nida enrichment columns: look them up tolerantly
+  // (indexOf → -1 when absent) so a TSV without them still imports the core token data.
+  // splitCodes(cells[-1]) === splitCodes(undefined) yields an empty array.
+  const domainIdx = header.indexOf("domain");
+  const lnIdx = header.indexOf("ln");
+
+  const splitCodes = (raw: string | undefined): string[] =>
+    (raw ?? "").trim().split(/\s+/).filter((code) => code && code !== "-");
 
   const rows: ParsedMaculaRow[] = [];
   for (let i = 1; i < lines.length; i++) {
@@ -678,6 +702,8 @@ export function parseMaculaTsv(content: string): ParsedMaculaRow[] {
     const morph = (cells[morphIdx] ?? "").trim() || null;
     const normalized = (cells[normalizedIdx] ?? "").trim() || null;
     const lemma = (cells[lemmaIdx] ?? "").trim() || null;
+    const louwNida = splitCodes(cells[lnIdx]);
+    const lnDomain = splitCodes(cells[domainIdx]);
 
     rows.push({
       book: osisId,
@@ -689,7 +715,9 @@ export function parseMaculaTsv(content: string): ParsedMaculaRow[] {
       lemma,
       morph,
       partOfSpeech: maculaPartOfSpeech(morph),
-      gloss
+      gloss,
+      louwNida,
+      lnDomain
     });
   }
   return rows;

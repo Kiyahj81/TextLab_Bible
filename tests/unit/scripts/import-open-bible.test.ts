@@ -181,7 +181,7 @@ describe("parseMaculaTsv Pericope Adulterae overrides", () => {
   // missing-punctuation overrides, one wrong-punctuation override, and the
   // corrupted-text override (8:10!14, where MACULA's raw `text` is "εἰσιν;;").
   const header =
-    "xml:id\tref\trole\tclass\ttype\tenglish\tmandarin\tgloss\ttext\tafter\tlemma\tnormalized\tstrong\tmorph";
+    "xml:id\tref\trole\tclass\ttype\tenglish\tmandarin\tgloss\ttext\tafter\tlemma\tnormalized\tstrong\tmorph\tdomain\tln";
 
   const row = (
     ref: string,
@@ -191,7 +191,7 @@ describe("parseMaculaTsv Pericope Adulterae overrides", () => {
     normalized = "",
     morph = ""
   ) =>
-    `id\t${ref}\t\t\t\t\t\t\t${text}\t${after}\t${lemma}\t${normalized}\t\t${morph}`;
+    `id\t${ref}\t\t\t\t\t\t\t${text}\t${after}\t${lemma}\t${normalized}\t\t${morph}\t\t`;
 
   it("patches missing high stop after 7:53 αὐτοῦ (·, not ,)", () => {
     const tsv = [header, row("JHN 7:53!7", "αὐτοῦ", ",")].join("\n");
@@ -230,5 +230,61 @@ describe("parseMaculaTsv Pericope Adulterae overrides", () => {
     const tsv = [header, row("JHN 1:1!1", "Ἐν", " ")].join("\n");
     const rows = parseMaculaTsv(tsv);
     expect(rows[0].surface).toBe("Ἐν");
+  });
+});
+
+describe("parseMaculaTsv Louw-Nida columns", () => {
+  const header = [
+    "ref", "english", "gloss", "text", "after", "lemma", "normalized", "morph", "domain", "ln"
+  ].join("\t");
+
+  const row = (cells: Record<string, string>) =>
+    ["ref", "english", "gloss", "text", "after", "lemma", "normalized", "morph", "domain", "ln"]
+      .map((c) => cells[c] ?? "")
+      .join("\t");
+
+  it("parses a single domain/ln pair into one-element arrays", () => {
+    const tsv = [
+      header,
+      row({ ref: "JHN 1:1!1", text: "λόγος", lemma: "λόγος", domain: "033006", ln: "33.38" })
+    ].join("\n");
+    const rows = parseMaculaTsv(tsv);
+    expect(rows[0].lnDomain).toEqual(["033006"]);
+    expect(rows[0].louwNida).toEqual(["33.38"]);
+  });
+
+  it("splits multiple space-separated codes", () => {
+    const tsv = [
+      header,
+      row({ ref: "MAT 1:1!2", text: "γενέσεως", lemma: "γένεσις", domain: "010002 033003", ln: "10.24 33.19" })
+    ].join("\n");
+    const rows = parseMaculaTsv(tsv);
+    expect(rows[0].lnDomain).toEqual(["010002", "033003"]);
+    expect(rows[0].louwNida).toEqual(["10.24", "33.19"]);
+  });
+
+  it("treats '-' and empty cells as no codes, and keeps letter suffixes", () => {
+    const tsv = [
+      header,
+      row({ ref: "MAT 1:1!3", text: "Ἰησοῦ", lemma: "Ἰησοῦς", domain: "-", ln: "93.169a" }),
+      row({ ref: "MAT 1:1!4", text: "χριστοῦ", lemma: "Χριστός", domain: "", ln: "" })
+    ].join("\n");
+    const rows = parseMaculaTsv(tsv);
+    expect(rows[0].lnDomain).toEqual([]);
+    expect(rows[0].louwNida).toEqual(["93.169a"]);
+    expect(rows[1].lnDomain).toEqual([]);
+    expect(rows[1].louwNida).toEqual([]);
+  });
+
+  it("does not throw when the TSV omits the optional domain/ln columns", () => {
+    // domain/ln are enrichment columns; a TSV without them must still import the
+    // core token data, degrading to empty code arrays rather than crashing.
+    const minimalHeader = ["ref", "english", "gloss", "text", "after", "lemma", "normalized", "morph"].join("\t");
+    const minimalRow = ["JHN 1:1!1", "", "", "λόγος", "", "λόγος", "", "N-NSM"].join("\t");
+    const tsv = [minimalHeader, minimalRow].join("\n");
+    const rows = parseMaculaTsv(tsv);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].lnDomain).toEqual([]);
+    expect(rows[0].louwNida).toEqual([]);
   });
 });

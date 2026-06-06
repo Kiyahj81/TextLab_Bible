@@ -4,7 +4,8 @@ import Link from "next/link";
 import { NotebookPen, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { SubmitEvent } from "react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { TokenDomainSense } from "@/lib/louwNida";
 import { HighlightMenu } from "@/components/HighlightMenu";
 import { useAutoDismissString } from "@/lib/useAutoDismissStatus";
 
@@ -23,6 +24,7 @@ export type ReaderToken = {
   morphCode: string | null;
   partOfSpeech: string | null;
   gloss: string | null;
+  domains: TokenDomainSense[];
   noteCount: number;
   highlightColor: string | null;
 };
@@ -185,6 +187,26 @@ export function MorphologyPopover({
         <dd>{token.partOfSpeech ?? "Unknown"}</dd>
         <dt className="text-slate-500">Gloss</dt>
         <dd>{token.gloss ?? "Not supplied"}</dd>
+        {token.domains.map((sense, index) => (
+          <Fragment key={`${sense.domainCode}-${index}`}>
+            <dt className="text-slate-500">Domain</dt>
+            <dd>
+              {sense.domainLabel ?? sense.domainCode}
+              {!sense.subdomainLabel && sense.ref ? (
+                <span className="text-slate-400"> ({sense.ref})</span>
+              ) : null}
+            </dd>
+            {sense.subdomainLabel ? (
+              <>
+                <dt className="text-slate-500">Subdomain</dt>
+                <dd>
+                  {sense.subdomainLabel}
+                  {sense.ref ? <span className="text-slate-400"> ({sense.ref})</span> : null}
+                </dd>
+              </>
+            ) : null}
+          </Fragment>
+        ))}
       </dl>
 
       <div className="mt-4 flex flex-wrap gap-2">

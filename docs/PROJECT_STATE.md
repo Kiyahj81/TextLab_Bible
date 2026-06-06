@@ -1,6 +1,6 @@
 # TextLab Bible — Project State
 
-*Snapshot: 2026-06-04 (post Phase 4b rerank — Milestone 3 Phase 4a Vector + Hybrid Retrieval plus Phase 4b Voyage rerank-2.5 via Vercel AI Gateway)*
+*Snapshot: 2026-06-06 (post Phase 5a Louw-Nida enrichment — Milestone 3 Phase 4a Vector + Hybrid Retrieval plus Phase 4b Voyage rerank-2.5 via Vercel AI Gateway, plus Phase 5a semantic-domain data + popover display)*
 
 ## Where the project stands
 
@@ -79,7 +79,12 @@ The assistant route follows a clear retrieval-first contract:
 
 ### Test surfaces
 
-- **Unit and integration tests** (vitest 4 + jsdom + RTL). Coverage gate via v8 over `app/api/**` + `lib/**`. Additions from Phase 4a (Vector + Hybrid Retrieval):
+- **Unit and integration tests** (vitest 4 + jsdom + RTL). Coverage gate via v8 over `app/api/**` + `lib/**`. Additions from Phase 5a (Louw-Nida enrichment):
+  - `tests/unit/lib/louwNida.test.ts` (7 tests) — `flattenLouwNidaDomains`: full taxonomy JSON → rows with level/parentCode; `resolveTokenDomains`: code-array → display-label `TokenDomainSense[]`, multi-domain, missing code, empty input
+  - `tests/unit/scripts/import-open-bible.test.ts` (3 new cases) — `parseMaculaTsv` Louw-Nida columns: `ln` and `domain` parsed into arrays, empty/missing values produce empty arrays
+  - `tests/integration/louw-nida.test.ts` — reference table seeded (738 rows), codes present on tokens (including the Pericope-Adulterae insert path), GIN array-membership query (`lnDomain` has member)
+
+  Additions from Phase 4a (Vector + Hybrid Retrieval):
   - `tests/unit/lib/search/rrf.test.ts` — `reciprocalRankFusion` unit tests (RRF score computation, tie-breaking, empty-list edge cases)
   - `tests/unit/lib/search-semantic.test.ts` — `searchSemantic`: vector KNN + FTS fusion, SBLGNT-spine filter, current-model filter, embedding text-hash helper, chapter scope, and behavior when `OPENAI_API_KEY` is unset
   - `tests/unit/lib/ai/signals.test.ts` (extended) — longest-first book aliases, reference/book/morph stripping before topic extraction, `describe` as a stop word, entity-topic lemma mappings, and quoted phrase preservation
@@ -133,6 +138,7 @@ The assistant route follows a clear retrieval-first contract:
   - `20260530120000_lexical_fts` — Phase 3: `CREATE EXTENSION unaccent`; custom immutable `bible_simple` FTS config; `Verse.textSearch` stored GENERATED `tsvector` column; `Verse_textSearch_idx` GIN index; all ~15.9 k rows backfilled
   - `20260602120000_add_verse_embeddings` — Phase 4a: `CREATE EXTENSION vector` (pgvector); `VerseEmbedding` table (WEB per-verse `vector(1536)` + foreign-key to `Verse`); HNSW cosine index.
   - `20260603120000_add_verse_embedding_text_hash` — Phase 4a follow-up: `VerseEmbedding.textHash` so ingestion can detect stale embeddings when WEB text changes. Embeddings are ingested via `npm run embed:verses` (requires `OPENAI_API_KEY`, model `text-embedding-3-small`; idempotent — skips empty verses, retries transient 5xx, and re-embeds when the row is missing, the model differs, or `textHash` differs).
+  - `20260606070628_add_louw_nida` — Phase 5a: `Token.louwNida String[] @default([])` and `Token.lnDomain String[] @default([])` columns + GIN index on `lnDomain`; new `LouwNidaDomain` reference table (`code`, `level`, `label`, `parentCode`).
 
 ### Tech stack
 
@@ -198,7 +204,7 @@ reconciliation/gap analysis, and the Docker→Neon hosting plan live in
    Snowball stemming deferred — follow-up tracked. Evidence-diff harness added
    (`scripts/evidence-diff.ts`). Unit + integration tests all green.
 4. **Vector + hybrid retrieval** — ✅ **Phase 4a done** (merged via PR #9): pgvector `VerseEmbedding` table, `text-embedding-3-small` WEB embeddings, `textHash` stale-embedding detection, `searchSemantic` (current-model vector KNN + FTS RRF), SBLGNT-spine filter, on-spine ±2 window expansion, `npm run embed:verses` ingestion, and safer search routing for entity topics, numbered books, morphology prompts, references, and phrases. ✅ **Phase 4b done** (branch `milestone-3/phase-4b-rerank`): cross-encoder rerank via Voyage rerank-2.5 through Vercel AI Gateway; gated on `AI_GATEWAY_API_KEY`; graceful fallback to RRF order on missing key / error / timeout.
-5. **Louw-Nida enrichment** — import the `domain`/`ln` columns already in the MACULA TSV.
+5. **Louw-Nida enrichment** — ✅ **Phase 5a done** (branch `milestone-3/phase-5-louw-nida`): `Token` gained `louwNida String[] @default([])` (ln refs, e.g. `33.38`) and `lnDomain String[] @default([])` (MARBLE numeric codes, e.g. `033005`), plus a GIN index on `lnDomain`. New `LouwNidaDomain` reference table (`code` PK, `level`, `label`, `parentCode`) seeded from 738-node UBS JSON (CC-BY-SA 4.0). Migration `prisma/migrations/20260606070628_add_louw_nida/`. `scripts/import-louw-nida.ts` (`npm run import:louw-nida`) idempotently upserts the reference rows; `parseMaculaTsv` now parses `domain`/`ln` columns into code arrays and `importMaculaGreekGlosses` persists them through all three token write paths. `lib/louwNida.ts` provides `flattenLouwNidaDomains` and `resolveTokenDomains` helpers. `getReaderPassage` batch-resolves domain codes to labels; `MorphologyPopover` renders **Domain** and **Subdomain** rows on Greek tokens. **Phase 5b** (assistant domain-retrieval routing + `/search` domain mode) is a separate future plan — not yet started.
 6. **Evaluation harness** — RAGAS-style faithfulness/context-precision gates.
 
 The "Logical next steps" below remain valid as smaller increments; Step 3 in particular is absorbed

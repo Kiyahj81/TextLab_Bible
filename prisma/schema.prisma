@@ -98,6 +98,8 @@ model Token {
   morphCode    String?
   partOfSpeech String?
   gloss        String?
+  louwNida     String[] @default([])
+  lnDomain     String[] @default([])
 
   corpus     Corpus      @relation(fields: [corpusId], references: [id])
   book       Book        @relation(fields: [bookId], references: [id])
@@ -109,6 +111,7 @@ model Token {
   @@index([morphCode])
   @@index([bookId, chapter, verse])
   @@index([corpusId, bookId, partOfSpeech, lemma])
+  @@index([lnDomain], type: Gin)
 }
 
 model Note {
@@ -265,4 +268,13 @@ model VerificationToken {
   expires    DateTime
 
   @@id([identifier, token])
+}
+
+model LouwNidaDomain {
+  code       String  @id
+  level      Int
+  label      String
+  parentCode String?
+
+  @@index([parentCode])
 }

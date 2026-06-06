@@ -10,8 +10,9 @@ Milestone 2.5 of the TextLab Bible MVP: a single full-stack Next.js app deliveri
   - Verse-jump input, prev/next chapter buttons at top and bottom of every passage
   - Greek / English / Parallel mode toggle (persisted to localStorage)
   - Last-visited passage automatically restored on bare `/read` visits
-- **Search** in three modes (keyword / lemma / morphology)
+- **Search** in four modes (keyword / lemma / morphology / domain)
   - **Keyword search uses full-text search** (PostgreSQL `tsvector`/GIN, `bible_simple` unaccent config): accent-insensitive Greek (λογος finds λόγος), whole-word lexeme matching rather than substring, multi-word AND queries, optional rank ordering
+  - **Domain search** over Louw-Nida semantic domains: a domain dropdown (`33 — Communication`), a dependent subdomain dropdown that lists the selected domain's subdomains, and a free-text LN-reference field for an exact code (`33.55`). The assistant also answers explicit `domain 33` / `LN 33.55` prompts (explicit-only detection that never trips on chapter:verse notation like `John 3.16`)
   - Match terms bolded inside result verses
   - In-input Search and Clear buttons; pagination; saved-search persistence (rename, delete)
 - **Notes** index with keyword search, tag dropdown, reference filter, sort, and server-side pagination
@@ -150,7 +151,7 @@ npm run import:louw-nida
 npm run import:macula-glosses
 ```
 
-The morphology popover in the reader now shows **Domain** and **Subdomain** labels for Greek tokens that carry Louw-Nida codes. Domain-aware assistant retrieval and a `/search` domain mode are planned for Phase 5b.
+The morphology popover in the reader now shows **Domain** and **Subdomain** labels for Greek tokens that carry Louw-Nida codes. Phase 5b adds domain-aware retrieval on top of this data: a GIN index on `Token.louwNida`, the `/search` **domain** mode (domain / subdomain dropdowns + free-text LN-reference field), and explicit-only assistant routing for `domain 33` / `LN 33.55` prompts.
 
 After the corpus is imported, generate or refresh the semantic-search embeddings (idempotent; requires `OPENAI_API_KEY` in `.env`). The script re-embeds only rows whose embedding is missing, whose model differs from `text-embedding-3-small`, or whose stored `textHash` no longer matches the current WEB verse text:
 

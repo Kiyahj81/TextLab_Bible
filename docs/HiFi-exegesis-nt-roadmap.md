@@ -39,15 +39,15 @@ carries a `strong` column — Strong's remains deferred but is trivially availab
 
 ---
 
-## Verdict: ~65–70% of the way there after Phase 5a
+## Verdict: ~70% of the way there after Phase 5
 
 The project now implements the doc's core runtime philosophy for the NT-Greek subset: relational DB
 as source of truth, original-language tokens, retrieval-first assistant, user-confirmed scholarly
 escalation, enforced grounding verification, lexical FTS, Phase 4a vector/hybrid retrieval, and
-Phase 5a Louw-Nida semantic-domain enrichment (schema, reference table, popover display). The
-remaining high-fidelity gaps are narrower: a fuller agentic tool loop, domain-aware retrieval routing
-(Phase 5b), evaluation gates, and the larger data-expansion work (OT Hebrew/Aramaic, Strong's,
-speakers, and explicit token-to-English alignment).
+Phase 5 Louw-Nida semantic-domain enrichment (schema, reference table, popover display, `/search`
+domain mode, and explicit-only assistant domain routing). The remaining high-fidelity gaps are
+narrower: a fuller agentic tool loop, evaluation gates, and the larger data-expansion work (OT
+Hebrew/Aramaic, Strong's, speakers, and explicit token-to-English alignment).
 
 ---
 
@@ -65,7 +65,7 @@ speakers, and explicit token-to-English alignment).
 | Greek tokens w/ lemma, morph | ✅ `Token` (surface, normalized, lemma, morphCode, partOfSpeech, gloss) | None for Greek |
 | Hebrew + Aramaic tokens | ❌ NT-only (SBLGNT + WEB) | **Major** — no OT at all |
 | Strong's numbers (G/H) | ❌ no column | **Major** — core to doc's concordance queries |
-| Louw-Nida domains | ✅ **Phase 5a done** — `Token.louwNida`/`lnDomain` arrays + GIN index; `LouwNidaDomain` reference table (738 nodes, migration `20260606070628_add_louw_nida`); `scripts/import-louw-nida.ts`; popover shows Domain/Subdomain labels | Phase 5b (assistant domain-retrieval routing + `/search` domain mode) still pending |
+| Louw-Nida domains | ✅ **Phase 5 done (5a + 5b)** — `Token.louwNida`/`lnDomain` arrays + GIN indexes (`lnDomain` in 5a, `louwNida` in 5b migration `20260607000000_louw_nida_search_index`); `LouwNidaDomain` reference table (738 nodes, migration `20260606070628_add_louw_nida`); `scripts/import-louw-nida.ts`; popover shows Domain/Subdomain labels; `/search` domain mode + explicit-only assistant domain routing (`searchDomain`, `getLouwNidaDomainOptions`, `domainQuery`/`domainCall`) | None for the NT subset |
 | `word_alignments` table | ❌ implicit only (paired by book/ch/verse in `lib/search.ts`) | **Moderate** — no token↔English-word alignment table |
 | `speaker_quotations` (gender/age/divinity/depth) | ❌ none | **Major** — Clear-Bible data not ingested |
 | `chunks` + `pgvector` embeddings | ✅ pgvector `VerseEmbedding` table with one WEB per-verse `vector(1536)` embedding, model tag, `textHash`, and HNSW/cosine index | Phase 4a closed for verse-level embeddings; generalized chunks/window embeddings deferred |
@@ -78,7 +78,7 @@ speakers, and explicit token-to-English alignment).
 | Hybrid lexical + vector search | ✅ `searchSemantic` fuses current-model WEB vector KNN with keyword FTS and deterministic lemma/keyword/morph/passage calls remain available through the retrieval planner | Phase 4a + 4b closed |
 | Reciprocal Rank Fusion (k=60) | ✅ `lib/search/rrf.ts` pure RRF helper | Closed |
 | Cross-encoder rerank (top-30→top-5) | ✅ Voyage rerank-2.5 via AI Gateway (graceful fallback to RRF) | Closed |
-| Query expansion (synonyms/lemmas) | ⚠️ hardcoded English→Greek lemma/entity/phrase map plus semantic recall; no broad synonym expansion yet | **Minor/Moderate** |
+| Query expansion (synonyms/lemmas) | ⚠️ hardcoded English→Greek lemma/entity/phrase map plus semantic recall; Phase 5b adds explicit-only Louw-Nida domain-aware retrieval (`domain 33` / `LN 33.55`, anchored — never trips on `John 3.16`); no broad synonym expansion yet | **Minor/Moderate** |
 | Sentence-window context (V±2) | ✅ semantic hits expand to an on-spine ±2 verse window; WEB display text is used only for references present in SBLGNT | Closed for semantic retrieval |
 | Two design specs drafted | ✅ `docs/superpowers/specs/2026-05-27-{hybrid,agentic}-*.md` | These plan the *next* step but stop short of vectors/RRF/rerank |
 
@@ -118,7 +118,7 @@ speakers, and explicit token-to-English alignment).
 | FTS (`tsvector`/GIN) + keyword ranking | Closed | done in Phase 3 |
 | Grounding verification + Silence Protocol | Closed | done in Phase 2 |
 | pgvector + embeddings + hybrid + RRF + rerank | Closed | Phase 4a + 4b done |
-| Louw-Nida import (data + schema + popover) | **Closed (5a)** | done — Phase 5b (retrieval routing + `/search` mode) still pending |
+| Louw-Nida (data + schema + popover + domain search) | **Closed (5a + 5b)** | done — `/search` domain mode + explicit-only assistant domain routing landed in 5b |
 | Strong's numbers (need source + schema) | Medium | ~3–5 days |
 | Speaker quotations (Clear-Bible ingest) | Medium | ~3–5 days |
 | Hebrew + Aramaic OT corpus (OSHB/WLC + alignment) | Far | ~2–4 weeks |
@@ -234,13 +234,13 @@ OpenAI embeddings given existing integration, or a multilingual model for Greek)
 fusion of FTS + vector results (k=60), then cross-encoder rerank (top-30→top-5) and sentence-window
 (V±2) context assembly. Completes the doc's hybrid pipeline for the NT.
 
-**Phase 5 — Louw-Nida enrichment. IN PROGRESS (5a done, branch `milestone-3/phase-5-louw-nida`).** Phase 5a delivered: `Token.louwNida String[] @default([])` (ln refs, e.g. `33.38`) + `Token.lnDomain String[] @default([])` (MARBLE numeric codes, e.g. `033005`) + GIN index on `lnDomain`; `LouwNidaDomain` reference table (`code` PK, `level`, `label`, `parentCode`); migration `20260606070628_add_louw_nida`; `scripts/import-louw-nida.ts` (`npm run import:louw-nida`) — idempotent upsert of 738 domain/subdomain rows vendored from the UBS lexical-domains JSON (CC-BY-SA 4.0, `data/louw-nida/NOTICE.md`); `parseMaculaTsv` now parses `domain`/`ln` TSV columns into arrays; `importMaculaGreekGlosses` persists codes through all three token write paths; `lib/louwNida.ts` (`flattenLouwNidaDomains`, `resolveTokenDomains`); `getReaderPassage` batch-resolves codes to labels; `MorphologyPopover` renders Domain/Subdomain rows. **Phase 5b** (assistant domain-retrieval routing + `/search` domain mode) is still pending. Original concrete steps below (for reference):
+**Phase 5 — Louw-Nida enrichment. ✅ DONE (5a + 5b; branches `milestone-3/phase-5-louw-nida`, then `milestone-3/phase-5b-domain-search`).** Phase 5a delivered: `Token.louwNida String[] @default([])` (ln refs, e.g. `33.38`) + `Token.lnDomain String[] @default([])` (MARBLE numeric codes, e.g. `033005`) + GIN index on `lnDomain`; `LouwNidaDomain` reference table (`code` PK, `level`, `label`, `parentCode`); migration `20260606070628_add_louw_nida`; `scripts/import-louw-nida.ts` (`npm run import:louw-nida`) — idempotent upsert of 738 domain/subdomain rows vendored from the UBS lexical-domains JSON (CC-BY-SA 4.0, `data/louw-nida/NOTICE.md`); `parseMaculaTsv` now parses `domain`/`ln` TSV columns into arrays; `importMaculaGreekGlosses` persists codes through all three token write paths; `lib/louwNida.ts` (`flattenLouwNidaDomains`, `resolveTokenDomains`); `getReaderPassage` batch-resolves codes to labels; `MorphologyPopover` renders Domain/Subdomain rows. Phase 5b adds domain-aware retrieval: a GIN index on `Token.louwNida` (migration `20260607000000_louw_nida_search_index`); `searchDomain` + `getLouwNidaDomainOptions` in `lib/search.ts`; the `/search` **domain** mode (domain dropdown `33 — Communication`, dependent subdomain dropdown, free-text LN-reference field `33.55`); an explicit-only, anchored assistant `domainQuery` signal (`domain 33` / `LN 33.55`, never trips on `John 3.16`) feeding a planner `domainCall`; new unit + integration tests (`tests/unit/lib/search-domain.test.ts`, signals/planner additions, `tests/integration/louw-nida-search.test.ts`). Saving domain searches and MARBLE-range subdomains are out of scope for v1. Original concrete steps below (for reference):
 
-1. ✅ `prisma/schema.prisma`: added `louwNida String[]` + `lnDomain String[]` arrays + GIN index.
-2. ✅ New migration `20260606070628_add_louw_nida` via `prisma migrate dev`.
+1. ✅ `prisma/schema.prisma`: added `louwNida String[]` + `lnDomain String[]` arrays + GIN index (5a); Phase 5b adds the `Token.louwNida` GIN index.
+2. ✅ New migrations `20260606070628_add_louw_nida` (5a) and `20260607000000_louw_nida_search_index` (5b).
 3. ✅ `scripts/import-open-bible.ts`: `parseMaculaTsv` now parses `ln`/`domain` columns; `importMaculaGreekGlosses` carries codes through all write paths.
 4. ✅ Re-run `npm run import:louw-nida` (seed reference table), then `npm run import:macula-glosses` (backfill token codes).
-5. ✅ Morphology popover surfaces Domain/Subdomain labels. Assistant domain-routing — Phase 5b.
+5. ✅ Morphology popover surfaces Domain/Subdomain labels (5a); assistant domain routing + `/search` domain mode (5b).
 
 **Phase 6 — Evaluation harness.** RAGAS-style faithfulness (target >0.90) + context-precision checks
 to guard quality and catch grounding regressions as phases land.

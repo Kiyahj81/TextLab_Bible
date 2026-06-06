@@ -1,6 +1,6 @@
 # TextLab Bible — Project State
 
-*Snapshot: 2026-06-06 (post Phase 5a Louw-Nida enrichment — Milestone 3 Phase 4a Vector + Hybrid Retrieval plus Phase 4b Voyage rerank-2.5 via Vercel AI Gateway, plus Phase 5a semantic-domain data + popover display)*
+*Snapshot: 2026-06-06 (post Phase 5b Louw-Nida domain search — Milestone 3 Phase 4a Vector + Hybrid Retrieval plus Phase 4b Voyage rerank-2.5 via Vercel AI Gateway, plus Phase 5a semantic-domain data + popover display, plus Phase 5b `/search` domain mode + assistant domain routing)*
 
 ## Where the project stands
 
@@ -59,7 +59,7 @@ Two latent client bugs surfaced during the acceptance-test wiring: `SearchPanel`
 | Route | Purpose |
 |---|---|
 | `/read` | Passage reader; clickable Greek tokens with morphology popover; **per-word English highlighting** with color palette popover; verse-jump input, prev/next chapter (top + bottom), Greek/English/Parallel mode toggle, last-passage restore |
-| `/search` | Three modes (lemma / keyword / morphology) with **match highlighting** on result verses, in-input Search + Clear, pagination, saved-search persistence. Keyword mode uses FTS (`bible_simple` unaccent config, `websearch_to_tsquery`): accent-insensitive Greek, whole-lexeme (not substring), multi-word AND, optional rank ordering. |
+| `/search` | Four modes (lemma / keyword / morphology / domain) with **match highlighting** on result verses, in-input Search + Clear, pagination, saved-search persistence. Keyword mode uses FTS (`bible_simple` unaccent config, `websearch_to_tsquery`): accent-insensitive Greek, whole-lexeme (not substring), multi-word AND, optional rank ordering. **Domain mode** (Phase 5b) queries Louw-Nida semantic domains via a domain dropdown (`33 — Communication`), a dependent subdomain dropdown, and a free-text LN-reference field (`33.55`). |
 | `/assistant` | AI Study Assistant — retrieval-first with live/fallback mode indicator, codex-gutter sidebar (trace + citations + generated notes) |
 | `/notes` | Notes index with **keyword search**, tag dropdown filter, reference filter, sort (Most recent / Canonical / Title), server-side pagination |
 | `/api/assistant` | POST endpoint: auth-gated, prompt cap, rate-limited (10/min, `Retry-After`); dispatches local retrieval and optionally synthesizes via OpenAI Responses API |
@@ -79,7 +79,13 @@ The assistant route follows a clear retrieval-first contract:
 
 ### Test surfaces
 
-- **Unit and integration tests** (vitest 4 + jsdom + RTL). Coverage gate via v8 over `app/api/**` + `lib/**`. Additions from Phase 5a (Louw-Nida enrichment):
+- **Unit and integration tests** (vitest 4 + jsdom + RTL). Coverage gate via v8 over `app/api/**` + `lib/**`. Additions from Phase 5b (Louw-Nida domain search):
+  - `tests/unit/lib/search-domain.test.ts` — `searchDomain` (domain / subdomain / LN-reference filters, domain→subdomain code expansion, book/chapter scope, pagination) and `getLouwNidaDomainOptions` (level-1 domains + dependent level-2 subdomains)
+  - `tests/unit/lib/ai/signals.test.ts` (extended) — `detectDomainQuery`: explicit-only, anchored detection of `domain 33` / `LN 33.55`; never trips on chapter:verse notation like `John 3.16`; domain-number range validation
+  - `tests/unit/lib/ai/retrievalPlanner.test.ts` (extended) — `domainCall` from a `domainQuery` signal
+  - `tests/integration/louw-nida-search.test.ts` — end-to-end domain search against the seeded Neon test branch (GIN-backed LN-reference and domain/subdomain membership queries)
+
+  Additions from Phase 5a (Louw-Nida enrichment):
   - `tests/unit/lib/louwNida.test.ts` (7 tests) — `flattenLouwNidaDomains`: full taxonomy JSON → rows with level/parentCode; `resolveTokenDomains`: code-array → display-label `TokenDomainSense[]`, multi-domain, missing code, empty input
   - `tests/unit/scripts/import-open-bible.test.ts` (3 new cases) — `parseMaculaTsv` Louw-Nida columns: `ln` and `domain` parsed into arrays, empty/missing values produce empty arrays
   - `tests/integration/louw-nida.test.ts` — reference table seeded (738 rows), codes present on tokens (including the Pericope-Adulterae insert path), GIN array-membership query (`lnDomain` has member)
@@ -128,7 +134,7 @@ The assistant route follows a clear retrieval-first contract:
 ### Database
 
 - Prisma 6 over PostgreSQL. Current maintainer/dev and test environments use Neon branches (`DATABASE_URL` pooled for runtime, `DIRECT_URL` direct for migrations); local PostgreSQL remains possible if the same migrations are applied.
-- 9 migrations on disk:
+- 10 migrations on disk:
   - `0_init` — baseline reflecting pre-rename schema
   - `20260521162527_assistant_message_metadata` — `AiMessage.citations → metadata`
   - `20260522193249_token_lemma_index` — composite `(corpusId, bookId, partOfSpeech, lemma)` for `getTopLemmas`
@@ -139,6 +145,7 @@ The assistant route follows a clear retrieval-first contract:
   - `20260602120000_add_verse_embeddings` — Phase 4a: `CREATE EXTENSION vector` (pgvector); `VerseEmbedding` table (WEB per-verse `vector(1536)` + foreign-key to `Verse`); HNSW cosine index.
   - `20260603120000_add_verse_embedding_text_hash` — Phase 4a follow-up: `VerseEmbedding.textHash` so ingestion can detect stale embeddings when WEB text changes. Embeddings are ingested via `npm run embed:verses` (requires `OPENAI_API_KEY`, model `text-embedding-3-small`; idempotent — skips empty verses, retries transient 5xx, and re-embeds when the row is missing, the model differs, or `textHash` differs).
   - `20260606070628_add_louw_nida` — Phase 5a: `Token.louwNida String[] @default([])` and `Token.lnDomain String[] @default([])` columns + GIN index on `lnDomain`; new `LouwNidaDomain` reference table (`code`, `level`, `label`, `parentCode`).
+  - `20260607000000_louw_nida_search_index` — Phase 5b: GIN index on `Token.louwNida` (`Token_louwNida_idx`) so LN-reference domain search (e.g. `33.55`) is index-backed.
 
 ### Tech stack
 
@@ -204,7 +211,7 @@ reconciliation/gap analysis, and the Docker→Neon hosting plan live in
    Snowball stemming deferred — follow-up tracked. Evidence-diff harness added
    (`scripts/evidence-diff.ts`). Unit + integration tests all green.
 4. **Vector + hybrid retrieval** — ✅ **Phase 4a done** (merged via PR #9): pgvector `VerseEmbedding` table, `text-embedding-3-small` WEB embeddings, `textHash` stale-embedding detection, `searchSemantic` (current-model vector KNN + FTS RRF), SBLGNT-spine filter, on-spine ±2 window expansion, `npm run embed:verses` ingestion, and safer search routing for entity topics, numbered books, morphology prompts, references, and phrases. ✅ **Phase 4b done** (branch `milestone-3/phase-4b-rerank`): cross-encoder rerank via Voyage rerank-2.5 through Vercel AI Gateway; gated on `AI_GATEWAY_API_KEY`; graceful fallback to RRF order on missing key / error / timeout.
-5. **Louw-Nida enrichment** — ✅ **Phase 5a done** (branch `milestone-3/phase-5-louw-nida`): `Token` gained `louwNida String[] @default([])` (ln refs, e.g. `33.38`) and `lnDomain String[] @default([])` (MARBLE numeric codes, e.g. `033005`), plus a GIN index on `lnDomain`. New `LouwNidaDomain` reference table (`code` PK, `level`, `label`, `parentCode`) seeded from 738-node UBS JSON (CC-BY-SA 4.0). Migration `prisma/migrations/20260606070628_add_louw_nida/`. `scripts/import-louw-nida.ts` (`npm run import:louw-nida`) idempotently upserts the reference rows; `parseMaculaTsv` now parses `domain`/`ln` columns into code arrays and `importMaculaGreekGlosses` persists them through all three token write paths. `lib/louwNida.ts` provides `flattenLouwNidaDomains` and `resolveTokenDomains` helpers. `getReaderPassage` batch-resolves domain codes to labels; `MorphologyPopover` renders **Domain** and **Subdomain** rows on Greek tokens. **Phase 5b** (assistant domain-retrieval routing + `/search` domain mode) is a separate future plan — not yet started.
+5. **Louw-Nida enrichment** — ✅ **Phase 5a + 5b done** (branch `milestone-3/phase-5-louw-nida`, then `milestone-3/phase-5b-domain-search`). **Phase 5a**: `Token` gained `louwNida String[] @default([])` (ln refs, e.g. `33.38`) and `lnDomain String[] @default([])` (MARBLE numeric codes, e.g. `033005`), plus a GIN index on `lnDomain`. New `LouwNidaDomain` reference table (`code` PK, `level`, `label`, `parentCode`) seeded from 738-node UBS JSON (CC-BY-SA 4.0). Migration `prisma/migrations/20260606070628_add_louw_nida/`. `scripts/import-louw-nida.ts` (`npm run import:louw-nida`) idempotently upserts the reference rows; `parseMaculaTsv` now parses `domain`/`ln` columns into code arrays and `importMaculaGreekGlosses` persists them through all three token write paths. `lib/louwNida.ts` provides `flattenLouwNidaDomains` and `resolveTokenDomains` helpers. `getReaderPassage` batch-resolves domain codes to labels; `MorphologyPopover` renders **Domain** and **Subdomain** rows on Greek tokens. **Phase 5b** adds domain-aware retrieval: a GIN index on `Token.louwNida` (migration `20260607000000_louw_nida_search_index`); `searchDomain` + `getLouwNidaDomainOptions` in `lib/search.ts`; the `/search` **domain** mode (domain dropdown `33 — Communication`, dependent subdomain dropdown, free-text LN-reference field `33.55`); and an explicit-only, anchored assistant `domainQuery` signal (`domain 33` / `LN 33.55`, never trips on `John 3.16`) feeding a planner `domainCall`. Saving domain searches is out of scope for v1.
 6. **Evaluation harness** — RAGAS-style faithfulness/context-precision gates.
 
 The "Logical next steps" below remain valid as smaller increments; Step 3 in particular is absorbed

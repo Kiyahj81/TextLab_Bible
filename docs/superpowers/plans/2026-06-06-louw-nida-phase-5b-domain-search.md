@@ -870,11 +870,16 @@ import { prisma } from "@/lib/db";
 const itDb = process.env.DATABASE_URL ? it : it.skip;
 
 describe("Louw-Nida domain search (integration)", () => {
-  itDb("created the louwNida GIN index", async () => {
-    const rows = await prisma.$queryRaw<{ indexname: string }[]>`
-      SELECT indexname FROM pg_indexes WHERE indexname = 'Token_louwNida_idx'
+  itDb("created the louwNida GIN index with the intended shape", async () => {
+    // Assert the full contract, not just the name: a same-named but wrong index
+    // (e.g. a btree, or on the wrong column) would otherwise pass with IF NOT EXISTS.
+    const rows = await prisma.$queryRaw<{ tablename: string; indexdef: string }[]>`
+      SELECT tablename, indexdef FROM pg_indexes WHERE indexname = 'Token_louwNida_idx'
     `;
     expect(rows).toHaveLength(1);
+    expect(rows[0].tablename).toBe("Token");
+    expect(rows[0].indexdef).toMatch(/USING gin/i);
+    expect(rows[0].indexdef).toContain('"louwNida"');
   });
 
   itDb("returns tokens for an exact LN reference", async () => {

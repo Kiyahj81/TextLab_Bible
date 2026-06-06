@@ -118,11 +118,12 @@ subdomains (`{ code, label }`). Cheap (≤ ~93 + a few dozen rows) and cached pe
 - Results reuse the existing `kind: "token"` rendering (matched Greek word bolded, lemma + morphCode shown).
   The page builds the results-header label by looking the resolved filter up in the loaded
   `domainOptions` — `Domain 33 — Communication`, `Subdomain: Written Language`, or `LN 33.55`.
-- **Controlled form state:** `selectedDomain`, `selectedSubdomain`, and the LN value are React state.
-  Changing the domain **clears `selectedSubdomain`** so a stale subdomain code from the previous domain can
-  never be submitted. Pagination links reflect the **already-submitted** query (the server props), the same
-  way lemma pagination uses the submitted `query` (not the live input), so editing the form without
-  submitting does not corrupt page navigation.
+- **Controlled form state:** the two dependent dropdowns — `selectedDomain` and `selectedSubdomain` — are
+  React state; changing the domain **clears `selectedSubdomain`** so a stale subdomain code from the previous
+  domain can never be submitted. The LN reference is a plain **uncontrolled** text input (`defaultValue`,
+  like Book/Chapter) — it has no dependency to keep in sync. Pagination links reflect the
+  **already-submitted** query (the server props), the same way lemma pagination uses the submitted `query`
+  (not the live input), so editing the form without submitting does not corrupt page navigation.
 
 URL examples: `/search?mode=domain&domain=33&book=John`, `/search?mode=domain&ln=33.55`.
 

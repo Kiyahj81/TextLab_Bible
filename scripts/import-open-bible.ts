@@ -37,6 +37,8 @@ type ParsedMaculaRow = {
   morph: string | null;
   partOfSpeech: string | null;
   gloss: string | null;
+  louwNida: string[];
+  lnDomain: string[];
 };
 
 const DEFAULT_MACULA_GREEK_URL =
@@ -651,6 +653,11 @@ export function parseMaculaTsv(content: string): ParsedMaculaRow[] {
   const lemmaIdx = col("lemma");
   const normalizedIdx = col("normalized");
   const morphIdx = col("morph");
+  const domainIdx = col("domain");
+  const lnIdx = col("ln");
+
+  const splitCodes = (raw: string | undefined): string[] =>
+    (raw ?? "").trim().split(/\s+/).filter((code) => code && code !== "-");
 
   const rows: ParsedMaculaRow[] = [];
   for (let i = 1; i < lines.length; i++) {
@@ -678,6 +685,8 @@ export function parseMaculaTsv(content: string): ParsedMaculaRow[] {
     const morph = (cells[morphIdx] ?? "").trim() || null;
     const normalized = (cells[normalizedIdx] ?? "").trim() || null;
     const lemma = (cells[lemmaIdx] ?? "").trim() || null;
+    const louwNida = splitCodes(cells[lnIdx]);
+    const lnDomain = splitCodes(cells[domainIdx]);
 
     rows.push({
       book: osisId,
@@ -689,7 +698,9 @@ export function parseMaculaTsv(content: string): ParsedMaculaRow[] {
       lemma,
       morph,
       partOfSpeech: maculaPartOfSpeech(morph),
-      gloss
+      gloss,
+      louwNida,
+      lnDomain
     });
   }
   return rows;

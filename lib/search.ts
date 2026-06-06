@@ -663,6 +663,35 @@ export async function getTopLemmas(input: {
   }));
 }
 
+export type DomainFilter =
+  | { kind: "ln"; value: string }
+  | { kind: "subdomain"; value: string }
+  | { kind: "domain"; value: string };
+
+// "33" → "033"; already-3+-digit values are left as-is. Strips non-digits defensively.
+export function normalizeDomainCode(value: string): string {
+  const digits = value.replace(/\D/g, "");
+  return digits.length < 3 ? digits.padStart(3, "0") : digits;
+}
+
+// Most-specific filter wins: ln → subdomain → domain.
+export function resolveDomainFilter(input: { ln?: string; subdomain?: string; domain?: string }): DomainFilter | null {
+  const ln = input.ln?.trim();
+  if (ln) return { kind: "ln", value: ln };
+  const subdomain = input.subdomain?.trim();
+  if (subdomain) return { kind: "subdomain", value: subdomain };
+  const domain = input.domain?.trim();
+  if (domain) return { kind: "domain", value: normalizeDomainCode(domain) };
+  return null;
+}
+
+// `domainCodes` is the expanded [domain code + its subdomain codes]; only used for the domain kind.
+export function domainTokenWhere(filter: DomainFilter, domainCodes: string[]): Prisma.TokenWhereInput {
+  if (filter.kind === "ln") return { louwNida: { has: filter.value } };
+  if (filter.kind === "subdomain") return { lnDomain: { has: filter.value } };
+  return { lnDomain: { hasSome: domainCodes } };
+}
+
 function normalizePagination(input: PaginationInput) {
   const page = Number.isFinite(input.page) && input.page && input.page > 0 ? Math.floor(input.page) : 1;
   const requestedPageSize =

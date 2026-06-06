@@ -1,55 +1,91 @@
 # Phase 6 — Evaluation Harness Design
 
-*Milestone 3, Phase 6 (final phase). Date: 2026-06-06.*
+*Milestone 3, Phase 6 (final phase). Date: 2026-06-06. Revised after external review (Codex).*
 
 ## Purpose
 
 Phases 1–5 built the retrieval-first, grounded NT-exegesis assistant pipeline
 (deterministic retrieval → semantic/hybrid + RRF → Voyage rerank → Louw-Nida →
 synthesis → grounding verification). Phase 6 is the **quality gate** over that
-whole pipeline: an automated, repeatable way to measure whether retrieval
-surfaces the right evidence and whether answers stay faithful to it, so
-regressions are caught when the pipeline is later touched.
+pipeline: an automated, repeatable way to catch regressions as the pipeline is
+later touched.
 
 The top priority for this Bible-study app is preventing **citation-shaped
-hallucinations** (invented or misattributed scripture). The harness therefore
-splits into:
+hallucinations** (invented or misattributed scripture). Phase 6 is therefore
+**explicitly two-tier** — and the two tiers measure different things, because in
+this codebase a fast, key-free, deterministic gate *cannot* exercise the hybrid
+vector pipeline or detect generative hallucination (see "Why two tiers" below):
 
-- A **blocking PR gate** that is fast, free, and 100% deterministic — strictly
-  enforcing Context Precision and Context Recall over the hybrid retrieval, and
-  running `verifyGrounding` to catch citation-shaped hallucinations via
-  deterministic string matching.
-- A **non-blocking nightly / on-demand dashboard** that additionally runs live
-  synthesis and an LLM-as-judge faithfulness evaluation, producing a rich
-  per-question HTML report for debugging *why* a specific verse or Greek lemma
-  was (or was not) retrieved. Nondeterminism and API cost are acceptable here
-  because it never blocks CI.
+- **Blocking PR gate — a deterministic, DB-only regression gate.** Fast, free,
+  100% deterministic, no API key. It protects **deterministic evidence
+  retrieval and citation safety**: Context Precision/Recall over the
+  deterministic retrieval paths (FTS / lemma / passage / domain), required
+  lemma/domain coverage, and 100% **citation resolvability**.
+- **Non-blocking hybrid quality report — the full live pipeline.** Run
+  nightly / on-demand. It exercises the *true* hybrid pipeline (query
+  embeddings, pgvector KNN, RRF, Voyage rerank, synthesis) and adds an
+  LLM-as-judge faithfulness score. It records API / model / rerank status, and
+  failures are **investigation signals, not PR blockers**. Nondeterminism and
+  API cost are acceptable here because it never blocks CI.
 
 This matches the deterministic-gate / fuzzy-dashboard split decided during
 brainstorming.
+
+### Why two tiers (the constraint that forces this)
+
+The blocking gate must run with **no API key and no network beyond the DB**.
+Three facts in the current code make a key-free deterministic gate unable to be
+a "hybrid-pipeline quality gate":
+
+1. `runRetrievalPlan(signals, prompt, semanticEnabled=false)` skips the semantic
+   call entirely (`lib/ai/retrievalPlanner.ts` — `if (semanticEnabled && …)`),
+   so the gate exercises only the deterministic paths.
+2. Even with `semanticEnabled=true`, `embedQuery` returns `null` without an
+   OpenAI client (`lib/search.ts`), so vector KNN produces nothing without a key.
+3. `rerankCandidates` returns `null` without `AI_GATEWAY_API_KEY`
+   (`lib/search/rerank.ts`), so rerank is a no-op without a key.
+
+And the deterministic *fallback* answer embeds retrieved evidence **verbatim**
+(`buildDeterministicFallback`), so it cannot produce a citation-shaped
+hallucination by construction — there is no generative prose for the gate to
+catch. Generative hallucination only exists on the **live synthesis** path,
+which is nondeterministic and key-dependent.
+
+Conclusion (the locked design decision): **the PR gate protects deterministic
+evidence retrieval and citation safety; the report monitors full hybrid-pipeline
+quality.** We do not pretend the gate tests the hybrid pipeline or detects
+generative hallucination.
 
 ## Scope
 
 **In scope:**
 - A standalone `eval/` layer that drives the existing pipeline against a curated
   golden dataset and scores the results.
-- A ~20-item hand-curated golden dataset spanning all five query types the
-  pipeline handles.
-- Deterministic metrics: Context Precision, Context Recall, grounding pass-rate.
+- A ~20-item hand-curated golden dataset spanning all five query types.
+- **Deterministic gate metrics:** Context Precision, Context Recall, required
+  lemma/domain coverage, and Citation Resolvability — all computed from the
+  deterministic (`semanticEnabled=false`) retrieval output.
 - A deterministic blocking gate (`npm run eval:gate`) with tunable thresholds.
-- A nightly/on-demand run (`npm run eval:report`) adding LLM-judge faithfulness
-  and a self-contained HTML report (+ JSON dump).
+- A nightly/on-demand run (`npm run eval:report`) that runs the **full hybrid
+  pipeline once per question**, reports hybrid Context Precision/Recall, adds
+  LLM-judge faithfulness (via the Vercel AI Gateway), and writes a self-contained
+  HTML report (+ JSON dump). Records API/model/rerank status per question.
 - Unit and integration tests for the harness itself.
 - Docs updates (README, PROJECT_STATE, roadmap).
 
 **Out of scope:**
-- **Prose-sweep grounding hardening** (PROJECT_STATE.md line ~172 — verifying
-  inline prose references, not just declared `claims[]`). That is a change to
-  the grounding *verifier*, not the eval harness; it stays a separate follow-up.
+- **Prose-sweep grounding hardening** (PROJECT_STATE.md — verifying inline prose
+  references, not just declared `claims[]`). That is a change to the grounding
+  *verifier*, not the eval harness; it stays a separate follow-up.
 - Any change to the runtime retrieval/synthesis/grounding pipeline. Phase 6 only
   *measures* the existing pipeline — no schema changes, no behavior changes.
-- Auto-derived / generated questions (may be added later; the dataset schema is
-  designed to allow it, but v1 is hand-curated only).
+  (Adding a faithfulness LLM judge in `eval/` is new code in `eval/`, not a
+  pipeline change.)
+- Deterministic fixtures for query embeddings / rerank (would let the gate replay
+  the hybrid pipeline key-free; explicitly rejected for v1 in favor of the
+  two-tier split — hybrid quality is tracked nightly instead).
+- Auto-derived / generated questions (the dataset schema allows it later; v1 is
+  hand-curated only).
 - Raising the branch coverage gate (tracked separately).
 
 ## Non-goals / guardrails
@@ -67,20 +103,25 @@ brainstorming.
 golden dataset (committed JSON)
         │
         ▼
-  eval runner ── runs each question through the real pipeline:
-        │          extractSignals → buildPlan → runRetrievalPlan   (retrieval)
-        │          verifyGrounding                                  (grounding)
-        │          [nightly only] live synthesis → LLM-judge        (faithfulness)
-        ├──────────────┬───────────────────────────────┐
-        ▼              ▼                                 ▼
-  metrics scorer   PR gate (deterministic)          HTML report writer
-  (precision/        exit 1 if below threshold        (nightly + on-demand)
-   recall/grounding)
+  eval runner ──────────────────────────────────────────────┐
+        │                                                     │
+   GATE mode (deterministic)              REPORT mode (live, one packet/question)
+   runRetrievalPlan(…, semantic=false)    runRetrievalPlan(…, semantic=true)  ← single packet
+        │                                  │       │
+   metrics + resolvability           hybrid metrics + resolvability
+        │                                  │       └─ synthesizeWithRefinement(packet) → answer
+        ▼                                  │                     │
+   eval:gate → exit code             │              judgeFaithfulness(answer, packet)
+   (precision/recall/coverage/             │                     │
+    resolvability thresholds)              ▼                     ▼
+                                     HTML + JSON report (scorecard, golden-vs-retrieved,
+                                     trace incl. rerank status, faithfulness verdicts)
 ```
 
-The PR gate and the nightly dashboard run the **same runner**. They differ only
-in (a) whether the live-synthesis + LLM-judge stage executes, and (b) whether
-output is a pass/fail exit code or an HTML/JSON artifact.
+The gate and the report run the **same runner module**, but in two distinct
+modes that each use **exactly one `EvidencePacket`** so metrics and (in report
+mode) the judged answer are always derived from the same retrieval — never two
+separate runs.
 
 ## File layout
 
@@ -90,20 +131,18 @@ eval/
     golden-set.json            # ~20 curated questions + golden refs (committed)
     schema.ts                  # types + a zod validator for the dataset
   thresholds.ts                # gate threshold constants (single source of truth)
-  runner.ts                    # drives a question through the pipeline → RunResult
-  metrics.ts                   # contextPrecision, contextRecall, grounding pass-rate
-  judge.ts                     # LLM-as-judge faithfulness (nightly only, key-gated)
+  references.ts                # canonicalizeReference + set helpers (via lib/references)
+  metrics.ts                   # contextPrecision, contextRecall, aggregation
+  runner.ts                    # runDeterministic / runWithJudge → RunResult (one packet each)
+  judge.ts                     # LLM-as-judge faithfulness via Vercel AI Gateway (key-gated)
   report.ts                    # RunResult[] → static HTML + JSON
   output/                      # gitignored: report.html, report.json
 scripts/
   eval-gate.ts                 # npm run eval:gate   — deterministic, exit code
-  eval-report.ts               # npm run eval:report — full run + HTML (nightly/on-demand)
-tests/unit/eval/               # unit tests for metrics, dataset validity, thresholds
+  eval-report.ts               # npm run eval:report — full hybrid run + HTML/JSON
+tests/unit/eval/               # metrics, dataset validity, thresholds, report
 tests/integration/eval-runner.test.ts  # one-question end-to-end smoke
 ```
-
-`eval/` is new and self-contained, mirroring how `lib/search/` and `lib/ai/` are
-organized.
 
 ## The golden dataset
 
@@ -115,119 +154,135 @@ Each item exercises one pipeline path:
   "question": "What does ἀγάπη mean in 1 Corinthians 13?",
   "queryType": "lemma-survey",        // exact-verse | lemma-survey | conceptual | domain | cross-chapter
   "goldenReferences": ["1Cor 13:1", "1Cor 13:2", "..."],  // refs that SHOULD be retrieved
-  "mustContainLemma": "ἀγάπη",        // optional: retrieval must surface this lemma
-  "notes": "Tests lemma survey + semantic expansion within a single chapter"
+  "mustContainLemma": "ἀγάπη",        // optional: retrieval must surface this lemma (gated)
+  "notes": "Tests lemma survey within a single chapter"
 }
 ```
 
-- **`goldenReferences`** drive Context Precision/Recall — the heart of the
-  deterministic gate. Stored in the codebase's canonical reference form
-  (`<osisId> <chapter>:<verse>`, e.g. `1Cor 13:1`, matching
-  `formatReference`/`parseReference` in `lib/references.ts`) and re-normalized via
-  `parseReference` before comparison.
+- **`goldenReferences`** drive Context Precision/Recall. Stored in the codebase's
+  canonical reference form (`<osisId> <chapter>:<verse>`, e.g. `1Cor 13:1`,
+  matching `formatReference`/`parseReference` in `lib/references.ts`) and
+  re-normalized via `parseReference` before comparison.
 - **`queryType`** groups report results and lets a test assert coverage across
   all five pipeline paths.
+- **`mustContainLemma`** (optional) — when present, retrieval must surface this
+  Greek lemma somewhere in the assembled evidence. Enforced by the gate (see
+  Coverage below), not merely recorded.
 - No "golden answer" prose is stored. Faithfulness is judged against *retrieved
-  evidence* (the RAGAS definition), not against a fixed expected answer — this
-  avoids brittle string-matching on generated prose.
-- The ~20 items are split across the five query types so every retrieval path
-  (deterministic, semantic/RRF, rerank, domain) is represented. The exact
-  questions are drafted during implementation and submitted for maintainer
-  review before the gate thresholds are calibrated.
-
-`schema.ts` exports a zod schema; a unit test validates `golden-set.json` against
-it and asserts every `queryType` appears at least once.
+  evidence* (the RAGAS definition), not a fixed expected answer.
+- The ~20 items split across the five query types. The exact questions are
+  drafted during implementation and submitted for maintainer review before
+  thresholds are calibrated.
 
 ## Metrics
 
-References are normalized to a canonical `BOOK C.V` form (via `lib/references.ts`)
-before any set comparison. Comparisons are made against the `EvidencePacket`
-citations that `runRetrievalPlan` actually produces — i.e. the real fused output
-of FTS + pgvector + RRF + rerank, exactly what the synthesizer sees.
+References are normalized to canonical `<osisId> <chapter>:<verse>` form (via
+`lib/references.ts`) before any set comparison. Both tiers compare against the
+`EvidencePacket` citations that `runRetrievalPlan` actually produces — the gate
+against the deterministic packet, the report against the hybrid packet.
 
 **Context Precision** — of the references retrieved, what fraction are golden?
-`precision = |retrieved ∩ golden| / |retrieved|`. Penalizes noisy retrieval.
-Defined as `1.0` when `retrieved` is empty *and* `golden` is empty; `0.0` when
-`retrieved` is empty but `golden` is non-empty (nothing relevant surfaced).
+`precision = |retrieved ∩ golden| / |retrieved|`. `1.0` when both empty; `0.0`
+when retrieved is empty but golden is non-empty.
 
 **Context Recall** — of the golden references, what fraction were retrieved?
-`recall = |retrieved ∩ golden| / |golden|`. Penalizes missing the verse you
-needed — the most important metric for a Bible app. Defined as `1.0` when
-`golden` is empty.
+`recall = |retrieved ∩ golden| / |golden|`. `1.0` when golden is empty. The most
+important metric for a Bible app: a missed verse means incomplete evidence.
 
-**Grounding pass-rate** — run `verifyGrounding` over each question's evidence
-(on the deterministic-fallback answer, which is grounded-by-construction). A
-question passes only if no claim falls below the 0.90 SBLGNT threshold and every
-cited reference resolves. This asserts the verifier stays healthy and evidence is
-internally consistent — the deterministic anti-hallucination check.
+**Required lemma/domain coverage** — for items with `mustContainLemma`, the
+assembled evidence must contain that lemma. The gate requires **100%** coverage
+over the items that declare a requirement, so a lemma-survey regression that
+still happens to match verse refs is still caught.
 
-**Faithfulness (nightly only)** — LLM-as-judge decomposes the *live* synthesized
-answer into atomic claims and judges each as supported / unsupported by the
-retrieved evidence. Score = supported / total. Gated on `OPENAI_API_KEY`; absent
-key → skipped (recorded as `null`), never failed.
+**Citation Resolvability** (gate; renamed from "grounding pass-rate") — every
+reference emitted by deterministic retrieval must **parse and resolve to a real
+SBLGNT verse**. Computed by running `verifyGrounding` over reference-only claims
+(`greekQuote: null`), which in this configuration verifies reference resolution.
+Required at **100%**.
+
+> **What citation resolvability does NOT claim:** it does not verify answer prose
+> or quote support, and it is **not** a hallucination metric. Because the
+> deterministic fallback embeds retrieved evidence verbatim, there is no
+> generative prose to check. Live-answer grounding remains enforced by the
+> production runtime verifier (`verifyGrounding` on live synthesis, which refuses
+> ungrounded answers) and is monitored in the nightly quality report.
+
+**Faithfulness (report only)** — LLM-as-judge decomposes the *live* synthesized
+answer into atomic claims and rules each supported / unsupported against the
+retrieved evidence. Score = supported / total. Routed through the **Vercel AI
+Gateway** (model `EVAL_JUDGE_MODEL`, default `anthropic/claude-opus-4-8`), gated
+on `AI_GATEWAY_API_KEY`. Absent key → skipped (recorded `null`), never failed.
 
 ## Gate thresholds
 
-`npm run eval:gate` runs deterministically and exits non-zero if **any** of these
-fail, aggregated across the dataset. Constants live in `eval/thresholds.ts` (one
-source of truth) and are asserted by a unit test so an accidental threshold edit
-is itself caught.
+`npm run eval:gate` runs deterministically (DB only) and exits non-zero if **any**
+aggregate check fails. Constants live in `eval/thresholds.ts` (one source of
+truth) and are asserted by a unit test (Finding 6: after calibration the test
+asserts the **exact** values, so an accidental edit is itself caught — not just
+bounds).
 
 | Metric | Starting threshold | Rationale |
 |---|---|---|
 | Mean Context Recall | ≥ 0.90 | Don't silently start missing the right verses |
-| Mean Context Precision | ≥ 0.80 | Some semantic ±2-window noise is acceptable; recall matters more |
-| Grounding pass-rate | 100% | Zero tolerance for unresolved/mismatched citations |
+| Mean Context Precision | ≥ 0.80 | Some passage-window noise acceptable; recall matters more |
 | Per-question recall floor | ≥ 0.50 | Catch a single catastrophically-broken query a healthy mean would hide |
+| Required lemma/domain coverage | 100% | A lemma-survey regression must not pass on ref overlap alone |
+| Citation Resolvability | 100% | Zero tolerance for a citation that doesn't resolve to a real verse |
 
-These are **starting** values. The gate is calibrated against the *actual* first
-run so it starts green, then ratcheted up. Calibration happens after the dataset
-is reviewed and the first run is observed.
+These are **starting** values, calibrated against the first real run (after the
+dataset is reviewed) so the gate starts green, then ratcheted up.
 
 ## Execution model
 
-- **PR / CI (blocking):** `npm run eval:gate` — needs only `DATABASE_URL` (the
-  Neon test branch via `.env.test`). Deterministic, fast, free. Wired as a
-  dedicated CI step (and runnable alongside `npm run verify`). Prints a per-metric
-  summary and exits non-zero on any breach.
-- **Nightly / on-demand (non-blocking):** `npm run eval:report` — runs everything
-  the gate does plus live synthesis + LLM-judge faithfulness, writes
-  `eval/output/report.html` and `eval/output/report.json`. Run via a scheduled
-  job or by hand; uploaded as a CI artifact on the nightly. Degrades gracefully
-  to deterministic-only output when `OPENAI_API_KEY` is unset.
+- **PR / CI (blocking):** `npm run eval:gate` — needs only `DATABASE_URL` (Neon
+  test branch via `.env.test`). Deterministic, fast, free; runs
+  `runRetrievalPlan(…, semanticEnabled=false)`. A dedicated CI step alongside
+  `test:integration` / `test:acceptance` — **not** folded into the DB-free
+  `npm run verify`.
+- **Nightly / on-demand (non-blocking):** `npm run eval:report` — runs the full
+  hybrid pipeline (`semanticEnabled=true`) once per question, builds the live
+  answer from that same packet via `synthesizeWithRefinement`, judges
+  faithfulness via the AI Gateway, and writes `eval/output/report.{html,json}`.
+  Degrades gracefully: no `OPENAI_API_KEY` → no live answer (faithfulness `null`,
+  metrics reflect whatever retrieval produced); no `AI_GATEWAY_API_KEY` → no
+  judge and no rerank. Records all three statuses per question.
 
 ## The HTML report
 
 Single self-contained file (inline CSS, editorial-scholar palette). Structure:
 
-- **Summary scorecard** — the four gate metrics + faithfulness, with pass/fail
-  badges and the active thresholds.
+- **Summary scorecard** — gate metrics + mean faithfulness, with pass/fail
+  badges and the active thresholds; plus the run's API/model/rerank status so a
+  reader knows whether the hybrid path and judge actually ran.
 - **One card per question:**
   - Query text + `queryType` badge, overall pass/fail.
-  - **Golden vs Retrieved references** side by side — golden refs marked ✓ hit /
-    ✗ missed; retrieved refs marked in-golden / extra-noise. The "why didn't my
-    verse get retrieved" view.
-  - **Retrieval trace** — the RRF-fused ordering with each hit's source
-    (FTS / vector) and post-rerank position, so a relevant verse that was a
-    candidate but got buried below the cutoff is visible.
-  - Faithfulness verdict (nightly) — each claim with supported/unsupported and
-    the judge's reason.
+  - **Golden vs Retrieved references** side by side — golden refs ✓ hit / ✗
+    missed; retrieved refs in-golden / extra-noise. The "why didn't my verse get
+    retrieved" view.
+  - **Retrieval trace** — each citation's `toolName` (the source: `searchSemantic`
+    / `searchKeyword` / `searchLemma` / `getPassage` / `searchDomain`) in order,
+    plus the `searchSemantic` tool-trace entry's **rerank status and candidate
+    count** (Finding 5: per-hit RRF source and post-rerank rank position are not
+    exposed by the current pipeline, so the report shows `toolName` + the trace's
+    rerank status rather than promising rank provenance).
+  - Lemma/domain coverage hit/miss for items that declare a requirement.
+  - Faithfulness verdict (when judged) — each claim supported/unsupported + the
+    judge's reason.
 
-`eval/output/report.json` is written alongside so the underlying data is
-available to tooling without parsing HTML. `eval/output/` is gitignored.
+`eval/output/report.json` is written alongside. `eval/output/` is gitignored.
 
 ## Testing
 
 - **Unit** (`tests/unit/eval/`):
-  - `metrics.ts` — precision/recall math, reference normalization, empty-set edge
-    cases (both-empty, retrieved-empty, golden-empty).
+  - `metrics.ts` — precision/recall math, normalization, empty-set edge cases.
   - dataset validity — `golden-set.json` parses against the zod schema; every
-    `queryType` is represented; all golden references parse via `lib/references.ts`.
+    `queryType` represented; all golden references parse via `lib/references.ts`.
   - `thresholds.ts` — sanity bounds (all in `[0,1]`, recall floor ≤ mean recall
-    threshold).
-- **Integration** (`tests/integration/eval-runner.test.ts`): the runner executes
-  one question end-to-end against the Neon test branch and produces a well-formed
-  `RunResult`. Skips itself when `DATABASE_URL` is unset (matching existing
+    threshold; 100% metrics are exactly 1); after calibration, exact values.
+  - `report.ts` — HTML/JSON render smoke (no live calls), HTML-escaping.
+- **Integration** (`tests/integration/eval-runner.test.ts`): `runDeterministic`
+  executes one question end-to-end against the Neon test branch and produces a
+  well-formed `RunResult`. Skips itself when `DATABASE_URL` is unset (existing
   integration-suite convention).
 - `eval/**` is included in lint + tsc. The harness is not itself part of the
   runtime coverage gate (`app/api/**` + `lib/**`).
@@ -235,25 +290,32 @@ available to tooling without parsing HTML. `eval/output/` is gitignored.
 ## Documentation & housekeeping
 
 Per CLAUDE.md:
-- `README.md` — document the new `eval:gate` / `eval:report` scripts and the
-  golden-set location.
-- `docs/PROJECT_STATE.md` — mark Phase 6 done; describe the harness, the gate,
-  and the dashboard; note the calibrated thresholds.
+- `README.md` — document `eval:gate` (deterministic blocking gate — what it
+  protects) and `eval:report` (nightly hybrid quality report + judge), the
+  golden-set location, and the `EVAL_JUDGE_MODEL` / key requirements.
+- `docs/PROJECT_STATE.md` — mark Phase 6 done; describe the two tiers, the
+  calibrated thresholds, the dashboard, the dataset; keep prose-sweep grounding
+  flagged as an open follow-up.
 - `docs/HiFi-exegesis-nt-roadmap.md` — mark Phase 6 ✅ done.
-- `docs/security-register.md` — no new advisory expected; review only if the
-  nightly job introduces a CI secret (`OPENAI_API_KEY`) that needs documenting.
+- `docs/security-register.md` — review only if the nightly CI job introduces
+  `OPENAI_API_KEY` / `AI_GATEWAY_API_KEY` as CI secrets that need documenting.
 
 ## Acceptance criteria
 
-1. `npm run eval:gate` runs with only `DATABASE_URL` set, prints a per-metric
-   summary, and exits 0 on the calibrated dataset / non-zero on any breach.
-2. The golden dataset has ~20 reviewed items covering all five query types and
+1. `npm run eval:gate` runs with only `DATABASE_URL` set (no OpenAI/Gateway key),
+   prints a per-metric summary, and exits 0 on the calibrated dataset / non-zero
+   on any breach. It uses `semanticEnabled=false` retrieval throughout.
+2. The gate enforces Context Precision, Context Recall (mean + per-question
+   floor), 100% required lemma/domain coverage, and 100% citation resolvability.
+3. The golden dataset has ~20 reviewed items covering all five query types and
    validates against its schema in a unit test.
-3. Context Precision, Context Recall, and grounding pass-rate are computed from
-   the real `EvidencePacket` output of the existing pipeline.
-4. `npm run eval:report` produces a self-contained `report.html` with the
-   summary scorecard and per-question golden-vs-retrieved + retrieval-trace
-   cards; LLM-judge faithfulness appears when `OPENAI_API_KEY` is set and is
-   cleanly omitted when it is not.
-5. Unit + integration tests for the harness pass; `npm run verify` stays green.
-6. README, PROJECT_STATE, and roadmap updated.
+4. `npm run eval:report` runs the full hybrid pipeline **once per question**,
+   derives both the metrics and (when `OPENAI_API_KEY` is set) the judged answer
+   from that single `EvidencePacket`, and judges faithfulness via the Vercel AI
+   Gateway when `AI_GATEWAY_API_KEY` is set — cleanly omitting faithfulness when
+   it is not. The report records API/model/rerank status per question.
+5. `report.html` shows the summary scorecard, per-question golden-vs-retrieved
+   diff, retrieval trace with rerank status, coverage, and faithfulness verdicts.
+6. Unit + integration tests for the harness pass; `npm run verify` stays green.
+7. README, PROJECT_STATE, and roadmap updated; the gate is wired as a CI step
+   separate from `npm run verify`.

@@ -76,4 +76,19 @@ describe("resolveTokenDomains", () => {
   it("returns an empty array when the token has no domain codes", () => {
     expect(resolveTokenDomains([], [], labels)).toEqual([]);
   });
+
+  it("attaches all ln refs to a single domain code (one MARBLE code → several LN refs)", () => {
+    // Real MACULA rows like `domain=033006 ln=33.55 33.56` are common: the columns
+    // have different cardinalities, so a single domain code keeps all of its refs
+    // rather than dropping the extras.
+    const senses = resolveTokenDomains(["33.55", "33.56"], ["033006"], labels);
+    expect(senses).toEqual([
+      {
+        ref: "33.55, 33.56",
+        domainCode: "033006",
+        domainLabel: "Communication",
+        subdomainLabel: "Speak, Talk"
+      }
+    ]);
+  });
 });

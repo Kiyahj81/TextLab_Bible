@@ -100,8 +100,12 @@ model Token {
   natively as `String[]` on PostgreSQL.
 - The GIN index on `lnDomain` backs `@>` membership queries (retrieval + search). `louwNida` is carried for
   display/citation and does not need its own index in Phase 5 (add later only if `ln`-ref search is built).
-- Positional alignment: for a given token, `louwNida[i]` corresponds to `lnDomain[i]` — both arrays are
-  built from the same MACULA row in column order, so element *i* is the same sense.
+- `louwNida` (LN refs) and `lnDomain` (MARBLE codes) are **independent multi-value columns at different
+  granularities** — a single MARBLE code commonly maps to several LN refs (≈305 such rows in the MACULA
+  SBLGNT TSV), so the two arrays are *not* guaranteed to be the same length. `lnDomain` is the authoritative
+  per-sense field (it resolves to labels and backs membership queries); `louwNida` is display-only citation
+  text. Label resolution drives senses off `lnDomain` and attaches refs best-effort (all refs when a token
+  has one domain code; positional otherwise) — see `resolveTokenDomains`.
 
 ### `LouwNidaDomain` — new reference table
 
@@ -195,8 +199,9 @@ lemma/morph/gloss. Extend it to resolve domain labels:
 2. Look up labels in one query: the Level-2 row (subdomain label) and its `parentCode` Level-1 row
    (domain label) — a single `LouwNidaDomain` `findMany` over `code IN (codes ∪ parentCodes)`, assembled
    into a `Map`.
-3. For each token, build a per-sense list pairing `lnDomain[i]` → `{ domainLabel, subdomainLabel }` with
-   `louwNida[i]` as the citation ref.
+3. For each token, build a per-sense list keyed by `lnDomain` code → `{ domainLabel, subdomainLabel }`,
+   attaching the `louwNida` ref(s) as citation text (all refs when the token has one domain code,
+   positional otherwise).
 
 The resolved structure (e.g. `senses: { domainLabel, subdomainLabel, ref }[]`) is attached to the reader
 token and flows into `ReaderToken` in `components/MorphologyPopover.tsx`.
@@ -267,7 +272,7 @@ needs `$queryRaw` (no string interpolation of user input), consistent with the P
 **Unit**
 
 - `parseMaculaTsv`: multi-value `ln`/`domain` parsing, whitespace splitting, `-`/empty filtering, letter
-  suffixes (`93.169a`), single vs multiple senses, positional alignment with `louwNida`.
+  suffixes (`93.169a`), single vs multiple senses, and tolerance of differing `louwNida`/`lnDomain` lengths.
 - `import-louw-nida`: Level-1/Level-2 flatten, `parentCode` derivation, `en` localization selection,
   idempotent upsert.
 - Label resolution helper: code → domain/subdomain label, missing-code tolerance, multi-sense assembly.

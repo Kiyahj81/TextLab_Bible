@@ -11,7 +11,7 @@ const DATA_FILE = path.join(
 );
 
 async function main() {
-  const json = JSON.parse(readFileSync(DATA_FILE, "utf8"));
+  const json: unknown = JSON.parse(readFileSync(DATA_FILE, "utf8"));
   const rows = flattenLouwNidaDomains(json);
   if (rows.length === 0) {
     throw new Error(`No Louw-Nida domain rows parsed from ${DATA_FILE}`);

@@ -275,4 +275,16 @@ describe("parseMaculaTsv Louw-Nida columns", () => {
     expect(rows[1].lnDomain).toEqual([]);
     expect(rows[1].louwNida).toEqual([]);
   });
+
+  it("does not throw when the TSV omits the optional domain/ln columns", () => {
+    // domain/ln are enrichment columns; a TSV without them must still import the
+    // core token data, degrading to empty code arrays rather than crashing.
+    const minimalHeader = ["ref", "english", "gloss", "text", "after", "lemma", "normalized", "morph"].join("\t");
+    const minimalRow = ["JHN 1:1!1", "", "", "λόγος", "", "λόγος", "", "N-NSM"].join("\t");
+    const tsv = [minimalHeader, minimalRow].join("\n");
+    const rows = parseMaculaTsv(tsv);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].lnDomain).toEqual([]);
+    expect(rows[0].louwNida).toEqual([]);
+  });
 });

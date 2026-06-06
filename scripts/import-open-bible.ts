@@ -667,8 +667,11 @@ export function parseMaculaTsv(content: string): ParsedMaculaRow[] {
   const lemmaIdx = col("lemma");
   const normalizedIdx = col("normalized");
   const morphIdx = col("morph");
-  const domainIdx = col("domain");
-  const lnIdx = col("ln");
+  // `domain`/`ln` are optional Louw-Nida enrichment columns: look them up tolerantly
+  // (indexOf → -1 when absent) so a TSV without them still imports the core token data.
+  // splitCodes(cells[-1]) === splitCodes(undefined) yields an empty array.
+  const domainIdx = header.indexOf("domain");
+  const lnIdx = header.indexOf("ln");
 
   const splitCodes = (raw: string | undefined): string[] =>
     (raw ?? "").trim().split(/\s+/).filter((code) => code && code !== "-");

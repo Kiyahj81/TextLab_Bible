@@ -584,15 +584,15 @@ function searchHref({
 }
 ```
 Update the two pagination `searchHref({ … })` calls (Previous ~line 330, Next ~line 341). Pass the
-**submitted** domain params — the `domain`/`subdomain`/`ln` **props** (the query the server actually ran),
-NOT the live `selectedDomain`/`selectedSubdomain` state — exactly as lemma pagination passes the `query`
-prop (not the live `queryValue`). This keeps page navigation tied to the executed search even if the user
-has edited the form without resubmitting:
+**submitted** mode and domain params — the `mode`/`domain`/`subdomain`/`ln` **props** (the query the server
+actually ran), NOT the live `activeMode`/`selectedDomain`/`selectedSubdomain` state — exactly as lemma
+pagination passes the `query` prop (not the live `queryValue`). This keeps page navigation tied to the
+executed search even if the user has edited the form without resubmitting:
 ```tsx
-              href={searchHref({ mode: activeMode, query, book, chapter, matchMode, domain, subdomain, ln, page: previousPage, pageSize })}
+              href={searchHref({ mode, query, book, chapter, matchMode, domain, subdomain, ln, page: previousPage, pageSize })}
 ```
 ```tsx
-              href={searchHref({ mode: activeMode, query, book, chapter, matchMode, domain, subdomain, ln, page: nextPage, pageSize })}
+              href={searchHref({ mode, query, book, chapter, matchMode, domain, subdomain, ln, page: nextPage, pageSize })}
 ```
 (The saved-search `searchHref` call keeps passing only its lemma/keyword fields — saved domain searches are out of scope, so `domain`/`subdomain`/`ln` are simply omitted there.)
 

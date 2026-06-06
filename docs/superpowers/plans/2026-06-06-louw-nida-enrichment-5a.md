@@ -29,7 +29,7 @@
 | `scripts/import-open-bible.ts` | `parseMaculaTsv` parses `ln`/`domain`; `importMaculaGreekGlosses` persists arrays | Modify |
 | `package.json` | `import:louw-nida` script | Modify |
 | `lib/search.ts` | `getReaderPassage` selects + resolves domains into the token shape | Modify |
-| `components/MorphologyPopover.tsx` | `ReaderToken.domains`; "Semantic domain" rows | Modify |
+| `components/MorphologyPopover.tsx` | `ReaderToken.domains`; Domain / Subdomain rows | Modify |
 | `tests/unit/lib/louwNida.test.ts` | Unit tests for both pure helpers | Create |
 | `tests/unit/scripts/import-open-bible.test.ts` | `parseMaculaTsv` ln/domain parsing cases | Modify |
 | `tests/integration/louw-nida.test.ts` | End-to-end: codes on tokens + reference table seeded | Create |
@@ -102,8 +102,8 @@ git commit -m "Vendor UBS Louw-Nida lexical-domains dataset (CC-BY-SA 4.0)"
 In `prisma/schema.prisma`, inside `model Token`, add the two fields after `gloss` and the index in the index block:
 ```prisma
   gloss        String?
-  louwNida     String[]
-  lnDomain     String[]
+  louwNida     String[] @default([])
+  lnDomain     String[] @default([])
 
   corpus     Corpus      @relation(fields: [corpusId], references: [id])
   book       Book        @relation(fields: [bookId], references: [id])
@@ -138,10 +138,10 @@ Run:
 ```powershell
 npx prisma migrate dev --name add_louw_nida
 ```
-Expected: a new `prisma/migrations/<timestamp>_add_louw_nida/migration.sql` is generated and applied; `prisma generate` runs. The SQL should resemble:
+Expected: a new `prisma/migrations/<timestamp>_add_louw_nida/migration.sql` is generated and applied; `prisma generate` runs. With `@default([])` the array columns are added **non-nullable with an empty-array default**, so existing `Token` rows backfill cleanly. The SQL should be:
 ```sql
-ALTER TABLE "Token" ADD COLUMN "louwNida" TEXT[],
-                    ADD COLUMN "lnDomain" TEXT[];
+ALTER TABLE "Token" ADD COLUMN "louwNida" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+                    ADD COLUMN "lnDomain" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
 CREATE INDEX "Token_lnDomain_idx" ON "Token" USING GIN ("lnDomain");
 CREATE TABLE "LouwNidaDomain" (
   "code" TEXT NOT NULL,
@@ -152,7 +152,7 @@ CREATE TABLE "LouwNidaDomain" (
 );
 CREATE INDEX "LouwNidaDomain_parentCode_idx" ON "LouwNidaDomain" ("parentCode");
 ```
-If Prisma adds `NOT NULL DEFAULT ARRAY[]::TEXT[]` to the array columns, that is fine — empty array is the correct default for tokens with no domain data.
+Confirm the two `ADD COLUMN` lines include `NOT NULL DEFAULT ARRAY[]::TEXT[]`; if they don't, the `@default([])` was omitted from the schema — go back and add it before continuing.
 
 - [ ] **Step 4: Verify the schema is valid and types regenerated**
 
@@ -597,12 +597,28 @@ And in the `rows.push({ ... })` object, add the two fields after `gloss`:
       lnDomain
 ```
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [ ] **Step 5: Update the existing PA-override fixtures (they now lack required columns)**
 
-Run: `npx vitest run tests/unit/scripts/import-open-bible.test.ts -t "Louw-Nida columns"`
-Expected: PASS (3 tests).
+`col("domain")`/`col("ln")` throw when the column is absent, so the existing
+`describe("parseMaculaTsv Pericope Adulterae overrides")` fixtures break. Fix them once in the shared
+helpers (not per test). Change the shared `header` (currently ending `…\tmorph`) to append the two columns:
+```ts
+  const header =
+    "xml:id\tref\trole\tclass\ttype\tenglish\tmandarin\tgloss\ttext\tafter\tlemma\tnormalized\tstrong\tmorph\tdomain\tln";
+```
+And change the shared `row(...)` helper to append two trailing (empty) cells so column indices stay aligned:
+```ts
+    `id\t${ref}\t\t\t\t\t\t\t${text}\t${after}\t${lemma}\t${normalized}\t\t${morph}\t\t`;
+```
+(`col` resolves by column name, so appending `domain`/`ln` at the end is sufficient — their real-file
+position between `morph` and the end does not matter for the fixture.)
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Run the new and existing parseMaculaTsv tests to verify they pass**
+
+Run: `npx vitest run tests/unit/scripts/import-open-bible.test.ts`
+Expected: PASS — the 3 new "Louw-Nida columns" tests and all existing PA-override and `parseUsfm` tests.
+
+- [ ] **Step 7: Commit**
 
 ```powershell
 git add scripts/import-open-bible.ts tests/unit/scripts/import-open-bible.test.ts
@@ -611,25 +627,64 @@ git commit -m "Parse MACULA ln/domain columns into token code arrays"
 
 ---
 
-## Task 7: Persist code arrays through both MACULA write paths
+## Task 7: Persist code arrays through all three MACULA write paths
 
 **Files:**
-- Modify: `scripts/import-open-bible.ts` (`importMaculaGreekGlosses` ~`393-431`)
+- Modify: `scripts/import-open-bible.ts` (`importMaculaGreekGlosses`: `updates` type ~`339`, insert/upsert ~`353-384`, overridden-verse refresh ~`396-406`, batched update ~`423-430`)
 
-> No unit test here (these are direct Prisma writes); Task 9's integration test verifies the codes land on real tokens. Keep the edits minimal and mirror the existing `gloss` handling exactly.
+> No unit test here (these are direct Prisma writes); Task 9's integration test verifies the codes land on real tokens — including a MACULA-only/PA token. There are **three** write paths, not two; the easy-to-miss one is the `if (!token)` insert/upsert that backfills tokens MorphGNT never shipped (e.g. Pericope Adulterae). Mirror the existing `gloss` handling exactly in each.
 
-- [ ] **Step 1: Carry arrays in the overridden-verse refresh path**
+- [ ] **Step 1: Carry arrays in the MACULA-only insert/upsert path (`if (!token)`)**
 
-In the `if (inOverriddenVerse) { ... }` block's `prisma.token.update({ data: { ... } })`, add the two fields after `gloss: row.gloss`:
+In the `prisma.token.upsert({ ... })` call, add the two fields to **both** the `update` and `create` blocks, after `gloss: row.gloss`:
+```ts
+          update: {
+            surface: row.surface,
+            normalized: row.normalized ?? row.surface,
+            lemma: row.lemma,
+            morphCode: row.morph,
+            partOfSpeech: row.partOfSpeech,
+            gloss: row.gloss,
+            louwNida: row.louwNida,
+            lnDomain: row.lnDomain
+          },
+          create: {
+            corpusId: corpus.id,
+            bookId: book.id,
+            chapter: row.chapter,
+            verse: row.verse,
+            wordIndex: row.wordIndex,
+            surface: row.surface,
+            normalized: row.normalized ?? row.surface,
+            lemma: row.lemma,
+            morphCode: row.morph,
+            partOfSpeech: row.partOfSpeech,
+            gloss: row.gloss,
+            louwNida: row.louwNida,
+            lnDomain: row.lnDomain
+          }
+```
+
+- [ ] **Step 2: Carry arrays in the overridden-verse refresh path (`if (inOverriddenVerse)`)**
+
+In that block's `prisma.token.update({ data: { ... } })`, add the two fields after `gloss: row.gloss`:
 ```ts
             gloss: row.gloss,
             louwNida: row.louwNida,
             lnDomain: row.lnDomain
 ```
 
-- [ ] **Step 2: Carry arrays in the batched `updates` path**
+- [ ] **Step 3: Widen the `updates` array type and carry arrays in the batched path**
 
-Change the `updates.push(...)` line from:
+The `updates` array is **explicitly typed** (around line 339). Change:
+```ts
+    const updates: { id: string; gloss: string | null }[] = [];
+```
+to:
+```ts
+    const updates: { id: string; gloss: string | null; louwNida: string[]; lnDomain: string[] }[] = [];
+```
+Change the `updates.push(...)` from:
 ```ts
       updates.push({ id: token.id, gloss: row.gloss });
 ```
@@ -654,32 +709,32 @@ to:
           })
 ```
 
-- [ ] **Step 3: Verify it type-checks**
+- [ ] **Step 4: Verify it type-checks**
 
 Run: `npx tsc --noEmit`
-Expected: exits 0 (the `updates` array element type is inferred from the push; both call sites now include the arrays).
+Expected: exits 0. (If it errors on `updates`, the explicit type annotation in Step 3 was not widened.)
 
-- [ ] **Step 4: Run the MACULA import against the dev Neon branch**
+- [ ] **Step 5: Run the MACULA import against the dev Neon branch**
 
 Run:
 ```powershell
 npm run import:macula-glosses
 ```
-Expected: completes without error; existing gloss/refresh counts log as before.
+Expected: completes without error; existing gloss/refresh/insert counts log as before.
 
-- [ ] **Step 5: Spot-check that codes landed on a token**
+- [ ] **Step 6: Spot-check a normal token and a MACULA-only/PA token**
 
 Run:
 ```powershell
-node -e "const {PrismaClient}=require('@prisma/client');const p=new PrismaClient();p.token.findFirst({where:{lemma:'λόγος',book:{osisId:'John'},chapter:1,verse:1},select:{surface:true,louwNida:true,lnDomain:true}}).then(r=>{console.log(r);return p.$disconnect();})"
+node -e "const {PrismaClient}=require('@prisma/client');const p=new PrismaClient();Promise.all([p.token.findFirst({where:{lemma:'λόγος',book:{osisId:'John'},chapter:1,verse:1},select:{surface:true,louwNida:true,lnDomain:true}}),p.token.findFirst({where:{book:{osisId:'John'},chapter:7,verse:53},orderBy:{wordIndex:'asc'},select:{surface:true,louwNida:true,lnDomain:true}})]).then(([a,b])=>{console.log('John 1:1',a);console.log('PA John 7:53',b);return p.$disconnect();})"
 ```
-Expected: a token with non-empty `louwNida` and `lnDomain` arrays.
+Expected: the John 1:1 `λόγος` token has non-empty arrays; the John 7:53 Pericope-Adulterae token (inserted via the `if (!token)` path) shows its `louwNida`/`lnDomain` arrays — proving the insert path persists them (they are populated when the upstream PA row carries domain data, and an array — never null — otherwise).
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```powershell
 git add scripts/import-open-bible.ts
-git commit -m "Persist Louw-Nida code arrays through MACULA import write paths"
+git commit -m "Persist Louw-Nida code arrays through all MACULA import write paths"
 ```
 
 ---
@@ -724,8 +779,9 @@ In the `tokens: (tokensByVerse[verse.verse] ?? []).map((token) => ({ ... }))` ob
 
 - [ ] **Step 3: Extend the `ReaderToken` type**
 
-In `components/MorphologyPopover.tsx`, add a type-only import near the top (the component needs only the type, not the helper):
+In `components/MorphologyPopover.tsx`, add `Fragment` to the existing React import (it groups each sense's `dt`/`dd` pair under one key) and add a type-only import for the sense type:
 ```ts
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { TokenDomainSense } from "@/lib/louwNida";
 ```
 Add to `ReaderToken` after `gloss`:
@@ -734,27 +790,39 @@ Add to `ReaderToken` after `gloss`:
   domains: TokenDomainSense[];
 ```
 
-- [ ] **Step 4: Render the domain rows in the popover**
+- [ ] **Step 4: Render the domain rows in the popover (separate Domain / Subdomain rows, per the approved mock)**
 
-In `MorphologyPopover`, in the `<dl>` block, after the `Gloss` `<dt>/<dd>` pair, add:
+In `MorphologyPopover`, in the `<dl>` block, after the `Gloss` `<dt>/<dd>` pair, add a `Domain` row and (when present) a `Subdomain` row per sense — matching the spec mock:
+```
+Domain       Communication
+Subdomain    Speak, Talk (33.38)
+```
 ```tsx
         <dt className="text-slate-500">Gloss</dt>
         <dd>{token.gloss ?? "Not supplied"}</dd>
-        {token.domains.length > 0 ? (
-          <>
-            <dt className="text-slate-500">Semantic domain</dt>
-            <dd className="space-y-1">
-              {token.domains.map((sense, index) => (
-                <div key={`${sense.domainCode}-${index}`}>
-                  {sense.domainLabel ?? sense.domainCode}
-                  {sense.subdomainLabel ? <span className="text-slate-500"> › {sense.subdomainLabel}</span> : null}
-                  {sense.ref ? <span className="text-slate-400"> ({sense.ref})</span> : null}
-                </div>
-              ))}
+        {token.domains.map((sense, index) => (
+          <Fragment key={`${sense.domainCode}-${index}`}>
+            <dt className="text-slate-500">Domain</dt>
+            <dd>
+              {sense.domainLabel ?? sense.domainCode}
+              {!sense.subdomainLabel && sense.ref ? (
+                <span className="text-slate-400"> ({sense.ref})</span>
+              ) : null}
             </dd>
-          </>
-        ) : null}
+            {sense.subdomainLabel ? (
+              <>
+                <dt className="text-slate-500">Subdomain</dt>
+                <dd>
+                  {sense.subdomainLabel}
+                  {sense.ref ? <span className="text-slate-400"> ({sense.ref})</span> : null}
+                </dd>
+              </>
+            ) : null}
+          </Fragment>
+        ))}
 ```
+A token with no domain data renders nothing here (the `.map` over an empty array). A multi-sense token
+renders a `Domain`/`Subdomain` pair per sense, in order.
 
 - [ ] **Step 5: Type-check and build**
 
@@ -766,7 +834,7 @@ Expected: exits 0 — the `getReaderPassage` token shape now structurally includ
 
 - [ ] **Step 6: Manual smoke check**
 
-Run `npm run dev`, open `http://localhost:3000/read` (sign in via dev credentials), click the Greek word `λόγος` in John 1:1. Expected: the popover shows a "Semantic domain" row like `Communication › … (33.38)`.
+Run `npm run dev`, open `http://localhost:3000/read` (sign in via dev credentials), click the Greek word `λόγος` in John 1:1. Expected: the popover shows a `Domain` row (e.g. `Communication`) and a `Subdomain` row (e.g. `Speak, Talk (33.38)`).
 
 - [ ] **Step 7: Commit**
 
@@ -825,13 +893,27 @@ describe("Louw-Nida enrichment (integration)", () => {
     const count = await prisma.token.count({ where: { lnDomain: { has: "033006" } } });
     expect(count).toBeGreaterThan(0);
   });
+
+  // Regression for the MACULA-only insert/upsert path (John 7:53 is Pericope Adulterae,
+  // which MorphGNT omits and the importer inserts from MACULA). The columns must be arrays,
+  // never null — proving the insert path wrote them through.
+  itDb("populates code arrays on inserted Pericope Adulterae tokens", async () => {
+    const token = await prisma.token.findFirst({
+      where: { book: { osisId: "John" }, chapter: 7, verse: 53 },
+      orderBy: { wordIndex: "asc" },
+      select: { louwNida: true, lnDomain: true }
+    });
+    expect(token).not.toBeNull();
+    expect(Array.isArray(token!.louwNida)).toBe(true);
+    expect(Array.isArray(token!.lnDomain)).toBe(true);
+  });
 });
 ```
 
 - [ ] **Step 3: Run the integration suite**
 
 Run: `npm run test:integration`
-Expected: PASS (3 new tests, alongside the existing ownership suite). If the `033006` membership count is 0, adjust the code in the test to one that the import actually produced (confirm with the spot-check query from Task 7 Step 5).
+Expected: PASS (4 new tests, alongside the existing ownership suite). If the `033006` membership count is 0, adjust the code in that test to one the import actually produced (confirm with the spot-check query from Task 7 Step 6).
 
 - [ ] **Step 4: Commit**
 
@@ -905,7 +987,7 @@ Then open a PR. Per project memory: review any Codex/Greptile automated PR comme
 
 ## Self-Review Notes (for the implementer)
 
-- **Spec coverage:** Tasks 1 (sourcing + CC-BY-SA), 2 (schema/array+GIN+ref table), 3–7 (import pipeline incl. both write paths + reference seed), 8 (popover display incl. multi-sense), 9 (integration), 10 (docs incl. security register). Phase 5b (retrieval + search) is intentionally out of this plan.
+- **Spec coverage:** Tasks 1 (sourcing + CC-BY-SA), 2 (schema/array+GIN+ref table, explicit `@default([])`), 3–7 (import pipeline incl. **all three** MACULA write paths + reference seed + existing-fixture fix), 8 (popover display, separate Domain/Subdomain rows incl. multi-sense), 9 (integration incl. PA insert-path regression), 10 (docs incl. security register). Phase 5b (retrieval + search) is intentionally out of this plan.
 - **Code-array alignment:** `louwNida[i]` ↔ `lnDomain[i]` is asserted in Task 4's multi-sense test and relied on by `resolveTokenDomains`. Both arrays are built from the same MACULA row in column order (Task 6).
 - **Type consistency:** `TokenDomainSense` is defined once in `lib/louwNida.ts` and consumed by both `getReaderPassage` (Task 8 Step 2) and `ReaderToken` (Task 8 Step 3). `flattenLouwNidaDomains` returns `LouwNidaDomainRow`, consumed by `import-louw-nida.ts` (Task 5) and matching the `LouwNidaDomain` model fields (Task 2).
 - **Open item from spec §"Open items 1":** the batched `LouwNidaDomain` lookup is one query per passage (Task 8 Step 1), not per token.

@@ -86,16 +86,18 @@ licensed reference dataset, not a relicensing of the corpus.
 ```prisma
 model Token {
   // ...existing fields...
-  louwNida  String[]  // Louw-Nida references, e.g. ["33.38"]
-  lnDomain  String[]  // MARBLE numeric codes, e.g. ["033005"]
+  louwNida  String[]  @default([])  // Louw-Nida references, e.g. ["33.38"]
+  lnDomain  String[]  @default([])  // MARBLE numeric codes, e.g. ["033005"]
 
   // ...existing indexes...
   @@index([lnDomain], type: Gin)
 }
 ```
 
-- Both are Postgres scalar string arrays (`text[]`), default empty. Prisma represents these natively as
-  `String[]` on PostgreSQL.
+- Both are Postgres scalar string arrays (`text[]`), **`NOT NULL DEFAULT ARRAY[]::TEXT[]`** — the explicit
+  `@default([])` keeps the column non-nullable so existing `Token` rows backfill to an empty array and
+  read-side iteration (`for (const code of token.lnDomain)`) never hits a null. Prisma represents these
+  natively as `String[]` on PostgreSQL.
 - The GIN index on `lnDomain` backs `@>` membership queries (retrieval + search). `louwNida` is carried for
   display/citation and does not need its own index in Phase 5 (add later only if `ln`-ref search is built).
 - Positional alignment: for a given token, `louwNida[i]` corresponds to `lnDomain[i]` — both arrays are
@@ -144,16 +146,27 @@ const lnDomain = splitCodes(cells[domainIdx]);
 The MACULA override table (`MACULA_OVERRIDES`, Pericope Adulterae) does not currently carry domain data;
 overridden rows keep whatever the upstream `domain`/`ln` columns supply. No override-table change needed.
 
-### 3b. `importMaculaGreekGlosses` — carry codes through both write paths
+Because `col("domain")`/`col("ln")` throw when the named column is absent, the **existing** `parseMaculaTsv`
+unit fixtures (the PA-override `describe`, whose shared `header`/`row` helpers stop at `morph`) must gain
+trailing `domain`/`ln` columns or those tests will throw "missing column". Update the shared fixture
+header + row helper, not each test.
 
-The current code updates only `gloss`. Both paths must additionally persist the arrays:
+### 3b. `importMaculaGreekGlosses` — carry codes through all three write paths
 
+The current code updates only `gloss`. **Three** write paths must additionally persist the arrays (the
+first was easy to miss — it is the path that inserts tokens MorphGNT never shipped, e.g. the Pericope
+Adulterae):
+
+- **MACULA-only insert/upsert path** (the `prisma.token.upsert` in the `if (!token)` branch): add
+  `louwNida: row.louwNida` and `lnDomain: row.lnDomain` to **both** its `create` and `update` blocks.
 - **Overridden-verse refresh path** (the `prisma.token.update` near the `inOverriddenVerse` branch): add
   `louwNida: row.louwNida` and `lnDomain: row.lnDomain` to the `data` object.
-- **Batch `updates` path**: the `updates` array currently pushes `{ id, gloss }`; extend to
-  `{ id, gloss, louwNida, lnDomain }`, and extend the batched `prisma.token.update` `data` accordingly.
+- **Batch `updates` path**: the `updates` array is explicitly typed `{ id; gloss }[]` — widen the type to
+  include `louwNida: string[]; lnDomain: string[]`, push them, and extend the batched
+  `prisma.token.update` `data` accordingly.
 
-These are idempotent: re-running the import overwrites the arrays with the parsed values.
+These are idempotent: re-running the import overwrites the arrays with the parsed values. A regression
+spot-check should confirm a MACULA-only/PA token (e.g. John 7:53) carries its arrays.
 
 ### 3c. `scripts/import-louw-nida.ts` (new) + `npm run import:louw-nida`
 

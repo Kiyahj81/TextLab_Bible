@@ -32,7 +32,44 @@ export type Signals = {
   // it can anchor the WEB full-text half); the corresponding Greek lemmas live in
   // greekWords and drive the deterministic searchLemma call.
   phraseTerms?: string[];
+  domainQuery?: DomainQuerySignal;
 };
+
+export type DomainQuerySignal = { kind: "domain"; code: string } | { kind: "ln"; ref: string };
+
+// Anchored to an explicit Louw-Nida marker so ordinary text — including
+// chapter.verse notation like "John 3.16" — never trips domain retrieval.
+// Bare dotted refs are intentionally NOT detected here (the /search LN field
+// handles those). `domain N` validates 1..93.
+const LN_REF_RE = /(?:louw[\s-]?nida|\bln)\s+(\d{1,2})\.(\d{1,3}[a-z]?)\b/i;
+const DOMAIN_NUM_RE = /(?:louw[\s-]?nida|\bln|\bdomain)\s+0*(\d{1,3})\b/i;
+
+export function detectDomainQuery(prompt: string): DomainQuerySignal | undefined {
+  const lnMatch = LN_REF_RE.exec(prompt);
+  if (lnMatch) return { kind: "ln", ref: `${lnMatch[1]}.${lnMatch[2]}` };
+  const domMatch = DOMAIN_NUM_RE.exec(prompt);
+  if (domMatch) {
+    const n = Number.parseInt(domMatch[1], 10);
+    if (n >= 1 && n <= 93) return { kind: "domain", code: String(n).padStart(3, "0") };
+  }
+  return undefined;
+}
+
+function stripDomainMarkers(text: string): string {
+  // LN refs are always stripped (matches detectDomainQuery, which has no range
+  // guard for the LN form). Domain-number markers are only stripped when the
+  // captured number is in range 1..93 — mirroring detectDomainQuery's guard so an
+  // out-of-range "domain N" (which was NOT recognized as a domain query) is left
+  // intact for topic extraction. Use a fresh local regex (no shared /g state) and
+  // a replacer that returns the original match when out of range; the module-level
+  // DOMAIN_NUM_RE used by detectDomainQuery stays non-global.
+  return text
+    .replace(LN_REF_RE, " ")
+    .replace(new RegExp(DOMAIN_NUM_RE.source, DOMAIN_NUM_RE.flags), (match, num: string) => {
+      const n = Number.parseInt(num, 10);
+      return n >= 1 && n <= 93 ? " " : match;
+    });
+}
 
 // English Bible terms → Greek lemma. Used by the retrieval planner to turn a
 // topic word into a precise lemma search. Intentionally small for v1; extend
@@ -361,7 +398,10 @@ export function extractSignals(prompt: string): Signals {
   // keyword searches.
   const references = detectReferences(prompt);
   const phrases = matchPhrases(prompt);
-  const topicSource = stripReferencesAndBookAliases(stripMorphCodes(phrases.cleaned));
+  const domainQuery = detectDomainQuery(prompt);
+  const topicSource = stripDomainMarkers(
+    stripReferencesAndBookAliases(stripMorphCodes(phrases.cleaned))
+  );
   return {
     references,
     greekWords: [...detectGreekWords(prompt), ...phrases.lemmas],
@@ -369,6 +409,7 @@ export function extractSignals(prompt: string): Signals {
     morphCodes: detectMorphCodes(prompt),
     intent: detectIntent(prompt),
     book: detectBookFromPrompt(prompt),
-    phraseTerms: phrases.terms
+    phraseTerms: phrases.terms,
+    domainQuery
   };
 }

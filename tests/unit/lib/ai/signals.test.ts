@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ENGLISH_TO_GREEK_LEMMA,
+  detectDomainQuery,
   detectGreekWords,
   detectIntent,
   detectMorphCodes,
@@ -181,6 +182,43 @@ describe("detectPhraseLemmas", () => {
 
   it("returns nothing when no phrase is present", () => {
     expect(detectPhraseLemmas("what does grace mean")).toEqual([]);
+  });
+});
+
+describe("detectDomainQuery", () => {
+  it("detects an anchored domain number", () => {
+    expect(detectDomainQuery("show me everything in domain 33 in John")).toEqual({ kind: "domain", code: "033" });
+    expect(detectDomainQuery("Louw-Nida 1 words")).toEqual({ kind: "domain", code: "001" });
+    expect(detectDomainQuery("LN 93 terms")).toEqual({ kind: "domain", code: "093" });
+  });
+  it("detects an anchored LN reference (ln wins over domain)", () => {
+    expect(detectDomainQuery("uses of LN 33.55")).toEqual({ kind: "ln", ref: "33.55" });
+    expect(detectDomainQuery("Louw-Nida 93.169a in Matthew")).toEqual({ kind: "ln", ref: "93.169a" });
+  });
+  it("does NOT fire on bare numbers, chapter.verse refs, or topical domain words", () => {
+    expect(detectDomainQuery("what does John 3.16 mean")).toBeUndefined();
+    expect(detectDomainQuery("Paul's view on communication in the church")).toBeUndefined();
+    expect(detectDomainQuery("33.55")).toBeUndefined();
+    expect(detectDomainQuery("domain 200 is out of range")).toBeUndefined();
+  });
+});
+
+describe("extractSignals domainQuery", () => {
+  it("attaches domainQuery and keeps it out of topic words", () => {
+    const signals = extractSignals("show me domain 33 in John");
+    expect(signals.domainQuery).toEqual({ kind: "domain", code: "033" });
+    expect(signals.topicWords).not.toContain("domain");
+  });
+
+  it("attaches an LN-ref domainQuery", () => {
+    const signals = extractSignals("uses of LN 33.55 in John");
+    expect(signals.domainQuery).toEqual({ kind: "ln", ref: "33.55" });
+  });
+
+  it("leaves an out-of-range domain marker out of domainQuery and intact for topic extraction", () => {
+    const signals = extractSignals("what does domain 200 of the law mean");
+    expect(signals.domainQuery).toBeUndefined();
+    expect(signals.topicWords).toContain("law");
   });
 });
 

@@ -112,6 +112,7 @@ model Token {
   @@index([bookId, chapter, verse])
   @@index([corpusId, bookId, partOfSpeech, lemma])
   @@index([lnDomain], type: Gin)
+  @@index([louwNida], type: Gin)
 }
 
 model Note {

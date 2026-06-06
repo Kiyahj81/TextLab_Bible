@@ -6,7 +6,7 @@ import {
   type Signals
 } from "@/lib/ai/signals";
 
-const { getPassage, searchLemma, searchKeyword, searchMorphology, getTopLemmas, findLemmaExamples, searchSemanticDetailed } =
+const { getPassage, searchLemma, searchKeyword, searchMorphology, getTopLemmas, findLemmaExamples, searchSemanticDetailed, searchDomain } =
   vi.hoisted(() => ({
     getPassage: vi.fn(),
     searchLemma: vi.fn(),
@@ -14,7 +14,8 @@ const { getPassage, searchLemma, searchKeyword, searchMorphology, getTopLemmas, 
     searchMorphology: vi.fn(),
     getTopLemmas: vi.fn(),
     findLemmaExamples: vi.fn(),
-    searchSemanticDetailed: vi.fn()
+    searchSemanticDetailed: vi.fn(),
+    searchDomain: vi.fn()
   }));
 
 vi.mock("@/lib/search", () => ({
@@ -25,6 +26,7 @@ vi.mock("@/lib/search", () => ({
   getTopLemmas,
   findLemmaExamples,
   searchSemanticDetailed,
+  searchDomain,
   SEMANTIC_INDEX_CORPUS: "WEB"
 }));
 
@@ -532,6 +534,104 @@ describe("runRetrievalPlan", () => {
     });
 
     expect(packet.formattedEvidence).toContain("getPassage(Rom 8:1-4");
+  });
+
+  it("adds a searchDomain call for an explicit domain query", async () => {
+    vi.mocked(searchDomain).mockResolvedValue({
+      filter: { kind: "domain", value: "033" },
+      count: 2,
+      pagination: { page: 1, pageSize: 25, total: 2, pageCount: 1 },
+      results: [
+        { tokenId: "t1", corpus: "SBLGNT", reference: "John 1:1", surface: "λόγος", lemma: "λόγος", morphCode: "N-NSM", verseText: "Ἐν ἀρχῇ ἦν ὁ λόγος" }
+      ]
+    } as never);
+
+    const packet = await runRetrievalPlan(
+      { references: [], greekWords: [], topicWords: [], morphCodes: [], intent: "general", domainQuery: { kind: "domain", code: "033" } } as never,
+      "show me domain 33",
+      false
+    );
+
+    expect(packet.toolTrace.some((t) => t.tool === "searchDomain")).toBe(true);
+    expect(packet.formattedEvidence).toContain("searchDomain(domain 033");
+    expect(vi.mocked(searchDomain)).toHaveBeenCalled();
+  });
+
+  it("forwards the domain code to searchDomain for a domain-kind query", async () => {
+    vi.mocked(searchDomain).mockResolvedValue({
+      filter: { kind: "domain", value: "033" },
+      count: 1,
+      pagination: { page: 1, pageSize: 25, total: 1, pageCount: 1 },
+      results: [
+        { tokenId: "t1", corpus: "SBLGNT", reference: "John 1:1", surface: "λόγος", lemma: "λόγος", morphCode: "N-NSM", verseText: "Ἐν ἀρχῇ ἦν ὁ λόγος" }
+      ]
+    } as never);
+
+    await runRetrievalPlan(
+      { references: [], greekWords: [], topicWords: [], morphCodes: [], intent: "general", domainQuery: { kind: "domain", code: "033" } } as never,
+      "show me domain 33",
+      false
+    );
+
+    expect(vi.mocked(searchDomain)).toHaveBeenCalledWith(expect.objectContaining({ domain: "033" }));
+  });
+
+  it("adds a searchDomain call for an explicit Louw-Nida (ln) query and forwards the ref", async () => {
+    vi.mocked(searchDomain).mockResolvedValue({
+      filter: { kind: "ln", value: "33.55" },
+      count: 1,
+      pagination: { page: 1, pageSize: 25, total: 1, pageCount: 1 },
+      results: [
+        { tokenId: "t1", corpus: "SBLGNT", reference: "John 1:1", surface: "λόγος", lemma: "λόγος", morphCode: "N-NSM", verseText: "Ἐν ἀρχῇ ἦν ὁ λόγος" }
+      ]
+    } as never);
+
+    const packet = await runRetrievalPlan(
+      { references: [], greekWords: [], topicWords: [], morphCodes: [], intent: "general", domainQuery: { kind: "ln", ref: "33.55" } } as never,
+      "uses of LN 33.55",
+      false
+    );
+
+    expect(packet.toolTrace.some((t) => t.tool === "searchDomain")).toBe(true);
+    expect(vi.mocked(searchDomain)).toHaveBeenCalledWith(expect.objectContaining({ ln: "33.55" }));
+    expect(packet.formattedEvidence).toContain("searchDomain(ln 33.55");
+  });
+
+  it("forwards the book scope to searchDomain for a scoped domain query", async () => {
+    vi.mocked(searchDomain).mockResolvedValue({
+      filter: { kind: "domain", value: "033" },
+      count: 1,
+      pagination: { page: 1, pageSize: 25, total: 1, pageCount: 1 },
+      results: [
+        { tokenId: "t1", corpus: "SBLGNT", reference: "John 1:1", surface: "λόγος", lemma: "λόγος", morphCode: "N-NSM", verseText: "Ἐν ἀρχῇ ἦν ὁ λόγος" }
+      ]
+    } as never);
+
+    await runRetrievalPlan(
+      { references: [], greekWords: [], topicWords: [], morphCodes: [], intent: "general", book: "John", domainQuery: { kind: "domain", code: "033" } } as never,
+      "domain 33 in John",
+      false
+    );
+
+    expect(vi.mocked(searchDomain)).toHaveBeenCalledWith(expect.objectContaining({ domain: "033", book: "John" }));
+  });
+
+  it("keeps the explicit domain call even when many topic words crowd the plan", async () => {
+    vi.mocked(searchDomain).mockResolvedValue({
+      filter: { kind: "domain", value: "033" },
+      count: 1,
+      pagination: { page: 1, pageSize: 25, total: 1, pageCount: 1 },
+      results: [{ tokenId: "t1", corpus: "SBLGNT", reference: "John 1:1", surface: "λόγος", lemma: "λόγος", morphCode: "N-NSM", verseText: "…" }]
+    } as never);
+
+    const topicWords = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta", "iota", "kappa", "mu", "nu"];
+    const packet = await runRetrievalPlan(
+      { references: [], greekWords: [], topicWords, morphCodes: [], intent: "general", domainQuery: { kind: "domain", code: "033" } } as never,
+      `domain 33 ${topicWords.join(" ")}`,
+      false
+    );
+
+    expect(packet.toolTrace.some((t) => t.tool === "searchDomain")).toBe(true);
   });
 });
 

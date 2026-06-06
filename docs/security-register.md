@@ -97,6 +97,21 @@ sprint and at every Next.js minor upgrade. Cross-check each open row.
   SDK/Gateway upgrades.
 - **Status: accepted.**
 
+### Phase 5a — UBS Louw-Nida dataset (CC-BY-SA 4.0 licensing obligation)
+
+| Field | Value |
+| --- | --- |
+| Severity | Licensing / distribution obligation (not a security vulnerability) |
+| Change | Phase 5a vendors `data/louw-nida/UBSGreekNTDicLexicalDomains-v1.1-en.JSON` (738 domain/subdomain nodes) from the UBS open-license repository (`ubsicap/ubs-open-license`). |
+| License | **Creative Commons Attribution-ShareAlike 4.0 International (CC-BY-SA 4.0)** |
+| Attribution | Full attribution and NOTICE in `data/louw-nida/NOTICE.md`; one-line credit in `README.md` (Open Text Imports section). |
+| ShareAlike obligation | Any redistribution of the data file or an adapted database derived from it must be released under CC-BY-SA 4.0 (or a compatible license) with attribution preserved. The obligation is on the *data*: running the import script over a private database does not trigger redistribution; publishing a derived domain-label dataset would. |
+| Status | Accepted — obligation documented |
+| Mitigation | Attribution is in `data/louw-nida/NOTICE.md` and `README.md`. The data is only loaded into the app database at import time; the raw JSON is not served to end users. Review before any public data export or dataset redistribution. |
+| Owner | Maintainer (kiyahj81) |
+| Opened | 2026-06-06 (Phase 5a Louw-Nida enrichment) |
+| Next review | Re-check if the vendored JSON is updated or if domain labels are exported as a derived dataset. |
+
 ## Tooling notes
 
 - `npm audit` requires network access to the npm registry. If the

@@ -14,7 +14,7 @@
 
 **Branch:** `milestone-3/phase-5b-domain-search` (already created; the spec commit is on it).
 
-**Refinement vs spec (deliberate, surfaced to the user):** the assistant's dotted-ref detection is **anchored** — it fires on `LN 33.55` / `Louw-Nida 33.55`, NOT a bare `33.55`, so chapter.verse notation like "John 3.16" can never trip domain retrieval. Bare dotted refs remain available via the `/search` LN field. This is consistent with the approved "explicit-only / keep it safe" decision.
+**Anchored detection (now in the spec §4):** the assistant's dotted-ref detection fires on `LN 33.55` / `Louw-Nida 33.55`, NOT a bare `33.55`, so chapter.verse notation like "John 3.16" can never trip domain retrieval. Bare dotted refs remain available via the `/search` LN field.
 
 ---
 
@@ -55,10 +55,12 @@ In `model Token`, add after the existing `@@index([lnDomain], type: Gin)` line:
 ```powershell
 New-Item -ItemType Directory -Force prisma/migrations/20260607000000_louw_nida_search_index | Out-Null
 ```
-Create `prisma/migrations/20260607000000_louw_nida_search_index/migration.sql`:
+Create `prisma/migrations/20260607000000_louw_nida_search_index/migration.sql`. Use `IF NOT EXISTS` so the
+migration is idempotent — if the index was ever created out-of-band on a branch, a later `migrate deploy`
+records the migration without erroring on a duplicate index:
 ```sql
 -- CreateIndex
-CREATE INDEX "Token_louwNida_idx" ON "Token" USING GIN ("louwNida");
+CREATE INDEX IF NOT EXISTS "Token_louwNida_idx" ON "Token" USING GIN ("louwNida");
 ```
 
 - [ ] **Step 3: Apply to the primary branch and verify**
@@ -332,6 +334,31 @@ Add `hasSearch` + `searchLabel` locals near `let page = requestedPage;`:
   let hasSearch = false;
   let searchLabel = "";
 ```
+Load the domain options **before** the dispatch (the domain branch needs them for the header label):
+```ts
+  const domainOptions = await getLouwNidaDomainOptions();
+```
+Add a module-level label helper at the bottom of the file (next to `getParam`):
+```ts
+function domainSearchLabel(
+  filter: { kind: "ln" | "subdomain" | "domain"; value: string } | null,
+  options: DomainOptions
+): string {
+  if (!filter) return "";
+  if (filter.kind === "ln") return `LN ${filter.value}`;
+  if (filter.kind === "subdomain") {
+    const parent = filter.value.slice(0, 3);
+    const sub = options.subdomainsByDomain[parent]?.find((s) => s.code === filter.value);
+    return sub ? `Subdomain: ${sub.label}` : `Subdomain ${filter.value}`;
+  }
+  const domain = options.domains.find((d) => d.code === filter.value);
+  return domain ? `Domain ${domain.number} — ${domain.label}` : `Domain ${Number.parseInt(filter.value, 10)}`;
+}
+```
+Import the `DomainOptions` type alongside the helpers (Step 1's import line already adds the functions; also add the type):
+```ts
+import type { DomainOptions } from "@/lib/search";
+```
 Replace the `if (query.trim()) { … }` block's opening so the domain branch runs first:
 ```ts
   if (mode === "domain" && (domain || subdomain || ln)) {
@@ -348,14 +375,7 @@ Replace the `if (query.trim()) { … }` block's opening so the domain branch run
     pageCount = search.pagination.pageCount;
     results = search.results.map((result) => ({ kind: "token" as const, ...result }));
     hasSearch = true;
-    searchLabel =
-      search.filter?.kind === "ln"
-        ? `LN ${search.filter.value}`
-        : search.filter?.kind === "subdomain"
-          ? `subdomain ${search.filter.value}`
-          : search.filter
-            ? `domain ${Number.parseInt(search.filter.value, 10)}`
-            : "";
+    searchLabel = domainSearchLabel(search.filter, domainOptions);
     page = Math.min(requestedPage, Math.max(pageCount, 1));
   } else if (query.trim()) {
     // ...existing lemma/morphology/keyword branches unchanged...
@@ -366,16 +386,9 @@ Replace the `if (query.trim()) { … }` block's opening so the domain branch run
 ```
 (Move the existing `page = Math.min(...)` line inside the `else if` block, and set `hasSearch`/`searchLabel` there. Keep the lemma/morphology/keyword branches exactly as they are.)
 
-- [ ] **Step 3: Load domain options and pass new props to `SearchPanel`**
+- [ ] **Step 3: Pass new props to `SearchPanel`**
 
-In the `Promise.all([...])` (around line 61) add the options load:
-```ts
-  const [books, savedSearches, domainOptions] = await Promise.all([
-    getAvailableReaderBooks(),
-    prisma.savedSearch.findMany({ where: { userId }, orderBy: { updatedAt: "desc" }, take: 25 }),
-    getLouwNidaDomainOptions()
-  ]);
-```
+`domainOptions` is already loaded (Step 2). Leave the existing `Promise.all([books, savedSearches])` as-is.
 Pass new props to `<SearchPanel … />`:
 ```tsx
         domain={domain}
@@ -428,9 +441,16 @@ Add to the `SearchPanel({ … })` destructure and its type (after `savedSearches
 
 - [ ] **Step 2: Add domain state + the Domain mode option**
 
-After `const [activeMode, setActiveMode] = useState(mode);` add:
+After `const [activeMode, setActiveMode] = useState(mode);` add controlled state for the two dependent
+dropdowns (LN stays an uncontrolled text input like Chapter/Book). Changing the domain **clears the
+subdomain** so a stale subdomain code can't be submitted:
 ```ts
   const [selectedDomain, setSelectedDomain] = useState(domain);
+  const [selectedSubdomain, setSelectedSubdomain] = useState(subdomain);
+  function onDomainChange(value: string) {
+    setSelectedDomain(value);
+    setSelectedSubdomain("");
+  }
 ```
 In the Mode `<select>` options (after the Morphology option) add:
 ```tsx
@@ -448,7 +468,7 @@ Wrap the existing Query `<label>` (the `name="q"` block, ~lines 188-220) so it o
                 <select
                   name="domain"
                   value={selectedDomain}
-                  onChange={(event) => setSelectedDomain(event.target.value)}
+                  onChange={(event) => onDomainChange(event.target.value)}
                   className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm"
                 >
                   <option value="">Any domain</option>
@@ -461,7 +481,8 @@ Wrap the existing Query `<label>` (the `name="q"` block, ~lines 188-220) so it o
                 <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Subdomain</span>
                 <select
                   name="subdomain"
-                  defaultValue={subdomain}
+                  value={selectedSubdomain}
+                  onChange={(event) => setSelectedSubdomain(event.target.value)}
                   disabled={!selectedDomain}
                   className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm disabled:opacity-50"
                 >
@@ -562,12 +583,16 @@ function searchHref({
   return `/search?${params.toString()}`;
 }
 ```
-Update the two pagination `searchHref({ … })` calls (Previous ~line 330, Next ~line 341) to pass the domain params:
+Update the two pagination `searchHref({ … })` calls (Previous ~line 330, Next ~line 341). Pass the
+**submitted** domain params — the `domain`/`subdomain`/`ln` **props** (the query the server actually ran),
+NOT the live `selectedDomain`/`selectedSubdomain` state — exactly as lemma pagination passes the `query`
+prop (not the live `queryValue`). This keeps page navigation tied to the executed search even if the user
+has edited the form without resubmitting:
 ```tsx
-              href={searchHref({ mode: activeMode, query, book, chapter, matchMode, domain: selectedDomain, subdomain, ln, page: previousPage, pageSize })}
+              href={searchHref({ mode: activeMode, query, book, chapter, matchMode, domain, subdomain, ln, page: previousPage, pageSize })}
 ```
 ```tsx
-              href={searchHref({ mode: activeMode, query, book, chapter, matchMode, domain: selectedDomain, subdomain, ln, page: nextPage, pageSize })}
+              href={searchHref({ mode: activeMode, query, book, chapter, matchMode, domain, subdomain, ln, page: nextPage, pageSize })}
 ```
 (The saved-search `searchHref` call keeps passing only its lemma/keyword fields — saved domain searches are out of scope, so `domain`/`subdomain`/`ln` are simply omitted there.)
 
@@ -724,6 +749,25 @@ it("adds a searchDomain call for an explicit domain query", async () => {
   expect(packet.formattedEvidence).toContain("searchDomain(domain 033");
   expect(vi.mocked(searchDomain)).toHaveBeenCalled();
 });
+
+it("keeps the explicit domain call even when many topic words crowd the plan", async () => {
+  vi.mocked(searchDomain).mockResolvedValue({
+    filter: { kind: "domain", value: "033" },
+    count: 1,
+    pagination: { page: 1, pageSize: 25, total: 1, pageCount: 1 },
+    results: [{ tokenId: "t1", corpus: "SBLGNT", reference: "John 1:1", surface: "λόγος", lemma: "λόγος", morphCode: "N-NSM", verseText: "…" }]
+  } as never);
+
+  // 12 topic words > MAX_PLANNED_CALLS (8) — the domain call must not be sliced off.
+  const topicWords = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta", "iota", "kappa", "mu", "nu"];
+  const packet = await runRetrievalPlan(
+    { references: [], greekWords: [], topicWords, morphCodes: [], intent: "general", domainQuery: { kind: "domain", code: "033" } } as never,
+    `domain 33 ${topicWords.join(" ")}`,
+    false
+  );
+
+  expect(packet.toolTrace.some((t) => t.tool === "searchDomain")).toBe(true);
+});
 ```
 (Match the exact import names/mock style already used in this test file. `searchDomain` must be added to the imports under test and to the `vi.mock` factory.)
 
@@ -773,7 +817,7 @@ function domainCall(query: DomainQuerySignal, scope: Scope): PlannedCall {
   };
 }
 ```
-In `buildPlan`, after the `morphCodes` loop (`~line 497`) and before the topLemmas fallback, add:
+In `buildPlan`, add the domain call **first** — immediately after `const topicTerms = classifyTopicTerms(signals, prompt);` and **before** the `for (const ref of signals.references)` loop. Adding it first guarantees it survives the `slice(0, MAX_PLANNED_CALLS)` (8) even when a prompt also carries many topic/morph signals (it is explicit user intent and must never be crowded out):
 ```ts
   if (signals.domainQuery) {
     add(domainCall(signals.domainQuery, scope));
@@ -801,14 +845,19 @@ git commit -m "Add planner domainCall for explicit domain/LN-ref retrieval"
 
 > Runs via `npm run test:integration` against `.env.test` (the louw-nida branch already has the Phase 5a data + the Task 1 migration once deployed there).
 
-- [ ] **Step 1: Create the index on the test branch (idempotent)**
+- [ ] **Step 1: Apply the migration to the test branch via the migration path**
 
-The migration's only effect is the one GIN index; create it directly on the test branch:
+Apply through `prisma migrate deploy` (NOT raw SQL) so the test branch records a `_prisma_migrations` row and
+won't drift. `prisma.config.ts` loads env via `dotenv/config`, and dotenv does not override pre-set vars, so
+`node --env-file=.env.test` (which sets `DATABASE_URL` from the test branch first) makes the CLI target the
+test branch:
 ```powershell
 $env:NODE_OPTIONS="--use-system-ca"
-node --env-file=.env.test -e "const {PrismaClient}=require('@prisma/client');const p=new PrismaClient();p['\$executeRawUnsafe']('CREATE INDEX IF NOT EXISTS \"Token_louwNida_idx\" ON \"Token\" USING GIN (\"louwNida\")').then(()=>{console.log('index ready');return p['\$disconnect']();})"
+node --env-file=.env.test node_modules/prisma/build/index.js migrate deploy
 ```
-Expected: prints `index ready` (idempotent — safe to re-run).
+Expected: applies the pending `20260607000000_louw_nida_search_index` migration to the test branch (the 5a
+migrations are already recorded there); "All migrations have been successfully applied." Re-running is a
+no-op ("No pending migrations").
 
 - [ ] **Step 2: Write the integration test**
 
@@ -816,10 +865,18 @@ Create `tests/integration/louw-nida-search.test.ts`:
 ```ts
 import { describe, expect, it } from "vitest";
 import { searchDomain, getLouwNidaDomainOptions } from "@/lib/search";
+import { prisma } from "@/lib/db";
 
 const itDb = process.env.DATABASE_URL ? it : it.skip;
 
 describe("Louw-Nida domain search (integration)", () => {
+  itDb("created the louwNida GIN index", async () => {
+    const rows = await prisma.$queryRaw<{ indexname: string }[]>`
+      SELECT indexname FROM pg_indexes WHERE indexname = 'Token_louwNida_idx'
+    `;
+    expect(rows).toHaveLength(1);
+  });
+
   itDb("returns tokens for an exact LN reference", async () => {
     const res = await searchDomain({ ln: "33.55", pageSize: 5 });
     expect(res.count).toBeGreaterThan(0);
@@ -857,7 +914,7 @@ describe("Louw-Nida domain search (integration)", () => {
 - [ ] **Step 3: Run the integration suite**
 
 Run: `npm run test:integration`
-Expected: PASS (5 new tests + the existing suites).
+Expected: PASS (6 new tests — index presence + ln/subdomain/domain/scope/options — plus the existing suites).
 
 - [ ] **Step 4: Commit**
 
@@ -945,5 +1002,5 @@ Per project practice: review Codex/Greptile PR comments and fix valid findings b
 
 - **Spec coverage:** §1 schema → Task 1; §2 `searchDomain` (three modes + precedence + expansion) → Tasks 2–3; §3 `/search` UI (display B, dependent subdomain, LN field, URL form) → Tasks 4–5; §4 assistant (explicit-only signal + `domainCall`) → Tasks 6–7; §5 testing → Tasks 2,6,7,8,10; §6 docs → Task 9. Inline highlighting falls out of token-based results (Task 3 returns `hydrateTokens` rows; Task 5 renders `kind: "token"`).
 - **Type consistency:** `DomainFilter`/`resolveDomainFilter`/`domainTokenWhere` (Task 2) feed `searchDomain` (Task 3); `DomainOptions` (Task 3) is consumed by the page (Task 4) and `SearchPanel` (Task 5); `DomainQuerySignal`/`detectDomainQuery` (Task 6) feed `domainCall` (Task 7). `searchDomain` result fields (`tokenId/corpus/reference/surface/lemma/morphCode/verseText`) match what both `domainCall` and the page consume (same as `searchLemma` via `hydrateTokens`).
-- **Deliberate spec refinement:** anchored dotted-ref detection (no bare `33.55` in the assistant) — flagged in the header; surface to the user at handoff.
+- **Codex review fixes folded in:** (1) the test branch gets the migration via the migration path (`migrate deploy` against `.env.test`) + `CREATE INDEX IF NOT EXISTS` + a `pg_indexes` presence assertion — no drift; (2) `selectedSubdomain` is controlled and cleared on domain change, and pagination links use the submitted props not live state; (3) the results-header label is derived from `domainOptions` via `domainSearchLabel`; (4) `domainCall` is added first in `buildPlan` so the 8-call cap can't drop explicit domain intent (locked by a crowded-plan test).
 - **Out of scope (v1):** saving domain searches (Save button stays query-gated → hidden in domain mode); MARBLE subdomain codes / LN ranges in the subdomain dropdown; natural-language domain-name detection in the assistant.

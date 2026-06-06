@@ -86,10 +86,10 @@ Normalization: a bare domain number like `"33"` is left-padded to the 3-digit `"
 
 ### Return shape
 
-`{ filter: { kind: "ln" | "subdomain" | "domain"; value: string; label?: string }, count, results, pagination }`
-where `results` is the same `hydrateTokens` output lemma/morphology already return. `label` is the resolved
-human-readable domain/subdomain label (looked up from `LouwNidaDomain`) for display in the results header,
-when available.
+`{ filter: { kind: "ln" | "subdomain" | "domain"; value: string } | null, count, results, pagination }`
+where `results` is the same `hydrateTokens` output lemma/morphology already return. `searchDomain` does
+**not** resolve a human-readable label itself (keeping it lean and avoiding an extra query) — the page
+derives the results-header label from the already-loaded `getLouwNidaDomainOptions()` data (see §3).
 
 ---
 
@@ -116,7 +116,13 @@ subdomains (`{ code, label }`). Cheap (≤ ~93 + a few dozen rows) and cached pe
 - **Submission** sends only the populated fields; the URL carries `mode=domain` plus any of
   `domain=33&subdomain=033006&ln=33.55`. Server-side precedence (ln → subdomain → domain) decides the query.
 - Results reuse the existing `kind: "token"` rendering (matched Greek word bolded, lemma + morphCode shown).
-  The results header shows the resolved filter label (e.g. "Domain 33 — Communication", or "LN 33.55").
+  The page builds the results-header label by looking the resolved filter up in the loaded
+  `domainOptions` — `Domain 33 — Communication`, `Subdomain: Written Language`, or `LN 33.55`.
+- **Controlled form state:** `selectedDomain`, `selectedSubdomain`, and the LN value are React state.
+  Changing the domain **clears `selectedSubdomain`** so a stale subdomain code from the previous domain can
+  never be submitted. Pagination links reflect the **already-submitted** query (the server props), the same
+  way lemma pagination uses the submitted `query` (not the live input), so editing the form without
+  submitting does not corrupt page navigation.
 
 URL examples: `/search?mode=domain&domain=33&book=John`, `/search?mode=domain&ln=33.55`.
 
@@ -126,17 +132,22 @@ URL examples: `/search?mode=domain&domain=33&book=John`, `/search?mode=domain&ln
 
 ### Signal detection (`lib/ai/signals.ts`)
 
-Add an optional `domainQuery` signal that fires **only on explicit markers** (v1 — safe by design; never
-triggers on bare topical words that happen to be domain names):
+Add an optional `domainQuery` signal that fires **only on an explicit Louw-Nida marker** (v1 — safe by
+design; never triggers on bare topical words or numbers):
 
-- `domain 33`, `domain 033`
-- `Louw-Nida 33`, `Louw Nida 33`, `LN 33` (case-insensitive)
-- a dotted ref `33.55` (and letter-suffixed `93.169a`)
+- **Domain number** — `domain 33` / `domain 033`, or `Louw-Nida 33` / `Louw Nida 33` / `LN 33`
+  (case-insensitive). Validated to the range 1–93.
+- **LN ref** — **anchored**: `LN 33.55` / `Louw-Nida 33.55` (and letter-suffixed `Louw-Nida 93.169a`).
 
-Resolve to `{ kind: "domain"; code: "033" }` or `{ kind: "ln"; ref: "33.55" }`. The assistant covers
-**domain numbers and LN refs** only — it does *not* accept MARBLE subdomain codes (`033006`), which have no
-natural prompt form (that path is dropdown-only in `/search`). The detected marker tokens are stripped from
-topic extraction so they don't also fire a spurious lemma/keyword search.
+A **bare** dotted ref like `33.55` is intentionally **not** detected by the assistant, because it collides
+with chapter.verse notation (e.g. "John 3.16" would otherwise read as LN ref `3.16`). The marker
+(`LN`/`Louw-Nida`/`domain`) is required. Bare dotted refs remain fully available in the `/search` LN field.
+
+When both an LN ref and a domain number are present, the **LN ref wins** (more specific). Resolve to
+`{ kind: "domain"; code: "033" }` or `{ kind: "ln"; ref: "33.55" }`. The assistant covers **domain numbers
+and LN refs** only — it does *not* accept MARBLE subdomain codes (`033006`), which have no natural prompt
+form (that path is dropdown-only in `/search`). The detected marker text is stripped from topic extraction
+so it can't also fire a spurious lemma/keyword search.
 
 ### Planner (`lib/ai/retrievalPlanner.ts`)
 
@@ -150,6 +161,9 @@ When `domainQuery` is present, add a bounded `domainCall` alongside the existing
   surveys).
 - Tool-trace entry mirrors the existing format, e.g. `searchDomain({"domain":"033","book":"John"})` or
   `searchDomain({"ln":"33.55"})`. Runs inside the existing deterministic budget — no extra model round-trip.
+- **Priority:** because `domainQuery` is explicit user intent, the `domainCall` is added **first** in
+  `buildPlan` (before topic-word / morphology expansion) so the `MAX_PLANNED_CALLS` (8) slice can never drop
+  it in favor of incidental topic/morph signals.
 
 Grounding is unaffected: citations resolve to the SBLGNT spine exactly as today (the matched tokens are
 SBLGNT tokens).
@@ -169,8 +183,11 @@ SBLGNT tokens).
   not added otherwise.
 
 **Integration (Neon test branch)**
-- The new `Token_louwNida_idx` exists; `louwNida has '33.55'` returns expected tokens.
-- `searchDomain` domain/subdomain/ln modes return expected verses against the seeded corpus.
+- The new `Token_louwNida_idx` exists (assert via `pg_indexes`) — the migration is applied to the test
+  branch through the **migration path** (`migrate deploy` against `.env.test`), so `_prisma_migrations`
+  records it and a later deploy won't re-create the index.
+- `louwNida has '33.55'` returns expected tokens; `searchDomain` domain/subdomain/ln modes return expected
+  verses against the seeded corpus.
 
 **Acceptance**
 - A `/search?mode=domain&domain=33` smoke check renders token results without overflow.

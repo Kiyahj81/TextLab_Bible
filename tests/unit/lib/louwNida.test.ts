@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { flattenLouwNidaDomains } from "@/lib/louwNida";
+import { flattenLouwNidaDomains, resolveTokenDomains } from "@/lib/louwNida";
 
 describe("flattenLouwNidaDomains", () => {
   it("flattens nested domain/subdomain nodes with derived level and parentCode", () => {
@@ -42,5 +42,38 @@ describe("flattenLouwNidaDomains", () => {
       { Code: "050", SemanticDomainLocalizations: [{ LanguageCode: "fr", Label: "only-fr" }] }
     ];
     expect(flattenLouwNidaDomains(json)).toHaveLength(0);
+  });
+});
+
+describe("resolveTokenDomains", () => {
+  const labels = new Map<string, string>([
+    ["033", "Communication"],
+    ["033006", "Speak, Talk"],
+    ["010", "Geographical Objects"]
+  ]);
+
+  it("pairs each ln ref with its subdomain and parent domain label", () => {
+    const senses = resolveTokenDomains(["33.38"], ["033006"], labels);
+    expect(senses).toEqual([
+      { ref: "33.38", domainCode: "033006", domainLabel: "Communication", subdomainLabel: "Speak, Talk" }
+    ]);
+  });
+
+  it("handles multi-sense tokens by index alignment", () => {
+    const senses = resolveTokenDomains(["10.24", "33.19"], ["010002", "033006"], labels);
+    expect(senses).toHaveLength(2);
+    expect(senses[1]).toMatchObject({ ref: "33.19", domainLabel: "Communication", subdomainLabel: "Speak, Talk" });
+    expect(senses[0]).toMatchObject({ ref: "10.24", domainLabel: "Geographical Objects", subdomainLabel: null });
+  });
+
+  it("tolerates missing labels and length mismatches", () => {
+    const senses = resolveTokenDomains([], ["099999"], labels);
+    expect(senses).toEqual([
+      { ref: null, domainCode: "099999", domainLabel: null, subdomainLabel: null }
+    ]);
+  });
+
+  it("returns an empty array when the token has no domain codes", () => {
+    expect(resolveTokenDomains([], [], labels)).toEqual([]);
   });
 });

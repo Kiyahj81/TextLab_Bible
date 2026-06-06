@@ -58,3 +58,32 @@ export function flattenLouwNidaDomains(json: unknown): LouwNidaDomainRow[] {
   walk(json);
   return Array.from(byCode.values());
 }
+
+export type TokenDomainSense = {
+  ref: string | null;          // ln reference for display/citation, e.g. "33.38"
+  domainCode: string;          // MARBLE numeric code, e.g. "033006"
+  domainLabel: string | null;  // Level-1 label, e.g. "Communication"
+  subdomainLabel: string | null; // Level-2 label, e.g. "Speak, Talk"
+};
+
+/**
+ * Pair each token domain code (lnDomain[i]) with its ln reference (louwNida[i])
+ * and resolve labels from a code->label map. The Level-1 domain label is the
+ * 3-digit prefix; the subdomain label is the full code (null when the code is
+ * only domain-level). Index `i` is the same sense in both arrays.
+ */
+export function resolveTokenDomains(
+  louwNida: string[],
+  lnDomain: string[],
+  labels: Map<string, string>
+): TokenDomainSense[] {
+  return lnDomain.map((domainCode, i) => {
+    const parent = domainCode.length > 3 ? domainCode.slice(0, 3) : domainCode;
+    return {
+      ref: louwNida[i] ?? null,
+      domainCode,
+      domainLabel: labels.get(parent) ?? null,
+      subdomainLabel: domainCode.length > 3 ? (labels.get(domainCode) ?? null) : null
+    };
+  });
+}

@@ -850,17 +850,28 @@ git commit -m "Resolve and display Louw-Nida domain labels in the reader popover
 **Files:**
 - Create: `tests/integration/louw-nida.test.ts`
 
-> Runs via `npm run test:integration` against the Neon test branch (`.env.test`). It assumes the corpus has been imported and `import:louw-nida` + `import:macula-glosses` have been run against that branch (see Step 3).
+> Runs via `npm run test:integration` against the Neon test branch (`.env.test`). It assumes the base SBLGNT corpus has been imported from MorphGNT, but **not** previously enriched by MACULA for John 7:53. The Pericope Adulterae regression must exercise the `if (!token)` MACULA insert path, so use a fresh test branch or a MorphGNT-only baseline where `John 7:53` has zero SBLGNT tokens before running the MACULA import.
 
-- [ ] **Step 1: Seed the test branch**
+- [ ] **Step 1: Seed the test branch from a MorphGNT-only baseline**
 
-Run (with `.env.test` pointing at the test branch):
+Run (with `.env.test` pointing at a fresh test branch, or a branch reset to the MorphGNT-only SBLGNT baseline):
 ```powershell
 npx prisma migrate deploy --schema prisma/schema.prisma
 tsx --env-file=.env.test scripts/import-louw-nida.ts
+```
+Expected: migration applied; domain rows upserted.
+
+Before the MACULA import, verify the insert-path precondition:
+```powershell
+node --env-file=.env.test -e 'const {PrismaClient}=require("@prisma/client");const p=new PrismaClient();p.token.count({where:{corpus:{abbreviation:"SBLGNT"},book:{osisId:"John"},chapter:7,verse:53}}).then(async c=>{console.log(c);await p.$disconnect();})'
+```
+Expected before import: `0`. If this count is non-zero, the PA regression would hit the refresh path, not the insert path; use a fresh test branch or restore the MorphGNT-only baseline before continuing.
+
+Then run the MACULA import:
+```powershell
 tsx --env-file=.env.test scripts/import-open-bible.ts --macula-greek-url https://raw.githubusercontent.com/Clear-Bible/macula-greek/main/SBLGNT/tsv/macula-greek-SBLGNT.tsv
 ```
-Expected: migration applied; domain rows upserted; MACULA import completes.
+Expected: MACULA import completes.
 
 - [ ] **Step 2: Write the integration test**
 
@@ -894,8 +905,9 @@ describe("Louw-Nida enrichment (integration)", () => {
     expect(count).toBeGreaterThan(0);
   });
 
-  // Regression for the MACULA-only insert/upsert path (John 7:53 is Pericope Adulterae,
-  // which MorphGNT omits and the importer inserts from MACULA). The upstream MACULA row for
+  // Regression for the MACULA-only insert/upsert path. This test must run on a
+  // branch where John 7:53 had zero SBLGNT tokens before the MACULA import,
+  // because MorphGNT omits the Pericope Adulterae and MACULA inserts it. The upstream MACULA row for
   // 7:53!1 (Καὶ) carries domain 091001 / ln 91.1, so asserting the EXACT values proves the
   // insert path wrote the parsed arrays through — not merely the schema's @default([]) empty
   // array (which an Array.isArray check would pass even if the insert forgot the fields).

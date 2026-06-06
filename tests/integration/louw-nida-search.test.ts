@@ -31,13 +31,14 @@ describe("Louw-Nida domain search (integration)", () => {
   itDb("returns more for a whole domain than for one of its subdomains", async () => {
     const whole = await searchDomain({ domain: "033", pageSize: 1 });
     const sub = await searchDomain({ subdomain: "033006", pageSize: 1 });
-    expect(whole.count).toBeGreaterThanOrEqual(sub.count);
+    expect(whole.count).toBeGreaterThan(sub.count);
     expect(whole.count).toBeGreaterThan(0);
   });
 
   itDb("scopes by book", async () => {
     const all = await searchDomain({ domain: "033", pageSize: 1 });
     const john = await searchDomain({ domain: "033", book: "John", pageSize: 1 });
+    expect(john.count).toBeGreaterThan(0);
     expect(john.count).toBeLessThanOrEqual(all.count);
   });
 

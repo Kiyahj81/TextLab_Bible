@@ -209,6 +209,17 @@ describe("extractSignals domainQuery", () => {
     expect(signals.domainQuery).toEqual({ kind: "domain", code: "033" });
     expect(signals.topicWords).not.toContain("domain");
   });
+
+  it("attaches an LN-ref domainQuery", () => {
+    const signals = extractSignals("uses of LN 33.55 in John");
+    expect(signals.domainQuery).toEqual({ kind: "ln", ref: "33.55" });
+  });
+
+  it("leaves an out-of-range domain marker out of domainQuery and intact for topic extraction", () => {
+    const signals = extractSignals("what does domain 200 of the law mean");
+    expect(signals.domainQuery).toBeUndefined();
+    expect(signals.topicWords).toContain("law");
+  });
 });
 
 describe("detectIntent", () => {

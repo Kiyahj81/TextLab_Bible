@@ -56,7 +56,19 @@ export function detectDomainQuery(prompt: string): DomainQuerySignal | undefined
 }
 
 function stripDomainMarkers(text: string): string {
-  return text.replace(LN_REF_RE, " ").replace(DOMAIN_NUM_RE, " ");
+  // LN refs are always stripped (matches detectDomainQuery, which has no range
+  // guard for the LN form). Domain-number markers are only stripped when the
+  // captured number is in range 1..93 — mirroring detectDomainQuery's guard so an
+  // out-of-range "domain N" (which was NOT recognized as a domain query) is left
+  // intact for topic extraction. Use a fresh local regex (no shared /g state) and
+  // a replacer that returns the original match when out of range; the module-level
+  // DOMAIN_NUM_RE used by detectDomainQuery stays non-global.
+  return text
+    .replace(LN_REF_RE, " ")
+    .replace(new RegExp(DOMAIN_NUM_RE.source, DOMAIN_NUM_RE.flags), (match, num: string) => {
+      const n = Number.parseInt(num, 10);
+      return n >= 1 && n <= 93 ? " " : match;
+    });
 }
 
 // English Bible terms → Greek lemma. Used by the retrieval planner to turn a

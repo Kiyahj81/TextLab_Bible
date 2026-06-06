@@ -82,6 +82,7 @@ export function SearchPanel({
   const [queryValue, setQueryValue] = useState(query);
   const [selectedDomain, setSelectedDomain] = useState(domain);
   const [selectedSubdomain, setSelectedSubdomain] = useState(subdomain);
+  const [lnValue, setLnValue] = useState(ln);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(savedSearches);
@@ -96,9 +97,18 @@ export function SearchPanel({
     setItemStatus((current) => ({ ...current, [id]: message ?? "" }));
   }
 
+  // ln has precedence over subdomain/domain in resolveDomainFilter, so a stale ln (e.g. from
+  // ?ln=33.55) would silently override a freshly chosen domain/subdomain. Clear ln whenever the
+  // user actively picks a domain or subdomain so the visible selection is what actually runs.
   function onDomainChange(value: string) {
     setSelectedDomain(value);
     setSelectedSubdomain("");
+    setLnValue("");
+  }
+
+  function onSubdomainChange(value: string) {
+    setSelectedSubdomain(value);
+    setLnValue("");
   }
 
   async function saveSearch() {
@@ -227,7 +237,7 @@ export function SearchPanel({
                 <select
                   name="subdomain"
                   value={selectedSubdomain}
-                  onChange={(event) => setSelectedSubdomain(event.target.value)}
+                  onChange={(event) => onSubdomainChange(event.target.value)}
                   disabled={!selectedDomain}
                   className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm disabled:opacity-50"
                 >
@@ -242,7 +252,8 @@ export function SearchPanel({
                 <div className="flex items-center gap-2">
                   <input
                     name="ln"
-                    defaultValue={ln}
+                    value={lnValue}
+                    onChange={(event) => setLnValue(event.target.value)}
                     placeholder="e.g. 33.55"
                     className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-accent-600"
                   />

@@ -10,6 +10,14 @@ describe("normalizeDomainCode", () => {
   it("strips non-digits", () => {
     expect(normalizeDomainCode(" 33 ")).toBe("033");
   });
+  it("normalizes over-padded codes to the canonical 3 digits", () => {
+    expect(normalizeDomainCode("0033")).toBe("033");
+    expect(normalizeDomainCode("00001")).toBe("001");
+  });
+  it("collapses empty/non-digit input to 000", () => {
+    expect(normalizeDomainCode("")).toBe("000");
+    expect(normalizeDomainCode("abc")).toBe("000");
+  });
 });
 
 describe("resolveDomainFilter", () => {

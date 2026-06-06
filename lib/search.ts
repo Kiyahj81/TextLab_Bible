@@ -668,10 +668,12 @@ export type DomainFilter =
   | { kind: "subdomain"; value: string }
   | { kind: "domain"; value: string };
 
-// "33" → "033"; already-3+-digit values are left as-is. Strips non-digits defensively.
+// "33" → "033"; "0033" → "033". Strips non-digits, then takes the rightmost 3 digits
+// and left-pads to 3 so hand-authored URLs (e.g. ?domain=0033) still match the canonical
+// 3-digit Louw-Nida domain codes. Empty/non-digit input collapses to "000" (matches nothing).
 export function normalizeDomainCode(value: string): string {
   const digits = value.replace(/\D/g, "");
-  return digits.length < 3 ? digits.padStart(3, "0") : digits;
+  return digits.slice(-3).padStart(3, "0");
 }
 
 // Most-specific filter wins: ln → subdomain → domain.

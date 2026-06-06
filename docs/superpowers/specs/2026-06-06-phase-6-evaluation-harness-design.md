@@ -114,15 +114,17 @@ Each item exercises one pipeline path:
   "id": "agape-1cor13",
   "question": "What does ἀγάπη mean in 1 Corinthians 13?",
   "queryType": "lemma-survey",        // exact-verse | lemma-survey | conceptual | domain | cross-chapter
-  "goldenReferences": ["1CO 13.1", "1CO 13.2", "..."],  // refs that SHOULD be retrieved
+  "goldenReferences": ["1Cor 13:1", "1Cor 13:2", "..."],  // refs that SHOULD be retrieved
   "mustContainLemma": "ἀγάπη",        // optional: retrieval must surface this lemma
   "notes": "Tests lemma survey + semantic expansion within a single chapter"
 }
 ```
 
 - **`goldenReferences`** drive Context Precision/Recall — the heart of the
-  deterministic gate. Stored in a canonical `BOOK C.V` form and re-normalized via
-  `lib/references.ts` before comparison.
+  deterministic gate. Stored in the codebase's canonical reference form
+  (`<osisId> <chapter>:<verse>`, e.g. `1Cor 13:1`, matching
+  `formatReference`/`parseReference` in `lib/references.ts`) and re-normalized via
+  `parseReference` before comparison.
 - **`queryType`** groups report results and lets a test assert coverage across
   all five pipeline paths.
 - No "golden answer" prose is stored. Faithfulness is judged against *retrieved

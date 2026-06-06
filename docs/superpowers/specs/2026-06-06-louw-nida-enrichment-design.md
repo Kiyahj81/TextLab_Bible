@@ -295,13 +295,24 @@ needs `$queryRaw` (no string interpolation of user input), consistent with the P
 
 ## 8. Documentation
 
-- `README.md` — Open Text Imports: document `import:louw-nida`, the popover domain display, the `/search`
-  domain mode (5b), and the **CC-BY-SA attribution** for the UBS dataset.
+Doc updates are split by sub-phase so neither PR overstates completion — **5a does not mark Phase 5 done**
+(the assistant-retrieval and search surfaces are still outstanding until 5b lands).
+
+**Phase 5a:**
+- `README.md` — Open Text Imports: document `import:louw-nida`, the popover domain display, and the
+  **CC-BY-SA attribution** for the UBS dataset.
 - `data/louw-nida/NOTICE.md` — source, version, license, URL.
-- `docs/PROJECT_STATE.md` — Phase 5 status, new schema/migration, new script, new surfaces.
-- `docs/HiFi-exegesis-nt-roadmap.md` — mark Phase 5 done; update the Louw-Nida reconciliation rows
-  (§A "Louw-Nida domains" gap → closed).
+- `docs/PROJECT_STATE.md` — Phase 5a status (schema/migration, `import:louw-nida`, popover display); list
+  the new migration and tests. Note Phase 5b (retrieval + search) still pending.
+- `docs/HiFi-exegesis-nt-roadmap.md` — mark Phase 5 **in progress / 5a done**; update the §A "Louw-Nida
+  domains" reconciliation row to "imported; popover display landed — retrieval/search = 5b".
 - `docs/security-register.md` — CC-BY-SA ShareAlike obligation on the vendored dataset.
+
+**Phase 5b (when it lands):**
+- `README.md` — document the `/search` domain mode and assistant domain-aware retrieval.
+- `docs/PROJECT_STATE.md` — Phase 5b status; new search mode + retrieval signal.
+- `docs/HiFi-exegesis-nt-roadmap.md` — mark Phase 5 **done**; flip the §A/§B Louw-Nida and
+  query-expansion rows to closed.
 
 ---
 

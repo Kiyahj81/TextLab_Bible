@@ -728,7 +728,7 @@ Run:
 ```powershell
 node -e "const {PrismaClient}=require('@prisma/client');const p=new PrismaClient();Promise.all([p.token.findFirst({where:{lemma:'λόγος',book:{osisId:'John'},chapter:1,verse:1},select:{surface:true,louwNida:true,lnDomain:true}}),p.token.findFirst({where:{book:{osisId:'John'},chapter:7,verse:53},orderBy:{wordIndex:'asc'},select:{surface:true,louwNida:true,lnDomain:true}})]).then(([a,b])=>{console.log('John 1:1',a);console.log('PA John 7:53',b);return p.$disconnect();})"
 ```
-Expected: the John 1:1 `λόγος` token has non-empty arrays; the John 7:53 Pericope-Adulterae token (inserted via the `if (!token)` path) shows its `louwNida`/`lnDomain` arrays — proving the insert path persists them (they are populated when the upstream PA row carries domain data, and an array — never null — otherwise).
+Expected: the John 1:1 `λόγος` token has non-empty arrays; the John 7:53 Pericope-Adulterae token `Καὶ` (wordIndex 1, inserted via the `if (!token)` path) shows `louwNida: [ '91.1' ]` and `lnDomain: [ '091001' ]` — the exact upstream MACULA values, proving the insert path persists the parsed arrays (not just the `@default([])` empty array).
 
 - [ ] **Step 7: Commit**
 
@@ -895,17 +895,18 @@ describe("Louw-Nida enrichment (integration)", () => {
   });
 
   // Regression for the MACULA-only insert/upsert path (John 7:53 is Pericope Adulterae,
-  // which MorphGNT omits and the importer inserts from MACULA). The columns must be arrays,
-  // never null — proving the insert path wrote them through.
-  itDb("populates code arrays on inserted Pericope Adulterae tokens", async () => {
+  // which MorphGNT omits and the importer inserts from MACULA). The upstream MACULA row for
+  // 7:53!1 (Καὶ) carries domain 091001 / ln 91.1, so asserting the EXACT values proves the
+  // insert path wrote the parsed arrays through — not merely the schema's @default([]) empty
+  // array (which an Array.isArray check would pass even if the insert forgot the fields).
+  itDb("persists parsed code arrays on inserted Pericope Adulterae tokens", async () => {
     const token = await prisma.token.findFirst({
-      where: { book: { osisId: "John" }, chapter: 7, verse: 53 },
-      orderBy: { wordIndex: "asc" },
-      select: { louwNida: true, lnDomain: true }
+      where: { book: { osisId: "John" }, chapter: 7, verse: 53, wordIndex: 1 },
+      select: { surface: true, louwNida: true, lnDomain: true }
     });
     expect(token).not.toBeNull();
-    expect(Array.isArray(token!.louwNida)).toBe(true);
-    expect(Array.isArray(token!.lnDomain)).toBe(true);
+    expect(token!.lnDomain).toContain("091001");
+    expect(token!.louwNida).toContain("91.1");
   });
 });
 ```

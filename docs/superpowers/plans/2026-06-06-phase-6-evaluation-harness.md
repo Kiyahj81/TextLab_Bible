@@ -185,11 +185,13 @@ import { describe, expect, it } from "vitest";
 import { contextPrecision, contextRecall, aggregate } from "@/eval/metrics";
 
 describe("contextRecall", () => {
+  // Signature is contextRecall(retrieved, golden) — matches contextPrecision and
+  // the runner's contextRecall(retrieved, item.goldenReferences) call site.
   it("is the fraction of golden refs retrieved", () => {
-    expect(contextRecall(["1Cor 13:1", "1Cor 13:2"], ["1Cor 13:1"])).toBe(0.5);
+    expect(contextRecall(["1Cor 13:1"], ["1Cor 13:1", "1Cor 13:2"])).toBe(0.5);
   });
   it("is 1 when golden is empty", () => {
-    expect(contextRecall([], ["John 3:16"])).toBe(1);
+    expect(contextRecall(["John 3:16"], [])).toBe(1);
   });
   it("normalizes aliases before comparing", () => {
     expect(contextRecall(["1 Corinthians 13:1"], ["1cor 13:1"])).toBe(1);

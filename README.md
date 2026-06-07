@@ -106,6 +106,35 @@ npm run verify
 
 `npm run verify` exits 0 on the current `main`. The full release gate adds `npm run test:integration`, `npm run test:acceptance`, and `npm run security:audit`.
 
+## Evaluation harness (Milestone 3 Phase 6)
+
+A two-tier quality harness over the retrieval-first assistant pipeline. The dataset lives at `eval/dataset/golden-set.json` (≈20 curated NT-exegesis questions spanning exact-verse / lemma-survey / conceptual / domain / cross-chapter).
+
+```bash
+# Blocking PR gate — deterministic, DB-only, no API key. Runs each golden
+# question through deterministic retrieval and enforces a TYPE-AWARE gate.
+npm run eval:gate
+
+# Non-blocking nightly / on-demand hybrid quality report (writes
+# eval/output/report.{html,json}).
+npm run eval:report
+```
+
+**`eval:gate`** (needs only `DATABASE_URL` via `.env.test`) protects deterministic evidence retrieval and citation safety. It is **type-aware** — it gates the signals each query type can actually guarantee deterministically, and reports the rest:
+
+| Query type | Gated | Report-only |
+|---|---|---|
+| exact-verse, cross-chapter | recall **and** precision (= 1.0) | — |
+| lemma-survey | recall (= 1.0) | precision (structurally low: golden is a curated subset) |
+| conceptual | — | recall + precision (vector-dependent — evaluated in the nightly report) |
+| domain | — | recall + precision (until domain goldens are validated/scoped) |
+
+Plus two global hard gates over **all** items: **citation resolvability = 100%** (every cited reference resolves to a real SBLGNT verse) and **required lemma coverage = 100%**. Context recall is measured over the full retrieved evidence the synthesizer sees, not just the citation sample.
+
+**`eval:report`** is **dual-key**: `OPENAI_API_KEY` powers query embeddings (pgvector KNN) + live synthesis; `AI_GATEWAY_API_KEY` powers Voyage rerank + the LLM-as-judge faithfulness score (`EVAL_JUDGE_MODEL`, default `anthropic/claude-sonnet-4.6`; `EVAL_JUDGE_TIMEOUT_MS` default 30 s). Each question records explicit `synthesisStatus` / `judgeStatus`, so a missing key, wrong model slug, timeout, or provider error is labeled rather than silently dropped. The gate protects deterministic retrieval + citation safety; the report monitors full hybrid-pipeline quality. Generative-hallucination protection lives in the production runtime grounding verifier plus this nightly report.
+
+`eval:gate` should run in CI alongside `test:integration` / `test:acceptance` (it needs the DB) — **not** inside the DB-free `npm run verify`.
+
 ## Open Text Imports
 
 The project includes an import script for three Greek/English NT data sources. Each run is tracked in the `ImportRun` table.

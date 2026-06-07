@@ -244,8 +244,19 @@ fusion of FTS + vector results (k=60), then cross-encoder rerank (top-30→top-5
 
 **Phase 5b follow-up (perf, deferred — Greptile PR #12):** `app/search/page.tsx` awaits `getLouwNidaDomainOptions()` sequentially before the search on every `/search` request (even non-domain modes, since `SearchPanel` always needs the options for client-side mode switching). Parallelize it with `books`/`savedSearches`/the search in a single `Promise.all`, then compute `domainSearchLabel(...)` after both resolve — collapses ~2 sequential DB round-trips into 1. Non-blocking (Greptile 5/5).
 
-**Phase 6 — Evaluation harness.** RAGAS-style faithfulness (target >0.90) + context-precision checks
-to guard quality and catch grounding regressions as phases land.
+**Phase 6 — Evaluation harness. ✅ DONE (branch `milestone-3/phase-6-eval-harness`).** A two-tier
+harness in `eval/` over a ~20-item curated golden set (`eval/dataset/golden-set.json`). **Blocking PR
+gate** (`npm run eval:gate`): deterministic, DB-only, no API key — a **type-aware** gate that enforces
+recall+precision on exact-verse/cross-chapter, recall on lemma-survey, and two global hard gates
+(citation resolvability 100%, required lemma coverage 100%); conceptual + domain are report-only.
+Context recall is measured over the full retrieved evidence (not just the ≤10 citation sample).
+**Non-blocking nightly hybrid report** (`npm run eval:report`): runs the full pipeline (pgvector + RRF
++ Voyage rerank + synthesis) once per question and adds an LLM-as-judge faithfulness score routed
+through the Vercel AI Gateway (`EVAL_JUDGE_MODEL`, default `anthropic/claude-sonnet-4.6`); dual-key
+(`OPENAI_API_KEY` for embeddings+synthesis, `AI_GATEWAY_API_KEY` for rerank+judge), with explicit
+per-question synthesis/judge status. Original target (RAGAS faithfulness >0.90 + context precision)
+is realized as the nightly faithfulness score plus the gate's deterministic precision/recall + citation
+resolvability.
 
 **Deferred past Milestone 3:** OT Hebrew/Aramaic, Strong's numbers, speaker quotations, explicit
 word-alignment table.

@@ -225,6 +225,26 @@ the report, not mislabeled as "judge off".
 
 ## Gate thresholds
 
+> **As-built note (calibration, T11).** The global-aggregate gate described below
+> was replaced during calibration with a **type-aware** gate, on maintainer
+> direction, because the deterministic baseline showed that precision is
+> structurally low for survey queries and conceptual recall is vector-dependent.
+> The shipped design (`eval/thresholds.ts` `GLOBAL_GATES` + `TYPE_GATES`,
+> evaluated by `eval/gate.ts`):
+> - **Global hard gates (all items):** citation resolvability = 100%, required
+>   lemma coverage = 100%.
+> - **exact-verse, cross-chapter:** gate recall AND precision (= 1.0).
+> - **lemma-survey:** gate recall (= 1.0); precision report-only.
+> - **conceptual, domain:** report-only (conceptual is vector-dependent → nightly;
+>   domain until its goldens are validated/scoped).
+>
+> Context recall is measured over the full retrieved evidence (citations ∪
+> references parsed from `formattedEvidence`), not the ≤10 citation sample, so long
+> passages aren't under-counted. The unit test (`tests/unit/eval/thresholds.test.ts`)
+> asserts the exact `TYPE_GATES` policy. No thresholds were lowered to force passes;
+> the gate passes 20/20 at recall = precision = 1.0 on the gated types. The original
+> global-aggregate design is retained below for historical context.
+
 `npm run eval:gate` runs deterministically (DB only) and exits non-zero if **any**
 aggregate check fails. Constants live in `eval/thresholds.ts` (one source of
 truth) and are asserted by a unit test (Finding 6: after calibration the test

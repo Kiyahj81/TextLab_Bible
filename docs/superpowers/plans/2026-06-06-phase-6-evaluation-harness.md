@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a standalone `eval/` harness with two tiers: a deterministic, free, blocking PR gate (Context Precision/Recall + required lemma/domain coverage + citation resolvability over the deterministic retrieval paths) and a non-blocking nightly hybrid quality report (full live pipeline + LLM-as-judge faithfulness via the Vercel AI Gateway).
+**Goal:** Build a standalone `eval/` harness with two tiers: a deterministic, free, blocking PR gate (Context Precision/Recall + required lemma coverage + citation resolvability over the deterministic retrieval paths) and a non-blocking nightly hybrid quality report (full live pipeline + LLM-as-judge faithfulness via the Vercel AI Gateway). The report is dual-key by design: `OPENAI_API_KEY` powers query embeddings + synthesis, `AI_GATEWAY_API_KEY` powers rerank + the judge.
 
 **Architecture:** A leaf `eval/` module imports from `lib/ai/*` and `lib/search.ts` but is imported by nothing in `app/`/`lib/`, so it cannot affect runtime. A shared runner runs each golden question through the pipeline and produces a `RunResult` from **exactly one `EvidencePacket`**. The gate uses `runRetrievalPlan(…, semanticEnabled=false)` (deterministic, DB-only). The report uses `semanticEnabled=true`, then builds the judged answer from that **same** packet via `synthesizeWithRefinement` and judges faithfulness via the AI Gateway.
 
@@ -31,7 +31,7 @@ Therefore: **gate = deterministic evidence-retrieval + citation-safety regressio
   - `verifyGrounding(claims: GroundingClaim[]): Promise<GroundingReport>` — `lib/ai/grounding.ts:72`. `GroundingClaim = { reference: string; greekQuote: string | null; gloss: string | null; englishQuote: string | null }`. `GroundingReport = { grounded: boolean; verdicts: ClaimVerdict[] }`. **With `greekQuote: null` it verifies reference resolution only** (`grounding.ts:106` gates quote-matching on `if (claim.greekQuote)`) — this is exactly the "citation resolvability" semantics the gate wants.
   - `synthesizeWithRefinement(input: { prompt: string; evidence: EvidencePacket; routing: RoutingDecision }): Promise<{ answer: string; claims; citations; toolTrace } | null>` — `lib/ai/synthesis.ts:197`. Returns `null` with no OpenAI client. **Use this to build the report's answer from the same packet the metrics came from** (do not call `answerBibleQuestion`, which re-retrieves).
   - `routeAssistantPrompt(prompt: string, escalate: boolean): RoutingDecision` — `@/lib/ai/modelRouter` (used at `assistant.ts:53`).
-- **Gateway-routed model strings:** `lib/search/rerank.ts` calls the `ai` SDK's `rerank({ model: "voyage/rerank-2.5" })` — a bare `creator/model` slug routed through the AI SDK's built-in Vercel AI Gateway global provider, authenticated by `AI_GATEWAY_API_KEY` (no `@ai-sdk/gateway` import). The judge uses `generateObject({ model: "anthropic/claude-sonnet-4-6", … })` the same way.
+- **Gateway-routed model strings:** `lib/search/rerank.ts` calls the `ai` SDK's `rerank({ model: "voyage/rerank-2.5" })` — a bare `creator/model` slug routed through the AI SDK's built-in Vercel AI Gateway global provider, authenticated by `AI_GATEWAY_API_KEY` (no `@ai-sdk/gateway` import). The judge uses `generateObject({ model: "anthropic/claude-sonnet-4.6", … })` the same way — **dotted** version slug like `voyage/rerank-2.5`, not the hyphenated direct-API id.
 - **Scripts run via `tsx --env-file=<file>`** (`package.json:22-25`). `.env.test` points `DATABASE_URL`/`DIRECT_URL` at the seeded Neon test branch.
 - **Editorial-scholar palette** (`app/globals.css:5-13`): `--background:#f6f5f1; --foreground:#1f2933; --surface:#ffffff; --muted:#6b7280; --border:#d7d3ca; --accent:#365f7e;`. Display serif Spectral; UI sans Inter Tight; Greek Gentium Plus.
 - **Integration-test convention:** `tests/integration/`, via `vitest.integration.config.ts`, **skip when `DATABASE_URL` is unset**.
@@ -454,7 +454,15 @@ import type { EvidencePacket } from "@/lib/ai/retrievalPlanner";
 
 // Bare creator/model slug routed through the AI SDK's Vercel AI Gateway global
 // provider (authenticated by AI_GATEWAY_API_KEY) — same mechanism as rerank.ts.
-export const EVAL_JUDGE_MODEL = process.env.EVAL_JUDGE_MODEL ?? "anthropic/claude-sonnet-4-6";
+// NOTE THE DOT: the Gateway catalog uses dotted Claude version slugs
+// (`anthropic/claude-sonnet-4.6`), matching `voyage/rerank-2.5` in rerank.ts —
+// NOT the hyphenated direct-API id `claude-sonnet-4-6` (that errors on the
+// Gateway). VERIFY the exact slug against the current Vercel AI Gateway model
+// list before first run; on a wrong slug the judge reports status "error"
+// (visible in the report), it does not silently vanish.
+export const EVAL_JUDGE_MODEL = process.env.EVAL_JUDGE_MODEL ?? "anthropic/claude-sonnet-4.6";
+const EVAL_JUDGE_TIMEOUT_MS =
+  Number(process.env.EVAL_JUDGE_TIMEOUT_MS) > 0 ? Number(process.env.EVAL_JUDGE_TIMEOUT_MS) : 30_000;
 
 const claimSchema = z.object({
   statement: z.string(),
@@ -466,6 +474,13 @@ const faithfulnessSchema = z.object({ claims: z.array(claimSchema) });
 export type FaithfulnessClaim = z.infer<typeof claimSchema>;
 export type FaithfulnessResult = { score: number; claims: FaithfulnessClaim[]; model: string };
 
+// Explicit outcome so the report can distinguish "no key" from "model/timeout/
+// provider error" — never collapse every non-success to a silent null.
+export type JudgeOutcome =
+  | { status: "skipped-no-key" }
+  | { status: "ran"; result: FaithfulnessResult }
+  | { status: "error"; model: string; message: string };
+
 const JUDGE_SYSTEM =
   "You are a strict faithfulness judge for a Bible-study assistant. Given an " +
   "ANSWER and the EVIDENCE it was built from, break the answer into atomic " +
@@ -473,29 +488,42 @@ const JUDGE_SYSTEM =
   "EVIDENCE alone. Do not use outside knowledge. SBLGNT Greek is the citation " +
   "authority; the WEB English is a display aid only.";
 
-// Returns null when no AI_GATEWAY_API_KEY is set, or on any error/timeout
-// (nightly-only signal; must never block or throw the report).
+function clip(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  return msg.slice(0, 300); // sanitized: bounded, no secrets/stack
+}
+
+// Skipped when no AI_GATEWAY_API_KEY. Otherwise runs with a timeout; any
+// error/timeout becomes status "error" (never throws, never blocks the report).
 export async function judgeFaithfulness(
   answer: string,
   evidence: EvidencePacket
-): Promise<FaithfulnessResult | null> {
-  if (!process.env.AI_GATEWAY_API_KEY) return null;
+): Promise<JudgeOutcome> {
+  if (!process.env.AI_GATEWAY_API_KEY) return { status: "skipped-no-key" };
   try {
     const { object } = await generateObject({
       model: EVAL_JUDGE_MODEL,
       schema: faithfulnessSchema,
       system: JUDGE_SYSTEM,
-      prompt: `EVIDENCE:\n${evidence.formattedEvidence}\n\nANSWER:\n${answer}`
+      prompt: `EVIDENCE:\n${evidence.formattedEvidence}\n\nANSWER:\n${answer}`,
+      abortSignal: AbortSignal.timeout(EVAL_JUDGE_TIMEOUT_MS)
     });
     const claims = object.claims ?? [];
     const supported = claims.filter((c) => c.supported).length;
     const score = claims.length === 0 ? 1 : supported / claims.length;
-    return { score, claims, model: EVAL_JUDGE_MODEL };
-  } catch {
-    return null;
+    return { status: "ran", result: { score, claims, model: EVAL_JUDGE_MODEL } };
+  } catch (err) {
+    return { status: "error", model: EVAL_JUDGE_MODEL, message: clip(err) };
   }
 }
 ```
+
+> **Verify the model slug.** Before the first nightly run, confirm the exact
+> Gateway slug (e.g. via the Vercel AI Gateway model list / dashboard). The
+> dotted `anthropic/claude-sonnet-4.6` matches the repo's `voyage/rerank-2.5`
+> convention, but if the catalog differs, set `EVAL_JUDGE_MODEL` accordingly —
+> a wrong slug now surfaces as a per-question `error` status in the report
+> rather than a silent missing-faithfulness.
 
 - [ ] **Step 3: Verify it type-checks** — Run: `npx tsc --noEmit --pretty false` → PASS.
 
@@ -529,6 +557,9 @@ import type { GoldenItem } from "@/eval/dataset/schema";
 
 export type RetrievedHit = { reference: string; corpus: string; toolName?: string };
 
+export type SynthesisStatus = "ran" | "skipped-no-key" | "error" | "not-run"; // not-run = deterministic mode
+export type JudgeStatus = "ran" | "skipped-no-key" | "skipped-no-answer" | "error" | "not-run";
+
 export type RunResult = {
   item: GoldenItem;
   mode: "deterministic" | "hybrid";
@@ -540,8 +571,14 @@ export type RunResult = {
   lemmaRequired: boolean;
   lemmaFound: boolean;
   rerankStatus: string | null;      // from the searchSemantic tool-trace entry, if any
+  // Explicit, separate statuses (Finding 3) — never inferred from output presence:
+  synthesisStatus: SynthesisStatus;
+  synthesisError?: string;
+  judgeStatus: JudgeStatus;
+  judgeModel: string | null;
+  judgeError?: string;
   faithfulness: FaithfulnessResult | null;
-  answer?: string;                  // present only in judged mode when synthesis ran
+  answer?: string;                  // present only when synthesis ran
 };
 
 function uniqueReferences(evidence: EvidencePacket): string[] {
@@ -597,29 +634,73 @@ async function runOnce(
     lemmaRequired,
     lemmaFound,
     rerankStatus: rerankStatusFrom(evidence),
+    synthesisStatus: "not-run",
+    judgeStatus: "not-run",
+    judgeModel: null,
     faithfulness: null
   };
   return { result, evidence };
 }
 
 // GATE mode: deterministic, DB-only (semanticEnabled=false → no embedding egress,
-// no rerank, key-free, reproducible).
+// no rerank, key-free, reproducible). Synthesis/judge are "not-run".
 export async function runDeterministic(item: GoldenItem): Promise<RunResult> {
   const { result } = await runOnce(item, false);
   return result;
 }
 
-// REPORT mode: full hybrid pipeline (semanticEnabled=true). Metrics AND the judged
-// answer derive from the SAME packet. synthesizeWithRefinement returns null without
-// an OpenAI client → no answer, faithfulness null. judgeFaithfulness returns null
-// without AI_GATEWAY_API_KEY.
+// REPORT mode: full hybrid pipeline (semanticEnabled=true). Metrics AND (when it
+// runs) the judged answer derive from the SAME packet. Dual-key by design:
+// synthesis needs OPENAI_API_KEY; the judge needs AI_GATEWAY_API_KEY. Each stage
+// records an EXPLICIT status (Finding 3) — a missing key, wrong model slug,
+// timeout, or provider error is labeled, never inferred from output presence.
 export async function runWithJudge(item: GoldenItem): Promise<RunResult> {
   const { result, evidence } = await runOnce(item, true);
-  const routing = routeAssistantPrompt(item.question, false);
-  const synth = await synthesizeWithRefinement({ prompt: item.question, evidence, routing });
-  if (!synth) return result; // no live synthesis (no OpenAI key) → metrics only
-  const faithfulness = await judgeFaithfulness(synth.answer, evidence);
-  return { ...result, answer: synth.answer, faithfulness };
+
+  // --- Synthesis (OPENAI_API_KEY) ---
+  let synthesisStatus: SynthesisStatus;
+  let answer: string | undefined;
+  let synthesisError: string | undefined;
+  if (!process.env.OPENAI_API_KEY) {
+    synthesisStatus = "skipped-no-key";
+  } else {
+    try {
+      const routing = routeAssistantPrompt(item.question, false);
+      const synth = await synthesizeWithRefinement({ prompt: item.question, evidence, routing });
+      if (synth) {
+        answer = synth.answer;
+        synthesisStatus = "ran";
+      } else {
+        // Key present but synthesis returned null (parse failure / no client).
+        synthesisStatus = "error";
+        synthesisError = "synthesis returned no result";
+      }
+    } catch (err) {
+      synthesisStatus = "error";
+      synthesisError = (err instanceof Error ? err.message : String(err)).slice(0, 300);
+    }
+  }
+
+  // --- Judge (AI_GATEWAY_API_KEY) — only meaningful with an answer ---
+  let judgeStatus: JudgeStatus;
+  let judgeModel: string | null = null;
+  let judgeError: string | undefined;
+  let faithfulness: FaithfulnessResult | null = null;
+  if (answer === undefined) {
+    judgeStatus = "skipped-no-answer";
+  } else {
+    const outcome = await judgeFaithfulness(answer, evidence);
+    judgeStatus = outcome.status === "ran" ? "ran" : outcome.status === "skipped-no-key" ? "skipped-no-key" : "error";
+    if (outcome.status === "ran") {
+      faithfulness = outcome.result;
+      judgeModel = outcome.result.model;
+    } else if (outcome.status === "error") {
+      judgeModel = outcome.model;
+      judgeError = outcome.message;
+    }
+  }
+
+  return { ...result, synthesisStatus, synthesisError, answer, judgeStatus, judgeModel, judgeError, faithfulness };
 }
 ```
 
@@ -663,7 +744,10 @@ const sample: RunResult[] = [
     lemmaRequired: false,
     lemmaFound: false,
     rerankStatus: "ok",
-    faithfulness: { score: 1, claims: [{ statement: "God so loved the world", supported: true, reason: "matches John 3:16" }], model: "anthropic/claude-sonnet-4-6" }
+    synthesisStatus: "ran",
+    judgeStatus: "ran",
+    judgeModel: "anthropic/claude-sonnet-4.6",
+    faithfulness: { score: 1, claims: [{ statement: "God so loved the world", supported: true, reason: "matches John 3:16" }], model: "anthropic/claude-sonnet-4.6" }
   }
 ];
 
@@ -689,6 +773,16 @@ describe("renderHtmlReport", () => {
   it("escapes HTML-special characters in question text", () => {
     const html = renderHtmlReport([{ ...sample[0], item: { ...sample[0].item, question: "love & <faith>" } }]);
     expect(html).toContain("love &amp; &lt;faith&gt;");
+  });
+  it("surfaces an explicit judge error instead of labeling it 'off'", () => {
+    const errored: RunResult[] = [{
+      ...sample[0], faithfulness: null, judgeStatus: "error",
+      judgeModel: "anthropic/claude-sonnet-4.6", judgeError: "model not found"
+    }];
+    const html = renderHtmlReport(errored);
+    expect(html).toContain("error");
+    expect(html).toContain("model not found");
+    expect(html).not.toContain("off (no AI_GATEWAY_API_KEY)"); // not mislabeled as missing key
   });
 });
 ```
@@ -754,9 +848,18 @@ function coverageBlock(result: RunResult): string {
 }
 
 function faithfulnessBlock(result: RunResult): string {
-  if (!result.faithfulness) return "";
-  const claims = result.faithfulness.claims.map((c) => `<li class="${c.supported ? "hit" : "miss"}">${c.supported ? "✓" : "✗"} ${esc(c.statement)} <span class="muted">— ${esc(c.reason)}</span></li>`).join("");
-  return `<div class="faith"><h4>Faithfulness ${result.faithfulness.score.toFixed(2)} <span class="muted">(${esc(result.faithfulness.model)})</span></h4><ul>${claims}</ul></div>`;
+  if (result.faithfulness) {
+    const claims = result.faithfulness.claims.map((c) => `<li class="${c.supported ? "hit" : "miss"}">${c.supported ? "✓" : "✗"} ${esc(c.statement)} <span class="muted">— ${esc(c.reason)}</span></li>`).join("");
+    return `<div class="faith"><h4>Faithfulness ${result.faithfulness.score.toFixed(2)} <span class="muted">(${esc(result.faithfulness.model)})</span></h4><ul>${claims}</ul></div>`;
+  }
+  // No score — show WHY explicitly (Finding 3), never silently blank.
+  if (result.judgeStatus === "error") {
+    return `<div class="faith"><h4>Faithfulness <span class="miss">error</span> <span class="muted">(${esc(result.judgeModel ?? "?")})</span></h4><p class="muted">${esc(result.judgeError ?? "judge failed")}</p></div>`;
+  }
+  if (result.synthesisStatus === "error") {
+    return `<div class="faith"><h4>Faithfulness <span class="miss">n/a</span></h4><p class="muted">synthesis error: ${esc(result.synthesisError ?? "")}</p></div>`;
+  }
+  return ""; // deterministic mode or cleanly skipped (no key / no answer) — status shown in the summary line
 }
 
 function card(result: RunResult): string {
@@ -772,11 +875,19 @@ function card(result: RunResult): string {
   </details>`;
 }
 
+// Summarize a status field across questions as "ran A · error B · skipped C"
+// (Finding 3): derived from the EXPLICIT statuses, never from output presence.
+function statusTally(results: RunResult[], pick: (r: RunResult) => string): string {
+  const counts = new Map<string, number>();
+  for (const r of results) counts.set(pick(r), (counts.get(pick(r)) ?? 0) + 1);
+  return [...counts.entries()].map(([k, v]) => `${v} ${k}`).join(" · ");
+}
+
 export function renderHtmlReport(results: RunResult[]): string {
   const s = summaryOf(results);
   const f = meanFaithfulness(results);
-  const judged = results.some((r) => r.faithfulness);
-  const synthRan = results.some((r) => r.answer !== undefined);
+  const synthTally = statusTally(results, (r) => r.synthesisStatus);
+  const judgeTally = statusTally(results, (r) => r.judgeStatus);
   const scoreRow = (label: string, value: number, threshold: number) =>
     `<tr><td>${label}</td><td>${value.toFixed(3)}</td><td>${threshold}</td><td>${badge(value >= threshold)}</td></tr>`;
   return `<!DOCTYPE html>
@@ -805,8 +916,8 @@ export function renderHtmlReport(results: RunResult[]): string {
 <body>
   <h1 class="accent-rule">TextLab Evaluation Report</h1>
   <p class="muted">Generated ${esc(new Date().toISOString())} · ${results.length} questions ·
-    hybrid synthesis: ${synthRan ? "ran" : "off (no OPENAI_API_KEY)"} ·
-    faithfulness judge: ${judged ? "ran" : "off (no AI_GATEWAY_API_KEY)"} ·
+    synthesis: ${esc(synthTally)} ·
+    judge: ${esc(judgeTally)} ·
     mean faithfulness: ${f === null ? "n/a" : f.toFixed(2)}</p>
   <h2>Summary</h2>
   <table>
@@ -815,7 +926,7 @@ export function renderHtmlReport(results: RunResult[]): string {
       ${scoreRow("Mean Context Recall", s.meanRecall, THRESHOLDS.meanRecall)}
       ${scoreRow("Mean Context Precision", s.meanPrecision, THRESHOLDS.meanPrecision)}
       ${scoreRow("Per-question recall floor", s.minRecall, THRESHOLDS.minRecall)}
-      ${scoreRow("Required lemma/domain coverage", s.lemmaCoverage, THRESHOLDS.lemmaCoverage)}
+      ${scoreRow("Required lemma coverage", s.lemmaCoverage, THRESHOLDS.lemmaCoverage)}
       ${scoreRow("Citation resolvability", s.citationResolvability, THRESHOLDS.citationResolvability)}
     </tbody>
   </table>
@@ -864,7 +975,7 @@ async function main() {
     { label: "Mean Context Recall", value: agg.meanRecall, min: THRESHOLDS.meanRecall },
     { label: "Mean Context Precision", value: agg.meanPrecision, min: THRESHOLDS.meanPrecision },
     { label: "Per-question recall floor", value: agg.minRecall, min: THRESHOLDS.minRecall },
-    { label: "Required lemma/domain coverage", value: agg.lemmaCoverage, min: THRESHOLDS.lemmaCoverage },
+    { label: "Required lemma coverage", value: agg.lemmaCoverage, min: THRESHOLDS.lemmaCoverage },
     { label: "Citation resolvability", value: agg.citationResolvability, min: THRESHOLDS.citationResolvability }
   ];
 
@@ -962,7 +1073,7 @@ main().catch((err) => { console.error(err); process.exit(1); });
     "eval:report": "tsx --env-file=.env.test scripts/eval-report.ts",
 ```
 
-> Uses `.env.test` for `DATABASE_URL`. Live synthesis runs only if `OPENAI_API_KEY` is present in the process env; faithfulness only if `AI_GATEWAY_API_KEY` is present (set `EVAL_JUDGE_MODEL` to override the default `anthropic/claude-sonnet-4-6`). Without either, the report still renders with retrieval-only metrics.
+> Uses `.env.test` for `DATABASE_URL`. **The full report is dual-key:** live synthesis + query embeddings (vector KNN) run only with `OPENAI_API_KEY`; rerank + faithfulness run only with `AI_GATEWAY_API_KEY` (set `EVAL_JUDGE_MODEL` to override the default `anthropic/claude-sonnet-4.6` — dotted slug; `EVAL_JUDGE_TIMEOUT_MS` to override the 30 s judge timeout). With neither, the report still renders retrieval-only metrics, and each question's `synthesisStatus`/`judgeStatus` records exactly why a stage did or didn't run.
 
 - [ ] **Step 3: Run the report** — Run: `npm run eval:report`. Writes `eval/output/report.{html,json}`. Open the HTML and confirm the scorecard, status line (synthesis/judge on/off), and collapsible per-question cards render with the editorial palette.
 
@@ -1079,8 +1190,8 @@ git commit -m "Add eval-runner integration smoke test"
 - [ ] **Step 1: Gate wiring decision** — `npm run verify` (`package.json:15`) is `lint && tsc && build && test:coverage` and needs no DB. `eval:gate` needs `DATABASE_URL`. Do NOT fold `eval:gate` into `verify`. Add it as a separate documented CI step alongside `test:integration` / `test:acceptance`.
 
 - [ ] **Step 2: Update README** — add an "Evaluation harness" subsection:
-  - `npm run eval:gate` — deterministic, DB-only, **blocking** PR gate. Protects deterministic evidence retrieval and citation safety: Context Precision/Recall, required lemma/domain coverage, 100% citation resolvability. No API key. Dataset at `eval/dataset/golden-set.json`.
-  - `npm run eval:report` — **non-blocking** nightly/on-demand hybrid quality report. Runs the full pipeline (pgvector + RRF + rerank + synthesis), adds LLM-judge faithfulness via the Vercel AI Gateway (`EVAL_JUDGE_MODEL`, default `anthropic/claude-sonnet-4-6`, gated on `AI_GATEWAY_API_KEY`; live synthesis gated on `OPENAI_API_KEY`). Writes `eval/output/report.{html,json}`.
+  - `npm run eval:gate` — deterministic, DB-only, **blocking** PR gate. Protects deterministic evidence retrieval and citation safety: Context Precision/Recall, required lemma coverage, 100% citation resolvability. No API key. Dataset at `eval/dataset/golden-set.json`.
+  - `npm run eval:report` — **non-blocking** nightly/on-demand hybrid quality report. **Dual-key:** `OPENAI_API_KEY` powers query embeddings (pgvector KNN) + live synthesis; `AI_GATEWAY_API_KEY` powers Voyage rerank + LLM-judge faithfulness (`EVAL_JUDGE_MODEL`, default `anthropic/claude-sonnet-4.6` — dotted Gateway slug). Each question records explicit `synthesisStatus`/`judgeStatus` (ran / skipped-no-key / error). Writes `eval/output/report.{html,json}`.
   - State explicitly: the gate protects deterministic retrieval + citation safety; the report monitors full hybrid-pipeline quality and faithfulness. Generative-hallucination protection lives in the production runtime grounding verifier + the nightly report.
 
 - [ ] **Step 3: Update PROJECT_STATE.md**
@@ -1111,7 +1222,8 @@ git commit -m "Document Phase 6 two-tier evaluation harness; mark phase done"
 
 ## Self-review notes (author)
 
-- **Spec coverage:** two-tier framing (T7 modes, T9 gate, T10 report) · dataset (T1,T5) · precision/recall (T3) · required lemma/domain coverage (T3 aggregate + T7 lemmaFound + T9 gate) · citation resolvability (T3,T7,T9 — renamed from grounding, reference-only `verifyGrounding`) · deterministic blocking gate + calibrated/exact thresholds (T4,T9,T11) · gateway LLM-judge faithfulness, nightly (T6,T7,T10) · single-EvidencePacket per mode (T7 — Finding 3) · HTML+JSON report with golden-vs-retrieved + trace incl. rerank status + coverage + faithfulness (T8 — Finding 5) · unit+integration tests (T2–T8,T12) · docs (T13). Out-of-scope items (prose-sweep grounding, embedding/rerank fixtures, branch-coverage gate, auto-derived questions) not implemented.
-- **Findings resolved:** (1) gate is deterministic-only by design; hybrid quality in nightly report — spec + plan say so explicitly. (2) metric renamed to citation resolvability; hallucination guard documented as runtime + nightly. (3) one packet per mode; report synthesizes from the same packet via `synthesizeWithRefinement`. (4) lemma/domain coverage is a 100% gate check. (5) report trace shows `toolName` + rerank status (no invented rank provenance). (6) thresholds test asserts exact calibrated values after Task 11.
-- **Implementer must verify against live code (flagged inline, not placeholders):** `ai` SDK `generateObject` export + gateway string routing (mirror `rerank.ts`); `ToolTraceEntry.args` typing for the rerank-status read; integration-test skip idiom. Each task names the source-of-truth file.
+- **Spec coverage:** two-tier framing (T7 modes, T9 gate, T10 report) · dataset (T1,T5) · precision/recall (T3) · required lemma coverage (T3 aggregate + T7 lemmaFound + T9 gate) · citation resolvability (T3,T7,T9 — renamed from grounding, reference-only `verifyGrounding`) · deterministic blocking gate + calibrated/exact thresholds (T4,T9,T11) · gateway LLM-judge faithfulness, nightly, dual-key, timeout-bounded, explicit status (T6,T7,T10) · single-EvidencePacket per mode (T7 — Finding 3) · HTML+JSON report with golden-vs-retrieved + trace incl. rerank status + coverage + faithfulness/status (T8) · unit+integration tests (T2–T8,T12) · docs (T13). Out-of-scope items (prose-sweep grounding, embedding/rerank fixtures, branch-coverage gate, auto-derived questions) not implemented.
+- **Round-1 findings resolved:** (1) gate is deterministic-only by design; hybrid quality in nightly report — explicit. (2) metric renamed to citation resolvability; hallucination guard documented as runtime + nightly. (3) one packet per mode; report synthesizes from that packet via `synthesizeWithRefinement`. (4) required lemma coverage is a 100% gate check. (5) report trace shows `toolName` + rerank status (no invented rank provenance). (6) thresholds test asserts exact calibrated values after Task 11.
+- **Round-2 findings resolved:** (1) the report is **dual-key by design** — `OPENAI_API_KEY` for embeddings+synthesis, `AI_GATEWAY_API_KEY` for rerank+judge — stated in spec + plan; not claimed gateway-only. (2) default judge slug corrected to dotted `anthropic/claude-sonnet-4.6` (Gateway convention, matching `voyage/rerank-2.5`), with a verify-the-slug note. (3) `RunResult` carries explicit `synthesisStatus`/`judgeStatus`/`judgeModel`/error fields; report status line + faithfulness block derive from them (a wrong slug/timeout/error is labeled, not mislabeled "off"). (4) metric renamed "required lemma coverage" (scoped to `mustContainLemma`; `mustContainDomain` flagged as a later option). (5) judge runs under `AbortSignal.timeout(EVAL_JUDGE_TIMEOUT_MS)` (default 30 s).
+- **Implementer must verify against live code (flagged inline, not placeholders):** the exact Vercel AI Gateway slug for Sonnet 4.6 (verify before first run; wrong slug → visible `error` status, not silent); `ai` SDK `generateObject` export + `abortSignal` option + gateway string routing (mirror `rerank.ts`); `ToolTraceEntry.args` typing for the rerank-status read; integration-test skip idiom. Each task names the source-of-truth file.
 - **Type consistency:** `RunResult` (T7) consumed by `report.ts` (T8), `eval-gate.ts` (T9), `eval-report.ts` (T10), integration test (T12). `QuestionScore`/`Aggregate` (T3) reused in `report.ts`/`eval-gate.ts`. `THRESHOLDS` keys (`meanRecall`, `meanPrecision`, `minRecall`, `citationResolvability`, `lemmaCoverage`) identical across `thresholds.ts`, its test, `report.ts`, and `eval-gate.ts`.

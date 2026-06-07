@@ -20,7 +20,7 @@ vector pipeline or detect generative hallucination (see "Why two tiers" below):
   100% deterministic, no API key. It protects **deterministic evidence
   retrieval and citation safety**: Context Precision/Recall over the
   deterministic retrieval paths (FTS / lemma / passage / domain), required
-  lemma/domain coverage, and 100% **citation resolvability**.
+  lemma coverage, and 100% **citation resolvability**.
 - **Non-blocking hybrid quality report — the full live pipeline.** Run
   nightly / on-demand. It exercises the *true* hybrid pipeline (query
   embeddings, pgvector KNN, RRF, Voyage rerank, synthesis) and adds an
@@ -63,7 +63,7 @@ generative hallucination.
   golden dataset and scores the results.
 - A ~20-item hand-curated golden dataset spanning all five query types.
 - **Deterministic gate metrics:** Context Precision, Context Recall, required
-  lemma/domain coverage, and Citation Resolvability — all computed from the
+  lemma coverage, and Citation Resolvability — all computed from the
   deterministic (`semanticEnabled=false`) retrieval output.
 - A deterministic blocking gate (`npm run eval:gate`) with tunable thresholds.
 - A nightly/on-demand run (`npm run eval:report`) that runs the **full hybrid
@@ -189,10 +189,13 @@ when retrieved is empty but golden is non-empty.
 `recall = |retrieved ∩ golden| / |golden|`. `1.0` when golden is empty. The most
 important metric for a Bible app: a missed verse means incomplete evidence.
 
-**Required lemma/domain coverage** — for items with `mustContainLemma`, the
-assembled evidence must contain that lemma. The gate requires **100%** coverage
-over the items that declare a requirement, so a lemma-survey regression that
-still happens to match verse refs is still caught.
+**Required lemma coverage** — for items with `mustContainLemma`, the assembled
+evidence must contain that lemma. The gate requires **100%** coverage over the
+items that declare a requirement, so a lemma-survey regression that still happens
+to match verse refs is still caught. (Scoped to lemmas: the schema field is
+`mustContainLemma` only. Domain query types are still exercised — their
+`goldenReferences` drive recall — but there is no separate `mustContainDomain`
+check in v1; add one later if domain-code presence needs gating.)
 
 **Citation Resolvability** (gate; renamed from "grounding pass-rate") — every
 reference emitted by deterministic retrieval must **parse and resolve to a real
@@ -210,8 +213,15 @@ Required at **100%**.
 **Faithfulness (report only)** — LLM-as-judge decomposes the *live* synthesized
 answer into atomic claims and rules each supported / unsupported against the
 retrieved evidence. Score = supported / total. Routed through the **Vercel AI
-Gateway** (model `EVAL_JUDGE_MODEL`, default `anthropic/claude-sonnet-4-6`), gated
-on `AI_GATEWAY_API_KEY`. Absent key → skipped (recorded `null`), never failed.
+Gateway** (model `EVAL_JUDGE_MODEL`, default `anthropic/claude-sonnet-4.6` — note
+the **dot**, not a hyphen: the Gateway catalog uses dotted Claude version slugs
+like `voyage/rerank-2.5` already does in `rerank.ts`; the hyphenated
+`claude-sonnet-4-6` is the direct-API id and would error). Gated on
+`AI_GATEWAY_API_KEY`. The judge runs with a timeout (`EVAL_JUDGE_TIMEOUT_MS`,
+default 30 s) and **records an explicit status** (`ran` / `skipped-no-key` /
+`error` with a sanitized message) rather than collapsing every non-success to a
+silent `null` — so a wrong model slug, timeout, or provider error is visible in
+the report, not mislabeled as "judge off".
 
 ## Gate thresholds
 
@@ -226,7 +236,7 @@ bounds).
 | Mean Context Recall | ≥ 0.90 | Don't silently start missing the right verses |
 | Mean Context Precision | ≥ 0.80 | Some passage-window noise acceptable; recall matters more |
 | Per-question recall floor | ≥ 0.50 | Catch a single catastrophically-broken query a healthy mean would hide |
-| Required lemma/domain coverage | 100% | A lemma-survey regression must not pass on ref overlap alone |
+| Required lemma coverage | 100% | A lemma-survey regression must not pass on ref overlap alone |
 | Citation Resolvability | 100% | Zero tolerance for a citation that doesn't resolve to a real verse |
 
 These are **starting** values, calibrated against the first real run (after the
@@ -243,9 +253,27 @@ dataset is reviewed) so the gate starts green, then ratcheted up.
   hybrid pipeline (`semanticEnabled=true`) once per question, builds the live
   answer from that same packet via `synthesizeWithRefinement`, judges
   faithfulness via the AI Gateway, and writes `eval/output/report.{html,json}`.
-  Degrades gracefully: no `OPENAI_API_KEY` → no live answer (faithfulness `null`,
-  metrics reflect whatever retrieval produced); no `AI_GATEWAY_API_KEY` → no
-  judge and no rerank. Records all three statuses per question.
+
+  **The full report is dual-key by design** (this is forced by the real pipeline,
+  not a choice): in the current codebase, query embeddings for pgvector KNN
+  (`embedQuery` → `getOpenAi`, `lib/search.ts`) and live synthesis
+  (`synthesizeWithRefinement` → `getOpenAi`, `lib/ai/synthesis.ts`) require
+  `OPENAI_API_KEY`, while rerank and the faithfulness judge require
+  `AI_GATEWAY_API_KEY`. So:
+
+  | Key present | What runs |
+  |---|---|
+  | `OPENAI_API_KEY` | query embeddings (vector KNN) + live synthesis |
+  | `AI_GATEWAY_API_KEY` | Voyage rerank + LLM-judge faithfulness |
+  | both | the complete hybrid + faithfulness report |
+
+  Making the report "gateway-only" would require eval-only, gateway-backed
+  embedding/synthesis — which would measure a *different* pipeline than
+  production, defeating the purpose. So the report measures the real pipeline and
+  is dual-key. It degrades gracefully and **records an explicit per-question
+  status** for synthesis and the judge (`ran` / `skipped-no-key` / `error`), so a
+  missing key, wrong model slug, timeout, or provider error is labeled correctly
+  rather than inferred from whether output happens to exist.
 
 ## The HTML report
 
@@ -306,7 +334,7 @@ Per CLAUDE.md:
    prints a per-metric summary, and exits 0 on the calibrated dataset / non-zero
    on any breach. It uses `semanticEnabled=false` retrieval throughout.
 2. The gate enforces Context Precision, Context Recall (mean + per-question
-   floor), 100% required lemma/domain coverage, and 100% citation resolvability.
+   floor), 100% required lemma coverage, and 100% citation resolvability.
 3. The golden dataset has ~20 reviewed items covering all five query types and
    validates against its schema in a unit test.
 4. `npm run eval:report` runs the full hybrid pipeline **once per question**,

@@ -1,18 +1,26 @@
 // eval/report.ts
 import { aggregate, type Aggregate } from "@/eval/metrics";
-import { THRESHOLDS } from "@/eval/thresholds";
+import { GLOBAL_GATES, TYPE_GATES } from "@/eval/thresholds";
 import { canonicalizeReference } from "@/eval/references";
+import type { QueryType } from "@/eval/dataset/schema";
 import type { RunResult } from "@/eval/runner";
 
 function esc(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+const mean = (nums: number[]) => (nums.length === 0 ? 1 : nums.reduce((a, b) => a + b, 0) / nums.length);
+
 function summaryOf(results: RunResult[]): Aggregate {
-  return aggregate(results.map((r) => ({
-    recall: r.recall, precision: r.precision, citationsResolve: r.citationsResolve,
-    lemmaRequired: r.lemmaRequired, lemmaFound: r.lemmaFound
-  })));
+  return aggregate(
+    results.map((r) => ({
+      recall: r.recall,
+      precision: r.precision,
+      citationsResolve: r.citationsResolve,
+      lemmaRequired: r.lemmaRequired,
+      lemmaFound: r.lemmaFound
+    }))
+  );
 }
 
 function meanFaithfulness(results: RunResult[]): number | null {
@@ -22,7 +30,13 @@ function meanFaithfulness(results: RunResult[]): number | null {
 
 export function renderJsonReport(results: RunResult[]): string {
   return JSON.stringify(
-    { generatedAt: new Date().toISOString(), thresholds: THRESHOLDS, summary: summaryOf(results), meanFaithfulness: meanFaithfulness(results), results },
+    {
+      generatedAt: new Date().toISOString(),
+      gates: { global: GLOBAL_GATES, byType: TYPE_GATES },
+      summary: summaryOf(results),
+      meanFaithfulness: meanFaithfulness(results),
+      results
+    },
     null,
     2
   );
@@ -30,6 +44,17 @@ export function renderJsonReport(results: RunResult[]): string {
 
 function badge(pass: boolean): string {
   return pass ? `<span class="badge pass">PASS</span>` : `<span class="badge fail">FAIL</span>`;
+}
+
+// Type-aware per-item pass: global hard gates always apply; recall/precision only
+// where gated for the item's query type.
+function itemGatePass(result: RunResult): boolean {
+  if (!result.citationsResolve) return false;
+  if (result.lemmaRequired && !result.lemmaFound) return false;
+  const gate = TYPE_GATES[result.item.queryType as QueryType];
+  if (gate.recall !== undefined && result.recall < gate.recall) return false;
+  if (gate.precision !== undefined && result.precision < gate.precision) return false;
+  return true;
 }
 
 function refDiff(result: RunResult): string {
@@ -71,7 +96,7 @@ function faithfulnessBlock(result: RunResult): string {
 }
 
 function card(result: RunResult): string {
-  const pass = result.recall >= THRESHOLDS.minRecall && result.citationsResolve && (!result.lemmaRequired || result.lemmaFound);
+  const pass = itemGatePass(result);
   return `<details class="card" ${pass ? "" : "open"}>
     <summary><span class="qt">${esc(result.item.queryType)}</span> ${esc(result.item.question)} ${badge(pass)}
       <span class="metric">R ${result.recall.toFixed(2)} · P ${result.precision.toFixed(2)} · ${result.citationsResolve ? "refs ✓" : "refs ✗"}</span></summary>
@@ -91,15 +116,53 @@ function statusTally(results: RunResult[], pick: (r: RunResult) => string): stri
   return [...counts.entries()].map(([k, v]) => `${v} ${k}`).join(" · ");
 }
 
+// Global hard-gate rows + a per-query-type recall/precision table (gated metrics
+// badged PASS/FAIL; ungated metrics shown as "report-only").
+function summaryTables(results: RunResult[]): string {
+  const resolveOk = results.every((r) => r.citationsResolve);
+  const requiredLemma = results.filter((r) => r.lemmaRequired);
+  const lemmaOk = requiredLemma.every((r) => r.lemmaFound);
+
+  const cell = (value: number, gated: boolean, pass: boolean) =>
+    gated ? `${value.toFixed(2)} ${badge(pass)}` : `${value.toFixed(2)} <span class="muted">report-only</span>`;
+
+  const types = [...new Set(results.map((r) => r.item.queryType))].sort() as QueryType[];
+  const typeRows = types
+    .map((t) => {
+      const rows = results.filter((r) => r.item.queryType === t);
+      const gate = TYPE_GATES[t];
+      const rThresh = gate.recall;
+      const pThresh = gate.precision;
+      const mr = mean(rows.map((r) => r.recall));
+      const mp = mean(rows.map((r) => r.precision));
+      const recallPass = rThresh === undefined || rows.every((r) => r.recall >= rThresh);
+      const precPass = pThresh === undefined || rows.every((r) => r.precision >= pThresh);
+      return `<tr><td>${esc(t)}</td><td>${rows.length}</td><td>${cell(mr, gate.recall !== undefined, recallPass)}</td><td>${cell(mp, gate.precision !== undefined, precPass)}</td></tr>`;
+    })
+    .join("");
+
+  return `
+  <h2>Hard gates (all items)</h2>
+  <table>
+    <thead><tr><th>Gate</th><th>Result</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>Citation resolvability</td><td>${results.filter((r) => r.citationsResolve).length}/${results.length} resolve</td><td>${badge(resolveOk)}</td></tr>
+      <tr><td>Required lemma coverage</td><td>${requiredLemma.filter((r) => r.lemmaFound).length}/${requiredLemma.length} required lemmas surfaced</td><td>${badge(lemmaOk)}</td></tr>
+    </tbody>
+  </table>
+  <h2>Per query type</h2>
+  <table>
+    <thead><tr><th>Query type</th><th>n</th><th>Mean recall</th><th>Mean precision</th></tr></thead>
+    <tbody>${typeRows}</tbody>
+  </table>`;
+}
+
 export function renderHtmlReport(results: RunResult[]): string {
-  const s = summaryOf(results);
   const f = meanFaithfulness(results);
   const synthTally = statusTally(results, (r) => r.synthesisStatus);
   const judgeTally = statusTally(results, (r) => r.judgeStatus);
   const synthModels = [...new Set(results.map((r) => r.synthesisModel).filter((m): m is string => Boolean(m)))];
   const judgeModels = [...new Set(results.map((r) => r.judgeModel).filter((m): m is string => Boolean(m)))];
-  const scoreRow = (label: string, value: number, threshold: number) =>
-    `<tr><td>${label}</td><td>${value.toFixed(3)}</td><td>${threshold}</td><td>${badge(value >= threshold)}</td></tr>`;
   return `<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -109,7 +172,7 @@ export function renderHtmlReport(results: RunResult[]): string {
   body { margin:0; background:var(--bg); color:var(--ink); font-family:"Inter Tight", system-ui, sans-serif; line-height:1.5; padding:2rem; }
   h1,h2,h3 { font-family:"Spectral", Georgia, serif; }
   .accent-rule { border-left:3px solid var(--accent); padding-left:.75rem; }
-  table { border-collapse:collapse; width:100%; background:var(--surface); }
+  table { border-collapse:collapse; width:100%; background:var(--surface); margin-bottom:1rem; }
   th,td { text-align:left; padding:.4rem .6rem; border-bottom:1px solid var(--border); }
   .badge { font-size:.7rem; font-weight:600; padding:.1rem .45rem; border-radius:3px; }
   .badge.pass { background:#e3efe5; color:#1d6b3a; } .badge.fail { background:#f5e0e0; color:#9b2c2c; }
@@ -131,17 +194,7 @@ export function renderHtmlReport(results: RunResult[]): string {
     synthesis models: ${esc(synthModels.length ? synthModels.join(", ") : "n/a")} ·
     judge models: ${esc(judgeModels.length ? judgeModels.join(", ") : "n/a")} ·
     mean faithfulness: ${f === null ? "n/a" : f.toFixed(2)}</p>
-  <h2>Summary</h2>
-  <table>
-    <thead><tr><th>Metric</th><th>Value</th><th>Threshold</th><th>Status</th></tr></thead>
-    <tbody>
-      ${scoreRow("Mean Context Recall", s.meanRecall, THRESHOLDS.meanRecall)}
-      ${scoreRow("Mean Context Precision", s.meanPrecision, THRESHOLDS.meanPrecision)}
-      ${scoreRow("Per-question recall floor", s.minRecall, THRESHOLDS.minRecall)}
-      ${scoreRow("Required lemma coverage", s.lemmaCoverage, THRESHOLDS.lemmaCoverage)}
-      ${scoreRow("Citation resolvability", s.citationResolvability, THRESHOLDS.citationResolvability)}
-    </tbody>
-  </table>
+  ${summaryTables(results)}
   <h2>Questions</h2>
   ${results.map(card).join("\n")}
 </body></html>`;

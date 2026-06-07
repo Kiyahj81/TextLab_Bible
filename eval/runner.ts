@@ -5,6 +5,7 @@ import { verifyGrounding } from "@/lib/ai/grounding";
 import { synthesizeWithRefinement } from "@/lib/ai/synthesis";
 import { routeAssistantPrompt } from "@/lib/ai/modelRouter";
 import { contextPrecision, contextRecall } from "@/eval/metrics";
+import { canonicalizeReference } from "@/eval/references";
 import { judgeFaithfulness, type FaithfulnessResult } from "@/eval/judge";
 import type { GoldenItem } from "@/eval/dataset/schema";
 
@@ -36,13 +37,28 @@ export type RunResult = {
   answer?: string;                  // present only when synthesis ran
 };
 
+// The retrieved CONTEXT the synthesizer actually sees = the citation sample PLUS
+// every reference in the assembled evidence text. Citations are a bounded display
+// sample (≤10 per search), but formattedEvidence carries the full retrieved
+// passages/results — context recall must measure the latter, or a passage longer
+// than the citation cap (e.g. a 12-verse cross-chapter range) is under-counted.
+// Anchored to the two evidence line formats so verse text can't yield false refs:
+//   "- <ref>, SBLGNT: ..."  (passage / keyword / semantic-window lines)
+//   "| <ref> | <surface> | ..."  (lemma / domain / morphology table rows)
+const PASSAGE_LINE_RE = /^- (.+?), (?:SBLGNT|WEB):/gm;
+const TABLE_LINE_RE = /^\| ([^|]+?) \|/gm;
+
 function uniqueReferences(evidence: EvidencePacket): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const c of evidence.citations) {
-    if (seen.has(c.reference)) continue;
-    seen.add(c.reference);
-    out.push(c.reference);
+  const add = (ref: string | null) => {
+    if (!ref || seen.has(ref)) return;
+    seen.add(ref);
+    out.push(ref);
+  };
+  for (const c of evidence.citations) add(canonicalizeReference(c.reference) ?? c.reference);
+  for (const re of [PASSAGE_LINE_RE, TABLE_LINE_RE]) {
+    for (const m of evidence.formattedEvidence.matchAll(re)) add(canonicalizeReference(m[1].trim()));
   }
   return out;
 }

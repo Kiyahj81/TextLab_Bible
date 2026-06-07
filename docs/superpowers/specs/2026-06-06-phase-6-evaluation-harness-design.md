@@ -210,7 +210,7 @@ Required at **100%**.
 **Faithfulness (report only)** — LLM-as-judge decomposes the *live* synthesized
 answer into atomic claims and rules each supported / unsupported against the
 retrieved evidence. Score = supported / total. Routed through the **Vercel AI
-Gateway** (model `EVAL_JUDGE_MODEL`, default `anthropic/claude-opus-4-8`), gated
+Gateway** (model `EVAL_JUDGE_MODEL`, default `anthropic/claude-sonnet-4-6`), gated
 on `AI_GATEWAY_API_KEY`. Absent key → skipped (recorded `null`), never failed.
 
 ## Gate thresholds

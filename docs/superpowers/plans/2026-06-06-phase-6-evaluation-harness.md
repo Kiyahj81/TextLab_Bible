@@ -31,7 +31,7 @@ Therefore: **gate = deterministic evidence-retrieval + citation-safety regressio
   - `verifyGrounding(claims: GroundingClaim[]): Promise<GroundingReport>` — `lib/ai/grounding.ts:72`. `GroundingClaim = { reference: string; greekQuote: string | null; gloss: string | null; englishQuote: string | null }`. `GroundingReport = { grounded: boolean; verdicts: ClaimVerdict[] }`. **With `greekQuote: null` it verifies reference resolution only** (`grounding.ts:106` gates quote-matching on `if (claim.greekQuote)`) — this is exactly the "citation resolvability" semantics the gate wants.
   - `synthesizeWithRefinement(input: { prompt: string; evidence: EvidencePacket; routing: RoutingDecision }): Promise<{ answer: string; claims; citations; toolTrace } | null>` — `lib/ai/synthesis.ts:197`. Returns `null` with no OpenAI client. **Use this to build the report's answer from the same packet the metrics came from** (do not call `answerBibleQuestion`, which re-retrieves).
   - `routeAssistantPrompt(prompt: string, escalate: boolean): RoutingDecision` — `@/lib/ai/modelRouter` (used at `assistant.ts:53`).
-- **Gateway-routed model strings:** `lib/search/rerank.ts` calls the `ai` SDK's `rerank({ model: "voyage/rerank-2.5" })` — a bare `creator/model` slug routed through the AI SDK's built-in Vercel AI Gateway global provider, authenticated by `AI_GATEWAY_API_KEY` (no `@ai-sdk/gateway` import). The judge uses `generateObject({ model: "anthropic/claude-opus-4-8", … })` the same way.
+- **Gateway-routed model strings:** `lib/search/rerank.ts` calls the `ai` SDK's `rerank({ model: "voyage/rerank-2.5" })` — a bare `creator/model` slug routed through the AI SDK's built-in Vercel AI Gateway global provider, authenticated by `AI_GATEWAY_API_KEY` (no `@ai-sdk/gateway` import). The judge uses `generateObject({ model: "anthropic/claude-sonnet-4-6", … })` the same way.
 - **Scripts run via `tsx --env-file=<file>`** (`package.json:22-25`). `.env.test` points `DATABASE_URL`/`DIRECT_URL` at the seeded Neon test branch.
 - **Editorial-scholar palette** (`app/globals.css:5-13`): `--background:#f6f5f1; --foreground:#1f2933; --surface:#ffffff; --muted:#6b7280; --border:#d7d3ca; --accent:#365f7e;`. Display serif Spectral; UI sans Inter Tight; Greek Gentium Plus.
 - **Integration-test convention:** `tests/integration/`, via `vitest.integration.config.ts`, **skip when `DATABASE_URL` is unset**.
@@ -454,7 +454,7 @@ import type { EvidencePacket } from "@/lib/ai/retrievalPlanner";
 
 // Bare creator/model slug routed through the AI SDK's Vercel AI Gateway global
 // provider (authenticated by AI_GATEWAY_API_KEY) — same mechanism as rerank.ts.
-export const EVAL_JUDGE_MODEL = process.env.EVAL_JUDGE_MODEL ?? "anthropic/claude-opus-4-8";
+export const EVAL_JUDGE_MODEL = process.env.EVAL_JUDGE_MODEL ?? "anthropic/claude-sonnet-4-6";
 
 const claimSchema = z.object({
   statement: z.string(),
@@ -663,7 +663,7 @@ const sample: RunResult[] = [
     lemmaRequired: false,
     lemmaFound: false,
     rerankStatus: "ok",
-    faithfulness: { score: 1, claims: [{ statement: "God so loved the world", supported: true, reason: "matches John 3:16" }], model: "anthropic/claude-opus-4-8" }
+    faithfulness: { score: 1, claims: [{ statement: "God so loved the world", supported: true, reason: "matches John 3:16" }], model: "anthropic/claude-sonnet-4-6" }
   }
 ];
 
@@ -962,7 +962,7 @@ main().catch((err) => { console.error(err); process.exit(1); });
     "eval:report": "tsx --env-file=.env.test scripts/eval-report.ts",
 ```
 
-> Uses `.env.test` for `DATABASE_URL`. Live synthesis runs only if `OPENAI_API_KEY` is present in the process env; faithfulness only if `AI_GATEWAY_API_KEY` is present (set `EVAL_JUDGE_MODEL` to override the default `anthropic/claude-opus-4-8`). Without either, the report still renders with retrieval-only metrics.
+> Uses `.env.test` for `DATABASE_URL`. Live synthesis runs only if `OPENAI_API_KEY` is present in the process env; faithfulness only if `AI_GATEWAY_API_KEY` is present (set `EVAL_JUDGE_MODEL` to override the default `anthropic/claude-sonnet-4-6`). Without either, the report still renders with retrieval-only metrics.
 
 - [ ] **Step 3: Run the report** — Run: `npm run eval:report`. Writes `eval/output/report.{html,json}`. Open the HTML and confirm the scorecard, status line (synthesis/judge on/off), and collapsible per-question cards render with the editorial palette.
 
@@ -1080,7 +1080,7 @@ git commit -m "Add eval-runner integration smoke test"
 
 - [ ] **Step 2: Update README** — add an "Evaluation harness" subsection:
   - `npm run eval:gate` — deterministic, DB-only, **blocking** PR gate. Protects deterministic evidence retrieval and citation safety: Context Precision/Recall, required lemma/domain coverage, 100% citation resolvability. No API key. Dataset at `eval/dataset/golden-set.json`.
-  - `npm run eval:report` — **non-blocking** nightly/on-demand hybrid quality report. Runs the full pipeline (pgvector + RRF + rerank + synthesis), adds LLM-judge faithfulness via the Vercel AI Gateway (`EVAL_JUDGE_MODEL`, default `anthropic/claude-opus-4-8`, gated on `AI_GATEWAY_API_KEY`; live synthesis gated on `OPENAI_API_KEY`). Writes `eval/output/report.{html,json}`.
+  - `npm run eval:report` — **non-blocking** nightly/on-demand hybrid quality report. Runs the full pipeline (pgvector + RRF + rerank + synthesis), adds LLM-judge faithfulness via the Vercel AI Gateway (`EVAL_JUDGE_MODEL`, default `anthropic/claude-sonnet-4-6`, gated on `AI_GATEWAY_API_KEY`; live synthesis gated on `OPENAI_API_KEY`). Writes `eval/output/report.{html,json}`.
   - State explicitly: the gate protects deterministic retrieval + citation safety; the report monitors full hybrid-pipeline quality and faithfulness. Generative-hallucination protection lives in the production runtime grounding verifier + the nightly report.
 
 - [ ] **Step 3: Update PROJECT_STATE.md**

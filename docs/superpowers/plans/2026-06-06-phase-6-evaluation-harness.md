@@ -416,7 +416,7 @@ describe("golden-set.json", () => {
   it("uses only parseable canonical references", () => {
     for (const item of parsed) {
       for (const ref of item.goldenReferences) {
-        expect(canonicalizeReference(ref), `${item.id}: ${ref}`).not.toBeNull();
+        expect(canonicalizeReference(ref), `${item.id}: ${ref}`).toBe(ref);
       }
     }
   });
@@ -438,7 +438,7 @@ git commit -m "Add curated NT-exegesis golden set + validation test (draft for r
 
 **Files:** Create `eval/judge.ts`
 
-> The judge runs only in the nightly/on-demand report, never in the gate. It is **key-gated on `AI_GATEWAY_API_KEY`**: with no key it returns `null` (skipped), and any error/timeout also returns `null` — it must never throw or block. Routed through the AI SDK's gateway global provider exactly like `lib/search/rerank.ts`.
+> The judge runs only in the nightly/on-demand report, never in the gate. It is **key-gated on `AI_GATEWAY_API_KEY`**: with no key it returns `{ status: "skipped-no-key" }`, and any error/timeout returns `{ status: "error", ... }` — it must never throw or block. Routed through the AI SDK's gateway global provider exactly like `lib/search/rerank.ts`.
 
 - [ ] **Step 1: Confirm the `ai` SDK surface**
 
@@ -571,8 +571,10 @@ export type RunResult = {
   lemmaRequired: boolean;
   lemmaFound: boolean;
   rerankStatus: string | null;      // from the searchSemantic tool-trace entry, if any
+  rerankCandidateCount: number | null;
   // Explicit, separate statuses (Finding 3) — never inferred from output presence:
   synthesisStatus: SynthesisStatus;
+  synthesisModel: string | null;
   synthesisError?: string;
   judgeStatus: JudgeStatus;
   judgeModel: string | null;
@@ -592,12 +594,15 @@ function uniqueReferences(evidence: EvidencePacket): string[] {
   return out;
 }
 
-// Pull the rerank status the semantic call recorded in the tool trace (Finding 5:
-// per-hit RRF source / rank position are not exposed; the trace's rerankStatus is).
-function rerankStatusFrom(evidence: EvidencePacket): string | null {
+// Pull the rerank status/candidate count the semantic call recorded in the tool trace
+// (Finding 5: per-hit RRF source / rank position are not exposed; these trace fields are).
+function semanticTraceFrom(evidence: EvidencePacket): { rerankStatus: string | null; rerankCandidateCount: number | null } {
   const entry = evidence.toolTrace.find((t) => t.tool === "searchSemantic");
-  const args = entry?.args as { rerankStatus?: string } | undefined;
-  return args?.rerankStatus ?? null;
+  const args = entry?.args as { rerankStatus?: string; rerankCandidateCount?: number } | undefined;
+  return {
+    rerankStatus: args?.rerankStatus ?? null,
+    rerankCandidateCount: typeof args?.rerankCandidateCount === "number" ? args.rerankCandidateCount : null
+  };
 }
 
 // Core: ONE retrieval, all metrics derived from it. Returns the packet too so the
@@ -622,6 +627,7 @@ async function runOnce(
   const lemmaFound = lemmaRequired
     ? evidence.formattedEvidence.includes(item.mustContainLemma as string)
     : false;
+  const semanticTrace = semanticTraceFrom(evidence);
 
   const result: RunResult = {
     item,
@@ -633,8 +639,10 @@ async function runOnce(
     citationsResolve: report.grounded,
     lemmaRequired,
     lemmaFound,
-    rerankStatus: rerankStatusFrom(evidence),
+    rerankStatus: semanticTrace.rerankStatus,
+    rerankCandidateCount: semanticTrace.rerankCandidateCount,
     synthesisStatus: "not-run",
+    synthesisModel: null,
     judgeStatus: "not-run",
     judgeModel: null,
     faithfulness: null
@@ -659,6 +667,7 @@ export async function runWithJudge(item: GoldenItem): Promise<RunResult> {
 
   // --- Synthesis (OPENAI_API_KEY) ---
   let synthesisStatus: SynthesisStatus;
+  let synthesisModel: string | null = null;
   let answer: string | undefined;
   let synthesisError: string | undefined;
   if (!process.env.OPENAI_API_KEY) {
@@ -666,6 +675,7 @@ export async function runWithJudge(item: GoldenItem): Promise<RunResult> {
   } else {
     try {
       const routing = routeAssistantPrompt(item.question, false);
+      synthesisModel = routing.modelUsed;
       const synth = await synthesizeWithRefinement({ prompt: item.question, evidence, routing });
       if (synth) {
         answer = synth.answer;
@@ -700,7 +710,7 @@ export async function runWithJudge(item: GoldenItem): Promise<RunResult> {
     }
   }
 
-  return { ...result, synthesisStatus, synthesisError, answer, judgeStatus, judgeModel, judgeError, faithfulness };
+  return { ...result, synthesisStatus, synthesisModel, synthesisError, answer, judgeStatus, judgeModel, judgeError, faithfulness };
 }
 ```
 
@@ -717,7 +727,7 @@ git commit -m "Add eval runner: one EvidencePacket per mode; report synthesizes 
 
 ## Task 8: HTML + JSON report renderer
 
-> **REQUIRED SUB-SKILL for this task:** invoke `frontend-design:frontend-design` before writing `renderHtmlReport`. Self-contained HTML (inline CSS, no external assets, no JS frameworks), editorial-scholar palette (`#f6f5f1` paper, `#1f2933` ink, `#365f7e` accent, `#d7d3ca` rules). Per-question cards use native `<details>`/`<summary>` (no JS). Top scorecard shows gate metrics + mean faithfulness + the run's status (whether hybrid retrieval and the judge actually ran). Side-by-side golden-vs-retrieved diff with ✓ hit / ✗ miss. Accessible, sufficient contrast.
+> **Report design workflow:** before writing `renderHtmlReport`, use the frontend/UI design workflow available in the current agent environment; for Claude, invoke its frontend-design skill. The output still must be self-contained HTML (inline CSS, no external assets, no JS frameworks), with an editorial-scholar palette (`#f6f5f1` paper, `#1f2933` ink, `#365f7e` accent, `#d7d3ca` rules). Per-question cards use native `<details>`/`<summary>` (no JS). Top scorecard shows gate metrics + mean faithfulness + the run's status (whether hybrid retrieval and the judge actually ran). Side-by-side golden-vs-retrieved diff with hit/miss markers. Accessible, sufficient contrast.
 
 **Files:** Create `eval/report.ts`; Test `tests/unit/eval/report.test.ts`
 
@@ -744,7 +754,9 @@ const sample: RunResult[] = [
     lemmaRequired: false,
     lemmaFound: false,
     rerankStatus: "ok",
+    rerankCandidateCount: 12,
     synthesisStatus: "ran",
+    synthesisModel: "gpt-5-chat-latest",
     judgeStatus: "ran",
     judgeModel: "anthropic/claude-sonnet-4.6",
     faithfulness: { score: 1, claims: [{ statement: "God so loved the world", supported: true, reason: "matches John 3:16" }], model: "anthropic/claude-sonnet-4.6" }
@@ -768,6 +780,8 @@ describe("renderHtmlReport", () => {
     expect(html).toContain("John 3:16");
     expect(html).toContain("#365f7e");
     expect(html).toContain("ok");           // rerank status surfaced
+    expect(html).toContain("12");           // rerank candidate count surfaced
+    expect(html).toContain("gpt-5-chat-latest"); // synthesis model surfaced
     expect(html).not.toContain("<script src");
   });
   it("escapes HTML-special characters in question text", () => {
@@ -837,7 +851,9 @@ function refDiff(result: RunResult): string {
 function traceRows(result: RunResult): string {
   if (result.hits.length === 0) return `<p class="muted">No citations retrieved.</p>`;
   const rows = result.hits.map((h, i) => `<tr><td>${i + 1}</td><td>${esc(h.reference)}</td><td>${esc(h.corpus)}</td><td>${esc(h.toolName ?? "")}</td></tr>`).join("");
-  const rerank = result.rerankStatus ? `<p class="muted">rerank: ${esc(result.rerankStatus)}</p>` : "";
+  const rerank = result.rerankStatus
+    ? `<p class="muted">rerank: ${esc(result.rerankStatus)}${result.rerankCandidateCount === null ? "" : ` (${result.rerankCandidateCount} candidates)`}</p>`
+    : "";
   return `<table class="trace"><thead><tr><th>#</th><th>Reference</th><th>Corpus</th><th>Tool</th></tr></thead><tbody>${rows}</tbody></table>${rerank}`;
 }
 
@@ -888,6 +904,8 @@ export function renderHtmlReport(results: RunResult[]): string {
   const f = meanFaithfulness(results);
   const synthTally = statusTally(results, (r) => r.synthesisStatus);
   const judgeTally = statusTally(results, (r) => r.judgeStatus);
+  const synthModels = [...new Set(results.map((r) => r.synthesisModel).filter((m): m is string => Boolean(m)))];
+  const judgeModels = [...new Set(results.map((r) => r.judgeModel).filter((m): m is string => Boolean(m)))];
   const scoreRow = (label: string, value: number, threshold: number) =>
     `<tr><td>${label}</td><td>${value.toFixed(3)}</td><td>${threshold}</td><td>${badge(value >= threshold)}</td></tr>`;
   return `<!DOCTYPE html>
@@ -918,6 +936,8 @@ export function renderHtmlReport(results: RunResult[]): string {
   <p class="muted">Generated ${esc(new Date().toISOString())} · ${results.length} questions ·
     synthesis: ${esc(synthTally)} ·
     judge: ${esc(judgeTally)} ·
+    synthesis models: ${esc(synthModels.length ? synthModels.join(", ") : "n/a")} ·
+    judge models: ${esc(judgeModels.length ? judgeModels.join(", ") : "n/a")} ·
     mean faithfulness: ${f === null ? "n/a" : f.toFixed(2)}</p>
   <h2>Summary</h2>
   <table>
@@ -1224,6 +1244,7 @@ git commit -m "Document Phase 6 two-tier evaluation harness; mark phase done"
 
 - **Spec coverage:** two-tier framing (T7 modes, T9 gate, T10 report) · dataset (T1,T5) · precision/recall (T3) · required lemma coverage (T3 aggregate + T7 lemmaFound + T9 gate) · citation resolvability (T3,T7,T9 — renamed from grounding, reference-only `verifyGrounding`) · deterministic blocking gate + calibrated/exact thresholds (T4,T9,T11) · gateway LLM-judge faithfulness, nightly, dual-key, timeout-bounded, explicit status (T6,T7,T10) · single-EvidencePacket per mode (T7 — Finding 3) · HTML+JSON report with golden-vs-retrieved + trace incl. rerank status + coverage + faithfulness/status (T8) · unit+integration tests (T2–T8,T12) · docs (T13). Out-of-scope items (prose-sweep grounding, embedding/rerank fixtures, branch-coverage gate, auto-derived questions) not implemented.
 - **Round-1 findings resolved:** (1) gate is deterministic-only by design; hybrid quality in nightly report — explicit. (2) metric renamed to citation resolvability; hallucination guard documented as runtime + nightly. (3) one packet per mode; report synthesizes from that packet via `synthesizeWithRefinement`. (4) required lemma coverage is a 100% gate check. (5) report trace shows `toolName` + rerank status (no invented rank provenance). (6) thresholds test asserts exact calibrated values after Task 11.
-- **Round-2 findings resolved:** (1) the report is **dual-key by design** — `OPENAI_API_KEY` for embeddings+synthesis, `AI_GATEWAY_API_KEY` for rerank+judge — stated in spec + plan; not claimed gateway-only. (2) default judge slug corrected to dotted `anthropic/claude-sonnet-4.6` (Gateway convention, matching `voyage/rerank-2.5`), with a verify-the-slug note. (3) `RunResult` carries explicit `synthesisStatus`/`judgeStatus`/`judgeModel`/error fields; report status line + faithfulness block derive from them (a wrong slug/timeout/error is labeled, not mislabeled "off"). (4) metric renamed "required lemma coverage" (scoped to `mustContainLemma`; `mustContainDomain` flagged as a later option). (5) judge runs under `AbortSignal.timeout(EVAL_JUDGE_TIMEOUT_MS)` (default 30 s).
-- **Implementer must verify against live code (flagged inline, not placeholders):** the exact Vercel AI Gateway slug for Sonnet 4.6 (verify before first run; wrong slug → visible `error` status, not silent); `ai` SDK `generateObject` export + `abortSignal` option + gateway string routing (mirror `rerank.ts`); `ToolTraceEntry.args` typing for the rerank-status read; integration-test skip idiom. Each task names the source-of-truth file.
+- **Round-2 findings resolved:** (1) the report is **dual-key by design** — `OPENAI_API_KEY` for embeddings+synthesis, `AI_GATEWAY_API_KEY` for rerank+judge — stated in spec + plan; not claimed gateway-only. (2) default judge slug corrected to dotted `anthropic/claude-sonnet-4.6` (Gateway convention, matching `voyage/rerank-2.5`), with a verify-the-slug note. (3) `RunResult` carries explicit `synthesisStatus`/`synthesisModel`/`judgeStatus`/`judgeModel`/error fields; report status line + faithfulness block derive from them (a wrong slug/timeout/error is labeled, not mislabeled "off"). (4) metric renamed "required lemma coverage" (scoped to `mustContainLemma`; `mustContainDomain` flagged as a later option). (5) judge runs under `AbortSignal.timeout(EVAL_JUDGE_TIMEOUT_MS)` (default 30 s).
+- **Final review findings resolved:** (1) Task 6 prose now describes `JudgeOutcome`, not silent `null`. (2) `RunResult` carries `rerankCandidateCount`, and the report surfaces it with `rerankStatus`. (3) `RunResult` carries `synthesisModel`, and the report status line surfaces synthesis/judge models. (4) the dataset validation test asserts canonical references exactly. (5) the report-design instruction is tool-aware so Claude can use its frontend-design skill while other agents follow the same design constraint.
+- **Implementer must verify against live code (flagged inline, not placeholders):** the exact Vercel AI Gateway slug for Sonnet 4.6 (verify before first run; wrong slug → visible `error` status, not silent); `ai` SDK `generateObject` export + `abortSignal` option + gateway string routing (mirror `rerank.ts`); `ToolTraceEntry.args` typing for the rerank-status / candidate-count read; integration-test skip idiom. Each task names the source-of-truth file.
 - **Type consistency:** `RunResult` (T7) consumed by `report.ts` (T8), `eval-gate.ts` (T9), `eval-report.ts` (T10), integration test (T12). `QuestionScore`/`Aggregate` (T3) reused in `report.ts`/`eval-gate.ts`. `THRESHOLDS` keys (`meanRecall`, `meanPrecision`, `minRecall`, `citationResolvability`, `lemmaCoverage`) identical across `thresholds.ts`, its test, `report.ts`, and `eval-gate.ts`.

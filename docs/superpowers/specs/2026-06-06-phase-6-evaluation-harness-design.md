@@ -292,8 +292,8 @@ Single self-contained file (inline CSS, editorial-scholar palette). Structure:
     plus the `searchSemantic` tool-trace entry's **rerank status and candidate
     count** (Finding 5: per-hit RRF source and post-rerank rank position are not
     exposed by the current pipeline, so the report shows `toolName` + the trace's
-    rerank status rather than promising rank provenance).
-  - Lemma/domain coverage hit/miss for items that declare a requirement.
+    rerank status / candidate count rather than promising rank provenance).
+  - Required lemma coverage hit/miss for items that declare `mustContainLemma`.
   - Faithfulness verdict (when judged) — each claim supported/unsupported + the
     judge's reason.
 

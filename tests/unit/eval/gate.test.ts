@@ -21,11 +21,12 @@ function res(over: Partial<RunResult> & { item: GoldenItem }): RunResult {
     rerankStatus: null,
     rerankCandidateCount: null,
     synthesisStatus: "not-run",
+    synthesisModel: null,
     judgeStatus: "not-run",
     judgeModel: null,
     faithfulness: null,
     ...over
-  } as RunResult;
+  } satisfies RunResult;
 }
 
 describe("evaluateGate", () => {

@@ -60,8 +60,21 @@ export async function judgeFaithfulness(
       abortSignal: AbortSignal.timeout(EVAL_JUDGE_TIMEOUT_MS)
     });
     const claims = object.claims ?? [];
+    // An empty claims array is NOT a vacuous perfect score: it means the judge
+    // could not decompose the answer into atomic statements (e.g. a very short
+    // or evasive answer). Scoring it 1.0 inflates mean faithfulness; scoring it
+    // 0 deflates it just as misleadingly. Surface it as an explicit error so it
+    // is excluded from the mean and shown in the report's judge-error block,
+    // never silently folded into a real score.
+    if (claims.length === 0) {
+      return {
+        status: "error",
+        model: EVAL_JUDGE_MODEL,
+        message: "judge returned zero claims (answer not decomposable into statements)"
+      };
+    }
     const supported = claims.filter((c) => c.supported).length;
-    const score = claims.length === 0 ? 1 : supported / claims.length;
+    const score = supported / claims.length;
     return { status: "ran", result: { score, claims, model: EVAL_JUDGE_MODEL } };
   } catch (err) {
     return { status: "error", model: EVAL_JUDGE_MODEL, message: clip(err) };

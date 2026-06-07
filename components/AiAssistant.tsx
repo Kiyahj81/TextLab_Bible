@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, Loader2, Save, Send, Sparkles } from "lucide-react";
+import { Check, Copy, Download, Loader2, Save, Send, Sparkles } from "lucide-react";
 import type { SubmitEvent } from "react";
 import { useState } from "react";
 import { formatToolTrace, type ToolTraceEntry } from "@/lib/ai/toolTrace";
@@ -53,9 +53,13 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
   const [error, setError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [savingNote, setSavingNote] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<string | null>(null);
+  const [copyCitationsStatus, setCopyCitationsStatus] = useState<string | null>(null);
 
   // error stays persistent — user retries before it should clear.
   useAutoDismissString(saveStatus, setSaveStatus);
+  useAutoDismissString(copyStatus, setCopyStatus);
+  useAutoDismissString(copyCitationsStatus, setCopyCitationsStatus);
 
   async function runPrompt(promptText: string, escalate: boolean) {
     if (loading || !promptText.trim()) return;
@@ -140,6 +144,34 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
       setSaveStatus("Network error. Try again.");
     } finally {
       setSavingNote(false);
+    }
+  }
+
+  async function copyTrace() {
+    if (!response?.toolTrace.length) return;
+    const text = response.toolTrace.map(formatToolTrace).join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyStatus("Copied");
+    } catch {
+      setCopyStatus("Copy failed");
+    }
+  }
+
+  async function copyCitations() {
+    if (!response?.citations.length) return;
+    const text = response.citations
+      .map((citation) => {
+        const heading = `${citation.reference}, ${citation.corpus}`;
+        const detail = [citation.toolName, citation.searchQuery].filter(Boolean).join(" - ");
+        return detail ? `${heading}\n${detail}` : heading;
+      })
+      .join("\n\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyCitationsStatus("Copied");
+    } catch {
+      setCopyCitationsStatus("Copy failed");
     }
   }
 
@@ -321,7 +353,20 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
 
       <aside className="space-y-6 lg:sticky lg:top-6 lg:self-start">
         <section className="border-l-2 border-accent-200 pl-4">
-          <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Retrieval trace</h2>
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Retrieval trace</h2>
+            {!restoredView && response?.toolTrace.length ? (
+              <button
+                type="button"
+                onClick={() => void copyTrace()}
+                className="inline-flex items-center gap-1 text-xs text-slate-500 transition-colors hover:text-slate-700"
+                aria-label="Copy retrieval trace"
+              >
+                {copyStatus === "Copied" ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}
+                {copyStatus ?? "Copy"}
+              </button>
+            ) : null}
+          </div>
           <div className="mt-3 space-y-2 text-sm text-slate-700">
             {!restoredView && response?.toolTrace.length ? (
               response.toolTrace.map((entry, index) => (
@@ -341,7 +386,20 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
         </section>
 
         <section className="border-l-2 border-accent-200 pl-4">
-          <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Citations</h2>
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Citations</h2>
+            {!restoredView && response?.citations.length ? (
+              <button
+                type="button"
+                onClick={() => void copyCitations()}
+                className="inline-flex items-center gap-1 text-xs text-slate-500 transition-colors hover:text-slate-700"
+                aria-label="Copy citations"
+              >
+                {copyCitationsStatus === "Copied" ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}
+                {copyCitationsStatus ?? "Copy"}
+              </button>
+            ) : null}
+          </div>
           <div className="mt-3 divide-y divide-stone-200 text-sm text-slate-700">
             {!restoredView && response?.citations.length ? (
               response.citations.map((citation, index) => (

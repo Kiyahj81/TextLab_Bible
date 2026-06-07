@@ -15,29 +15,37 @@ export function evaluateGate(results: RunResult[]): GateOutcome {
   const checks: GateCheck[] = [];
 
   // --- Global hard gate: citation resolvability (every item) ---
-  if (GLOBAL_GATES.citationResolvability >= 1) {
+  // Compared as a RATE against the threshold so the gate behaves correctly for
+  // ANY threshold value. A bare `>= 1` toggle would silently SKIP the whole
+  // check the moment the threshold is relaxed below 1 (disabling it instead of
+  // loosening it) — see eval-gate-calibration-philosophy.
+  {
     const unresolved = results.filter((r) => !r.citationsResolve);
+    const resolveRate = results.length === 0 ? 1 : (results.length - unresolved.length) / results.length;
+    const pct = (n: number) => `${(n * 100).toFixed(0)}%`;
     checks.push({
       label: `Citation resolvability (${results.length} items)`,
-      passed: unresolved.length === 0,
+      passed: resolveRate >= GLOBAL_GATES.citationResolvability,
       detail:
         unresolved.length === 0
           ? "100% — every cited reference resolves"
-          : `unresolvable citations in: ${unresolved.map((r) => r.item.id).join(", ")}`
+          : `${pct(resolveRate)} resolve (>= ${pct(GLOBAL_GATES.citationResolvability)} required) — unresolvable in: ${unresolved.map((r) => r.item.id).join(", ")}`
     });
   }
 
   // --- Global hard gate: required lemma coverage (items declaring a lemma) ---
-  if (GLOBAL_GATES.lemmaCoverage >= 1) {
+  {
     const required = results.filter((r) => r.lemmaRequired);
     const missing = required.filter((r) => !r.lemmaFound);
+    const coverRate = required.length === 0 ? 1 : (required.length - missing.length) / required.length;
+    const pct = (n: number) => `${(n * 100).toFixed(0)}%`;
     checks.push({
       label: `Required lemma coverage (${required.length} items)`,
-      passed: missing.length === 0,
+      passed: coverRate >= GLOBAL_GATES.lemmaCoverage,
       detail:
         missing.length === 0
           ? "100% — every required lemma surfaced"
-          : `lemma missing in: ${missing.map((r) => r.item.id).join(", ")}`
+          : `${pct(coverRate)} covered (>= ${pct(GLOBAL_GATES.lemmaCoverage)} required) — lemma missing in: ${missing.map((r) => r.item.id).join(", ")}`
     });
   }
 

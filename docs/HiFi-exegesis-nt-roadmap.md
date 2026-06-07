@@ -1,6 +1,6 @@
 # Milestone 3 — High-Fidelity NT Exegesis Roadmap
 
-*Status:* Approved 2026-05-28; current through 2026-06-06 · *Scope:* NT-Greek subset · *Successor to:* Milestone 2.5 (shipped on `main`)
+*Status:* Approved 2026-05-28; current through 2026-06-07 · *Scope:* NT-Greek subset · *Successor to:* Milestone 2.5 (shipped on `main`)
 
 This is **Milestone 3**: bringing the mechanisms from
 `docs/archived/Technical Architecture for High-Fidelity Biblical Exegesis.md` to the existing NT corpus,
@@ -39,21 +39,23 @@ carries a `strong` column — Strong's remains deferred but is trivially availab
 
 ---
 
-## Verdict: ~70% of the way there after Phase 5
+## Verdict: Milestone 3 mechanisms are complete for the NT-Greek subset
 
 The project now implements the doc's core runtime philosophy for the NT-Greek subset: relational DB
 as source of truth, original-language tokens, retrieval-first assistant, user-confirmed scholarly
 escalation, enforced grounding verification, lexical FTS, Phase 4a vector/hybrid retrieval, and
 Phase 5 Louw-Nida semantic-domain enrichment (schema, reference table, popover display, `/search`
-domain mode, and explicit-only assistant domain routing). The remaining high-fidelity gaps are
-narrower: a fuller agentic tool loop, evaluation gates, and the larger data-expansion work (OT
-Hebrew/Aramaic, Strong's, speakers, and explicit token-to-English alignment).
+domain mode, and explicit-only assistant domain routing). Phase 6 adds a two-tier evaluation harness:
+a deterministic, type-aware PR gate and a nightly hybrid faithfulness report. The remaining
+high-fidelity gaps are narrower: a fuller agentic tool loop, broader query/routing refinements, and
+the larger data-expansion work (OT Hebrew/Aramaic, Strong's, speakers, and explicit token-to-English
+alignment).
 
 ---
 
 ## Side-by-side reconciliation
 
-> **Note:** this table has been refreshed after PR #9. Rows that were gaps in the Milestone 2.5
+> **Note:** this table has been refreshed after Phase 6. Rows that were gaps in the Milestone 2.5
 > baseline now show the current `main` state where the gap has been closed.
 
 ### A. Database / data layer
@@ -99,7 +101,7 @@ Hebrew/Aramaic, Strong's, speakers, and explicit token-to-English alignment).
 | Structured citations linked to `verse_id`/`token_id` | ✅ citations/tool trace are persisted; token IDs are carried where available | Mostly closed |
 | Post-retrieval fuzzy-match verification | ✅ `verifyGrounding` resolves cited references and fuzzy-matches Greek quotes against SBLGNT | Closed |
 | Silence Protocol (refuse < threshold) | ✅ answers are withheld when SBLGNT quote verification fails or a cited reference is not found | Closed |
-| RAGAS faithfulness eval (>0.90) | ❌ none | **Moderate** |
+| RAGAS-style faithfulness / context-precision eval | ✅ **Phase 6 done** — `eval:gate` enforces deterministic type-aware recall/precision + citation resolvability + lemma coverage; `eval:report` runs the hybrid pipeline and LLM-judge faithfulness report | Closed for v1; CI/nightly automation and calibration follow-ups remain |
 
 ### E. Already-strong areas the doc doesn't emphasize (current project is *ahead* here)
 
@@ -122,11 +124,12 @@ Hebrew/Aramaic, Strong's, speakers, and explicit token-to-English alignment).
 | Strong's numbers (need source + schema) | Medium | ~3–5 days |
 | Speaker quotations (Clear-Bible ingest) | Medium | ~3–5 days |
 | Hebrew + Aramaic OT corpus (OSHB/WLC + alignment) | Far | ~2–4 weeks |
-| RAGAS-style eval harness | Medium | ~2–3 days |
+| RAGAS-style eval harness | Closed | done in Phase 6; CI/nightly automation remains a deployment follow-up |
 
 **Net:** the orchestration/grounding/lexical/vector retrieval core is now in place for the NT. The
-remaining Milestone 3 work is mainly enrichment and evaluation; the larger data-completeness half
-(OT, Strong's, speakers, full alignment) remains a deferred multi-week data-engineering effort.
+Milestone 3 mechanism work is complete for the scoped NT-Greek subset. The larger data-completeness
+half (OT, Strong's, speakers, full alignment) remains a deferred multi-week data-engineering effort,
+alongside smaller calibration, automation, and product-polish follow-ups.
 
 ---
 

@@ -352,7 +352,7 @@ describe("appendAlignmentNotes", () => {
     expect(appendAlignmentNotes("ANSWER", report)).toBe("ANSWER");
   });
 
-  it("appends a translation alignment note when a WEB aid was caveated", async () => {
+  it("appends an unverified-rendering note when a WEB aid was caveated", async () => {
     const { appendAlignmentNotes } = await import("@/lib/ai/synthesis");
     const report = {
       grounded: true,
@@ -361,14 +361,14 @@ describe("appendAlignmentNotes", () => {
           claim: { reference: "1 John 2:23", greekQuote: "x", gloss: null, englishQuote: "y" },
           status: "verified" as const,
           alignmentCaveat:
-            "The WEB display translation does not align with the SBLGNT evidence here; the English aid was withheld."
+            "This English wording couldn't be confirmed against the WEB display text for this verse; treat it as an unverified paraphrase and defer to the SBLGNT Greek."
         }
       ]
     };
     const text = appendAlignmentNotes("ANSWER", report);
 
     expect(text).toContain("ANSWER");
-    expect(text).toContain("Translation alignment note:");
+    expect(text).toContain("Unverified English rendering:");
     expect(text).toContain("1 John 2:23");
   });
 });

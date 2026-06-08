@@ -315,5 +315,5 @@ export function appendAlignmentNotes(answer: string, report: GroundingReport): s
   const caveats = report.verdicts.filter((v) => v.alignmentCaveat);
   if (caveats.length === 0) return answer;
   const lines = caveats.map((v) => `- ${v.claim.reference}: ${v.alignmentCaveat}`).join("\n");
-  return `${answer}\n\n---\nTranslation alignment note:\n${lines}`;
+  return `${answer}\n\n---\nUnverified English rendering:\n${lines}`;
 }

@@ -121,7 +121,7 @@ export async function verifyGrounding(claims: GroundingClaim[]): Promise<Groundi
         const englishScore = fragmentContainment(claim.englishQuote, webText, normalizeEnglish);
         if (englishScore < QUOTE_MATCH_THRESHOLD) {
           verdict.alignmentCaveat =
-            "The WEB display translation does not align with the SBLGNT evidence here; treat the English rendering as unverified.";
+            "This English wording couldn't be confirmed against the WEB display text for this verse; treat it as an unverified paraphrase and defer to the SBLGNT Greek.";
         }
       }
     }

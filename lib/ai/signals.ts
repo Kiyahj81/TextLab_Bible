@@ -117,14 +117,14 @@ export const ENGLISH_TO_GREEK_LEMMA: Readonly<Record<string, string | readonly s
   gospel: "εὐαγγέλιον",
   church: "ἐκκλησία",
   baptism: "βάπτισμα",
-  prayer: "προσευχή",
+  prayer: ["προσευχή", "δέησις"],
   thanksgiving: "εὐχαριστία",
   fellowship: "κοινωνία",
   prophecy: "προφητεία",
   gifts: "χάρισμα",
   wisdom: "σοφία",
   knowledge: "γνῶσις",
-  judgment: "κρίσις",
+  judgment: ["κρίσις", "κρίμα"],
   wrath: "ὀργή",
   death: "θάνατος",
   heaven: "οὐρανός",
@@ -150,6 +150,7 @@ export const ENGLISH_TO_GREEK_LEMMA: Readonly<Record<string, string | readonly s
   // διάβολος/Διάβολος forms are all caught.
   satan: "Σατανᾶς",
   devil: "διάβολος",
+  egypt: "Αἴγυπτος",
 };
 
 // English multi-word phrases → Greek lemma. The single-word ENGLISH_TO_GREEK_LEMMA
@@ -179,18 +180,18 @@ const STOP_WORDS: ReadonlySet<string> = new Set([
   "not", "no", "yes", "all", "any", "some", "more", "most", "much", "many", "few", "such", "other",
   "very", "just", "only", "also", "too", "than", "like", "different", "senses", "sense", "bible",
   "form", "forms", "verb", "verbs", "imperative", "imperatives", "indicative", "participle", "participles",
-  "subjunctive", "subjunctives", "infinitive", "infinitives", "aorist", "tense", "mood", "grammar",
-  "grammatical", "parse", "noun", "nouns", "adjective", "adjectives", "adverb", "adverbs", "pronoun", "pronouns",
+  "subjunctive", "subjunctives", "infinitive", "infinitives", "aorist", "aorists", "tense", "tenses", "mood", "moods",
+  "grammar", "grammatical", "parse", "noun", "nouns", "adjective", "adjectives", "adverb", "adverbs", "pronoun", "pronouns",
   "deponent", "optative", "vocative", "nominative", "genitive", "dative", "accusative", "singular", "plural",
-  "feminine", "masculine", "neuter",
+  "feminine", "masculine", "neuter", "morphology", "morphological",
 ]);
 
 // Proper nouns that should not be treated as topic search terms. Book names are
 // already excluded separately via the ntBooks alias set.
 const PROPER_NOUNS: ReadonlySet<string> = new Set([
   "paul", "peter", "simon", "moses", "david", "abraham", "isaac", "elijah",
-  "jacob", "mary", "joseph", "pilate", "herod", "caesar", "israel", "egypt", "isaiah",
-  "judah", "judea", "galilee", "timothy", "barnabas", "judas", "philip",
+  "jacob", "mary", "joseph", "pilate", "herod", "caesar", "israel", "isaiah",
+  "judea", "galilee", "timothy", "barnabas", "judas", "philip",
 ]);
 
 const BOOK_ALIAS_ENTRIES: ReadonlyArray<{ alias: string; osisId: string }> = ntBooks

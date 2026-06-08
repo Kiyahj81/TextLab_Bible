@@ -155,6 +155,10 @@ describe("ENGLISH_TO_GREEK_LEMMA", () => {
     expect(ENGLISH_TO_GREEK_LEMMA.devil).toBe("διάβολος");
   });
 
+  it("maps jerusalem to both NT lemma forms (Hebraic and Hellenized)", () => {
+    expect(ENGLISH_TO_GREEK_LEMMA.jerusalem).toEqual(["Ἰερουσαλήμ", "Ἱεροσόλυμα"]);
+  });
+
   it("contains no multi-word (underscore) keys, which can never match a topic word", () => {
     expect(Object.keys(ENGLISH_TO_GREEK_LEMMA).some((key) => key.includes("_"))).toBe(false);
   });

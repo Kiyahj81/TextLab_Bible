@@ -526,8 +526,11 @@ function buildPlan(signals: Signals, prompt: string, semanticEnabled: boolean): 
 
   for (const word of topicTerms.deterministicWords) {
     const mapped = ENGLISH_TO_GREEK_LEMMA[word];
-    if (mapped) add(lemmaCall(mapped, scope));
-    else add(keywordCall(word, scope));
+    if (mapped) {
+      // A term may map to several NT lemmas (e.g. the two forms of "Jerusalem");
+      // emit one lemma search per form so none is missed.
+      for (const lemma of Array.isArray(mapped) ? mapped : [mapped]) add(lemmaCall(lemma, scope));
+    } else add(keywordCall(word, scope));
   }
 
   for (const morph of signals.morphCodes) {

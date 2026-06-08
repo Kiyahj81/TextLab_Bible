@@ -729,6 +729,16 @@ describe("semanticCall via runRetrievalPlan", () => {
     );
   });
 
+  it("fans out a multi-lemma topic word to one lemma search per form", async () => {
+    const prompt = "verses about Jerusalem";
+
+    await runRetrievalPlan(extractSignals(prompt), prompt, false);
+
+    const [hebraic, hellenized] = ENGLISH_TO_GREEK_LEMMA.jerusalem as readonly string[];
+    expect(searchLemma).toHaveBeenCalledWith(expect.objectContaining({ lemma: hebraic }));
+    expect(searchLemma).toHaveBeenCalledWith(expect.objectContaining({ lemma: hellenized }));
+  });
+
   it("keeps a broad entity as the real topic in teaching-about-broad-entity prompts", async () => {
     const prompt = "what does the Bible teach about Jesus";
 

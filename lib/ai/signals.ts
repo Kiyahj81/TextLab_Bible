@@ -73,8 +73,10 @@ function stripDomainMarkers(text: string): string {
 
 // English Bible terms → Greek lemma. Used by the retrieval planner to turn a
 // topic word into a precise lemma search. Intentionally small for v1; extend
-// based on real query traffic.
-export const ENGLISH_TO_GREEK_LEMMA: Readonly<Record<string, string>> = {
+// based on real query traffic. A value may be an array when one English term
+// has several distinct NT lemmas (e.g. the Hebraic and Hellenized forms of
+// "Jerusalem"); the planner fans out one lemma search per entry.
+export const ENGLISH_TO_GREEK_LEMMA: Readonly<Record<string, string | readonly string[]>> = {
   law: "νόμος",
   love: "ἀγάπη",
   faith: "πίστις",
@@ -139,7 +141,9 @@ export const ENGLISH_TO_GREEK_LEMMA: Readonly<Record<string, string>> = {
   christ: "Χριστός",
   god: "θεός",
   lord: "κύριος",
-  jerusalem: "Ἰερουσαλήμ",
+  // Two distinct NT lemmas: the indeclinable Hebraic Ἰερουσαλήμ and the
+  // Hellenized Ἱεροσόλυμα. Fan out to both so neither form is missed.
+  jerusalem: ["Ἰερουσαλήμ", "Ἱεροσόλυμα"],
   // Named adversary. Kept out of PROPER_NOUNS so named-entity questions ("what
   // does the Bible teach about satan/the devil") route to a precise SBLGNT lemma
   // search. searchLemma matches case-insensitively, so Σατανᾶς and the mixed-case

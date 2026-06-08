@@ -1,0 +1,55 @@
+name: Eval Gate
+
+# Deterministic, DB-only blocking gate (eval:gate). Runs every golden question
+# through DETERMINISTIC retrieval — no model API keys — and enforces citation
+# resolvability, required lemma coverage, and per-type recall/precision. Exits
+# non-zero on any failed check, turning the GitHub status check red.
+#
+# This workflow only RUNS the check. To make it BLOCK merges, add "Eval Gate /
+# gate" as a required status check in the branch-protection rules for `main`.
+# The gate is read-only: it never writes to the repo or the database.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read # least privilege: read-only check, no commits
+
+concurrency:
+  # One in-flight run per PR/branch; cancel superseded runs (a newer push makes an
+  # older gate result irrelevant). Safe because the gate has no side effects.
+  group: eval-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15 # ~20 questions of deterministic DB-only retrieval
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci # postinstall runs `prisma generate` (no DB access needed)
+
+      # The eval scripts load config via `--env-file=.env.test`, and Node throws
+      # if that file is absent — but an EMPTY file is valid. Create an empty one
+      # so the real values come from the job `env:` block; this keeps secrets off
+      # disk (they live only in the process environment). DB-only: no API keys.
+      - name: Create empty .env.test (script requires the file to exist)
+        run: touch .env.test
+
+      - name: Run deterministic eval gate
+        env:
+          # Point these at the seeded Neon EVAL/TEST branch — never production.
+          # The gate is read-only, so parallel PR runs against the shared branch
+          # are safe.
+          DATABASE_URL: ${{ secrets.EVAL_DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.EVAL_DIRECT_URL }}
+        run: npm run eval:gate

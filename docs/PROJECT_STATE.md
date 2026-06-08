@@ -189,9 +189,14 @@ Surfaced while calibrating the eval gate (see Milestone 3 Phase 6 above):
   recall measurement they score recall = 1.0 against the seeded data. Once the domain golden sets are
   validated and scoped (precision is structurally low — golden is a curated subset of all domain
   matches), domain recall is a candidate to promote into the hard gate.
-- **CI + nightly wiring.** `eval:gate` is ready to run as a CI step (needs `DATABASE_URL`); the nightly
-  `eval:report` needs `OPENAI_API_KEY` + `AI_GATEWAY_API_KEY` as CI secrets. Neither is automated yet —
-  a deployment task. Document the secrets in `docs/security-register.md` when the nightly job is added.
+- **CI + nightly wiring.** Both GitHub Actions workflows are added in `.github/workflows/`:
+  `eval-gate.yml` (deterministic, DB-only, blocking — runs on `pull_request` + `push` to `main`) and
+  `nightly-eval-report.yml` (full hybrid pipeline + LLM-judge faithfulness — nightly cron +
+  `workflow_dispatch`, uploads `eval/output/` as an artifact). Remaining **manual** steps before they
+  are live: (1) add repo secrets `EVAL_DATABASE_URL` + `EVAL_DIRECT_URL` (seeded Neon test branch — gate
+  + report) and `OPENAI_API_KEY` + `AI_GATEWAY_API_KEY` (report only); (2) mark `Eval Gate / gate` as a
+  **required status check** for `main` in branch protection — the workflow only runs the check, this is
+  what makes it block merges. Secrets are recorded in `docs/security-register.md`.
 
 ### Branch coverage at 66.53% (gate at 65%)
 

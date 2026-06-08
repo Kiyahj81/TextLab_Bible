@@ -45,7 +45,13 @@ jobs:
       - name: Create empty .env.test (script requires the file to exist)
         run: touch .env.test
 
+      # Fork and Dependabot PRs do NOT receive repo secrets (GitHub only passes
+      # GITHUB_TOKEN), so the secret-backed gate would fail at DB connect and,
+      # if marked a required check, make those PRs unmergeable. Run the real gate
+      # only in a TRUSTED context (push to main, or a same-repo non-Dependabot
+      # PR) — fail-closed there, so a missing/misnamed secret still goes red.
       - name: Run deterministic eval gate
+        if: ${{ github.event_name == 'push' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]') }}
         env:
           # Point these at the seeded Neon EVAL/TEST branch — never production.
           # The gate is read-only, so parallel PR runs against the shared branch
@@ -53,3 +59,10 @@ jobs:
           DATABASE_URL: ${{ secrets.EVAL_DATABASE_URL }}
           DIRECT_URL: ${{ secrets.EVAL_DIRECT_URL }}
         run: npm run eval:gate
+
+      # Untrusted context (fork or Dependabot): no secrets exist, so skip with a
+      # visible warning instead of a red required check. The maintainer must run
+      # `npm run eval:gate` locally before merging such a PR.
+      - name: Skip gate (no secrets on fork/Dependabot PRs)
+        if: ${{ github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') }}
+        run: echo "::warning::Eval gate skipped — fork/Dependabot PRs cannot access EVAL_* secrets. Run 'npm run eval:gate' locally before merging this PR."

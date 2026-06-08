@@ -27,6 +27,8 @@ Structure the answer in three sections:
 2. Interpretive suggestion
 3. Application/reflection
 
+DO NOT include hashtags (#) in responses.
+
 Write for an English reader who may not know Greek.
 
 Rules for Greek in the answer:

@@ -174,9 +174,11 @@ const STOP_WORDS: ReadonlySet<string> = new Set([
   "say", "says", "said", "talk", "talks", "role", "way", "ways", "thing", "things", "every", "each",
   "not", "no", "yes", "all", "any", "some", "more", "most", "much", "many", "few", "such", "other",
   "very", "just", "only", "also", "too", "than", "like", "different", "senses", "sense", "bible",
-  "form", "forms", "verb", "verbs", "imperative", "imperatives", "participle", "participles",
-  "subjunctive", "subjunctives", "infinitive", "infinitives", "aorist", "tense", "grammar",
-  "grammatical", "parse",
+  "form", "forms", "verb", "verbs", "imperative", "imperatives", "indicative", "participle", "participles",
+  "subjunctive", "subjunctives", "infinitive", "infinitives", "aorist", "tense", "mood", "grammar",
+  "grammatical", "parse", "noun", "nouns", "adjective", "adjectives", "adverb", "adverbs", "pronoun", "pronouns",
+  "deponent", "optative", "vocative", "nominative", "genitive", "dative", "accusative", "singular", "plural",
+  "feminine", "masculine", "neuter",
 ]);
 
 // Proper nouns that should not be treated as topic search terms. Book names are

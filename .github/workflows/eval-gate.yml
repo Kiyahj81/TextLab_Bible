@@ -27,6 +27,16 @@ jobs:
   gate:
     runs-on: ubuntu-latest
     timeout-minutes: 15 # ~20 questions of deterministic DB-only retrieval
+    env:
+      # `prisma.config.ts` (and the schema) require these via env() at config
+      # LOAD, and Prisma loads that config on every CLI command — including the
+      # `prisma generate` that npm ci's postinstall runs. So they must exist
+      # BEFORE install, not just for the gate step. Use the real secret when
+      # present (trusted runs); otherwise a non-connecting placeholder so
+      # install/generate succeed on fork/Dependabot PRs, where the gate is
+      # skipped anyway. `prisma generate` never connects, so the value is inert.
+      DATABASE_URL: ${{ secrets.EVAL_DATABASE_URL || 'postgresql://placeholder:placeholder@localhost:5432/placeholder' }}
+      DIRECT_URL: ${{ secrets.EVAL_DIRECT_URL || 'postgresql://placeholder:placeholder@localhost:5432/placeholder' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -36,7 +46,7 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci # postinstall runs `prisma generate` (no DB access needed)
+        run: npm ci # postinstall runs `prisma generate` (needs DATABASE_URL — set at job level above)
 
       # The eval scripts load config via `--env-file=.env.test`, and Node throws
       # if that file is absent — but an EMPTY file is valid. Create an empty one
@@ -50,14 +60,11 @@ jobs:
       # if marked a required check, make those PRs unmergeable. Run the real gate
       # only in a TRUSTED context (push to main, or a same-repo non-Dependabot
       # PR) — fail-closed there, so a missing/misnamed secret still goes red.
+      # Inherits DATABASE_URL/DIRECT_URL from the job `env:` above — the real
+      # seeded Neon EVAL/TEST branch on trusted runs (never production). The gate
+      # is read-only, so parallel runs against the shared branch are safe.
       - name: Run deterministic eval gate
         if: ${{ github.event_name == 'push' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]') }}
-        env:
-          # Point these at the seeded Neon EVAL/TEST branch — never production.
-          # The gate is read-only, so parallel PR runs against the shared branch
-          # are safe.
-          DATABASE_URL: ${{ secrets.EVAL_DATABASE_URL }}
-          DIRECT_URL: ${{ secrets.EVAL_DIRECT_URL }}
         run: npm run eval:gate
 
       # Untrusted context (fork or Dependabot): no secrets exist, so skip with a

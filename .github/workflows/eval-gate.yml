@@ -1,0 +1,75 @@
+name: Eval Gate
+
+# Deterministic, DB-only blocking gate (eval:gate). Runs every golden question
+# through DETERMINISTIC retrieval — no model API keys — and enforces citation
+# resolvability, required lemma coverage, and per-type recall/precision. Exits
+# non-zero on any failed check, turning the GitHub status check red.
+#
+# This workflow only RUNS the check. To make it BLOCK merges, add "Eval Gate /
+# gate" as a required status check in the branch-protection rules for `main`.
+# The gate is read-only: it never writes to the repo or the database.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read # least privilege: read-only check, no commits
+
+concurrency:
+  # One in-flight run per PR/branch; cancel superseded runs (a newer push makes an
+  # older gate result irrelevant). Safe because the gate has no side effects.
+  group: eval-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15 # ~20 questions of deterministic DB-only retrieval
+    env:
+      # `prisma.config.ts` (and the schema) require these via env() at config
+      # LOAD, and Prisma loads that config on every CLI command — including the
+      # `prisma generate` that npm ci's postinstall runs. So they must exist
+      # BEFORE install, not just for the gate step. Use the real secret when
+      # present (trusted runs); otherwise a non-connecting placeholder so
+      # install/generate succeed on fork/Dependabot PRs, where the gate is
+      # skipped anyway. `prisma generate` never connects, so the value is inert.
+      DATABASE_URL: ${{ secrets.EVAL_DATABASE_URL || 'postgresql://placeholder:placeholder@localhost:5432/placeholder' }}
+      DIRECT_URL: ${{ secrets.EVAL_DIRECT_URL || 'postgresql://placeholder:placeholder@localhost:5432/placeholder' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci # postinstall runs `prisma generate` (needs DATABASE_URL — set at job level above)
+
+      # The eval scripts load config via `--env-file=.env.test`, and Node throws
+      # if that file is absent — but an EMPTY file is valid. Create an empty one
+      # so the real values come from the job `env:` block; this keeps secrets off
+      # disk (they live only in the process environment). DB-only: no API keys.
+      - name: Create empty .env.test (script requires the file to exist)
+        run: touch .env.test
+
+      # Fork and Dependabot PRs do NOT receive repo secrets (GitHub only passes
+      # GITHUB_TOKEN), so the secret-backed gate would fail at DB connect and,
+      # if marked a required check, make those PRs unmergeable. Run the real gate
+      # only in a TRUSTED context (push to main, or a same-repo non-Dependabot
+      # PR) — fail-closed there, so a missing/misnamed secret still goes red.
+      # Inherits DATABASE_URL/DIRECT_URL from the job `env:` above — the real
+      # seeded Neon EVAL/TEST branch on trusted runs (never production). The gate
+      # is read-only, so parallel runs against the shared branch are safe.
+      - name: Run deterministic eval gate
+        if: ${{ github.event_name == 'push' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]') }}
+        run: npm run eval:gate
+
+      # Untrusted context (fork or Dependabot): no secrets exist, so skip with a
+      # visible warning instead of a red required check. The maintainer must run
+      # `npm run eval:gate` locally before merging such a PR.
+      - name: Skip gate (no secrets on fork/Dependabot PRs)
+        if: ${{ github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') }}
+        run: echo "::warning::Eval gate skipped — fork/Dependabot PRs cannot access EVAL_* secrets. Run 'npm run eval:gate' locally before merging this PR."

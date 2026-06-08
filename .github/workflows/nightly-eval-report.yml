@@ -1,0 +1,74 @@
+name: Nightly Eval Report
+
+# Runs the non-blocking hybrid evaluation report (eval:report) every night.
+# Unconditional by design: it replays the FIXED golden set (eval/dataset/golden-set.json)
+# through the full pipeline and LLM-judges faithfulness, so it is a synthetic
+# regression probe — it must run even on days with no repo/user activity, because
+# model/data drift is exactly what it exists to catch. It only READS from the DB
+# and calls external model APIs; it never writes to the repo or the database.
+
+on:
+  schedule:
+    # 07:00 UTC daily (~2-3am US). GitHub cron is always UTC; adjust to taste.
+    # Note: scheduled runs on free runners can be delayed under load and only
+    # run from the default branch's copy of this file.
+    - cron: "0 7 * * *"
+  workflow_dispatch: {} # allow on-demand runs from the Actions tab
+
+permissions:
+  contents: read # least privilege: the report neither commits nor needs write scope
+
+concurrency:
+  group: nightly-eval-report
+  cancel-in-progress: false # let an in-flight report finish rather than cancel it
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30 # ~20 questions x (embed + rerank + synthesis + 30s judge)
+    env:
+      # `prisma.config.ts` (and the schema) require these via env() at config
+      # LOAD, and Prisma loads that config on every CLI command — including the
+      # `prisma generate` that npm ci's postinstall runs. So they must exist
+      # BEFORE install. Real secret when present; otherwise a non-connecting
+      # placeholder so install/generate succeed. (This workflow only runs on
+      # schedule/dispatch from main, where the real secret is always present.)
+      DATABASE_URL: ${{ secrets.EVAL_DATABASE_URL || 'postgresql://placeholder:placeholder@localhost:5432/placeholder' }}
+      DIRECT_URL: ${{ secrets.EVAL_DIRECT_URL || 'postgresql://placeholder:placeholder@localhost:5432/placeholder' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci # postinstall runs `prisma generate` (needs DATABASE_URL — set at job level above)
+
+      # The eval scripts load config exclusively via `--env-file=.env.test`, and
+      # Node throws if that file is absent — but an EMPTY file is valid. Create an
+      # empty one so the real values come from the job `env:` block below; this
+      # keeps secrets off disk (they live only in the process environment).
+      - name: Create empty .env.test (script requires the file to exist)
+        run: touch .env.test
+
+      # DATABASE_URL/DIRECT_URL come from the job `env:` (the seeded Neon
+      # EVAL/TEST branch — never production). Only the model-API keys are added
+      # here, since they are not needed at install time.
+      - name: Run nightly eval report
+        env:
+          # Synthesis + query embeddings:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          # Voyage rerank + faithfulness judge (Vercel AI Gateway):
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+        run: npm run eval:report
+
+      - name: Upload report
+        if: always() # keep the HTML/JSON even if the run is marked failed
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-report-${{ github.run_id }}
+          path: eval/output/ # report.html + report.json (gitignored locally)
+          if-no-files-found: warn
+          retention-days: 30

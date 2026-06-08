@@ -112,6 +112,20 @@ sprint and at every Next.js minor upgrade. Cross-check each open row.
 | Opened | 2026-06-06 (Phase 5a Louw-Nida enrichment) |
 | Next review | Re-check if the vendored JSON is updated or if domain labels are exported as a derived dataset. |
 
+### Phase 6 — eval CI secrets (GitHub Actions)
+
+| Field | Value |
+| --- | --- |
+| Severity | Low (secret-management / data-egress consideration) |
+| Change | Two GitHub Actions workflows (`.github/workflows/eval-gate.yml`, `nightly-eval-report.yml`) consume repo secrets: `EVAL_DATABASE_URL` + `EVAL_DIRECT_URL` (both workflows), and `OPENAI_API_KEY` + `AI_GATEWAY_API_KEY` (nightly report only). |
+| Trust boundary | No new processors. The DB is the existing **seeded Neon test branch** (never production); OpenAI and the Vercel AI Gateway/Voyage are already trusted sub-processors (see the Phase 4a/4b rows). The eval reuses the same keys, no new vendor. |
+| Data sensitivity | The gate is deterministic and DB-only — no egress. The nightly report sends the fixed golden-set prompts + WEB verse text (public domain) to OpenAI/the Gateway — same data class already covered by the synthesis and rerank rows. |
+| Status | Accepted — same trust boundary as synthesis/rerank |
+| Mitigation | Secrets are injected via the job `env:` block over an empty `.env.test`, so no secret material is written to the runner disk. Both workflows declare least-privilege `permissions: contents: read` (no commit/PR scope). The `EVAL_*` DB secrets are named distinctly to prevent pointing CI at production; the gate is read-only (no DB writes). GitHub masks secret values in logs. |
+| Owner | Maintainer (kiyahj81) |
+| Opened | 2026-06-08 (Phase 6 CI workflows) |
+| Next review | Re-check if a workflow gains write scope, a new secret, or is pointed at a non-test database. |
+
 ## Tooling notes
 
 - `npm audit` requires network access to the npm registry. If the

@@ -167,6 +167,17 @@ sprint and at every Next.js minor upgrade. Cross-check each open row.
 - The user-level `NODE_OPTIONS=--use-system-ca` env var remains set on
   the maintainer's machine as a belt-and-suspenders default and to cover
   the install step.
+- **Accepted assumption — scripts OVERWRITE `NODE_OPTIONS` (Codex P2, PR
+  #15):** the `cross-env NODE_OPTIONS=--use-system-ca` prefix replaces any
+  inherited `NODE_OPTIONS` rather than appending to it. Verified safe for
+  this repo: nothing in `.github/`, `next.config`, or Vercel sets
+  `NODE_OPTIONS` for another purpose, the maintainer's user-scope value is
+  already `--use-system-ca` (identical → no-op overwrite), and CI leaves it
+  unset. So no `--max-old-space-size` / `--require` (memory/instrumentation)
+  options are being dropped. **Hardening debt:** if a conflicting
+  `NODE_OPTIONS` is ever introduced (e.g. a build-memory flag in CI),
+  switch from `cross-env` to a small wrapper that *appends* `--use-system-ca`
+  to the existing value instead of overwriting.
 - Alternative if `--use-system-ca` is unavailable or undesired: export
   the intercepting root to a `.pem` file and set
   `NODE_EXTRA_CA_CERTS=<path-to-that-pem>`.

@@ -999,7 +999,7 @@ Adds a `domain` mode to ``/search`` (domain + subdomain dropdowns + free-text LN
 git push -u origin milestone-3/phase-5b-domain-search
 gh pr create --base main --head milestone-3/phase-5b-domain-search --title "Milestone 3 Phase 5b — Louw-Nida domain search & retrieval" --body-file $env:TEMP\pr-body-5b.md
 ```
-Per project practice: review Codex/Greptile PR comments and fix valid findings before merging.
+Per project practice: review Codex PR comments and fix valid findings before merging.
 
 ---
 

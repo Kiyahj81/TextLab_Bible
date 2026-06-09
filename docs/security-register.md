@@ -135,11 +135,29 @@ sprint and at every Next.js minor upgrade. Cross-check each open row.
 - **Resolved on the maintainer's Windows machine (2026-05-26):** Norton
   AV's "Web/Mail Shield" intercepts the registry TLS and re-signs with
   a root that lives in the Windows certificate store. Node 22+ does
-  not consult the Windows store by default. Fix: set the user-level
-  env var `NODE_OPTIONS=--use-system-ca` (e.g. via
-  `setx NODE_OPTIONS "--use-system-ca"`), then re-open the shell.
-  Node will then trust the Windows store in addition to its bundled
-  CAs and `npm audit` succeeds.
+  not consult the Windows store by default. Fix: Node's
+  `--use-system-ca` flag, which trusts the Windows store in addition to
+  its bundled CAs.
+- **Hardened to not depend on the env var (2026-06-09):** every
+  Node-spawning npm script now bakes in `--use-system-ca` via `cross-env`
+  (chained scripts use `cross-env-shell` so the flag reaches every
+  command in the chain). `npm run security:audit`, `build`, the
+  `import:*`/`embed:*`/`eval:*`/`db:*` tasks, and the integration/
+  acceptance tests therefore succeed in any shell, even a freshly opened
+  terminal that never inherited `NODE_OPTIONS`. Rationale: env-var
+  inheritance is fragile — a process only sees `NODE_OPTIONS` if it was
+  launched *after* `setx` set it, so editors/terminals opened earlier
+  silently run without it. Baking the flag into the scripts removes that
+  failure mode for everything except `npm install` itself.
+- **`npm install`/`npm ci` cannot be self-armed:** the dependency
+  download runs before any package.json script (postinstall included),
+  so the flag must already be in the environment. Use
+  `NODE_OPTIONS=--use-system-ca npm install` ad-hoc, or persist it at
+  user scope via `setx NODE_OPTIONS "--use-system-ca"` (then fully
+  restart the shell/editor so it inherits the value).
+- The user-level `NODE_OPTIONS=--use-system-ca` env var remains set on
+  the maintainer's machine as a belt-and-suspenders default and to cover
+  the install step.
 - Alternative if `--use-system-ca` is unavailable or undesired: export
   the intercepting root to a `.pem` file and set
   `NODE_EXTRA_CA_CERTS=<path-to-that-pem>`.

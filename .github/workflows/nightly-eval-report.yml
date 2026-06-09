@@ -36,9 +36,9 @@ jobs:
       DATABASE_URL: ${{ secrets.EVAL_DATABASE_URL || 'postgresql://placeholder:placeholder@localhost:5432/placeholder' }}
       DIRECT_URL: ${{ secrets.EVAL_DIRECT_URL || 'postgresql://placeholder:placeholder@localhost:5432/placeholder' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: "24"
           cache: npm
@@ -66,7 +66,7 @@ jobs:
 
       - name: Upload report
         if: always() # keep the HTML/JSON even if the run is marked failed
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: eval-report-${{ github.run_id }}
           path: eval/output/ # report.html + report.json (gitignored locally)

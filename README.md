@@ -1,222 +1,257 @@
 # TextLab Bible
 
-Milestone 2.5 of the TextLab Bible MVP: a single full-stack Next.js app delivering a corpus-backed reader, search, and **retrieval-first AI Study Assistant** over SBLGNT (Greek NT) and WEB (English NT). Built with Next.js 15, React 19, TypeScript, Prisma 6, and PostgreSQL.
+TextLab Bible is a full-stack New Testament Greek exegesis app with a corpus-backed reader, search, notes, and a retrieval-first AI Study Assistant. The current corpus scope is the NT-Greek subset: SBLGNT Greek, WEB English, MorphGNT morphology, MACULA gloss enrichment, and UBS Louw-Nida semantic domains.
 
-## Current Scope
+Milestone 3 is complete for this scope. The app now includes lexical full-text search, vector/hybrid retrieval, optional cross-encoder reranking through Vercel AI Gateway, Louw-Nida domain search, grounded assistant synthesis, and a two-tier evaluation harness.
 
-- **Reader** for the full SBLGNT Greek and WEB English NT in a parallel layout
-  - Clickable Greek tokens with lemma and morphology popover
-  - **Per-word English highlighting** with a 6-color palette + clear option, mirroring the Greek-token UX
-  - Verse-jump input, prev/next chapter buttons at top and bottom of every passage
-  - Greek / English / Parallel mode toggle (persisted to localStorage)
-  - Last-visited passage automatically restored on bare `/read` visits
-- **Search** in four modes (keyword / lemma / morphology / domain)
-  - **Keyword search uses full-text search** (PostgreSQL `tsvector`/GIN, `bible_simple` unaccent config): accent-insensitive Greek (λογος finds λόγος), whole-word lexeme matching rather than substring, multi-word AND queries, optional rank ordering
-  - **Domain search** over Louw-Nida semantic domains: a domain dropdown (`33 — Communication`), a dependent subdomain dropdown that lists the selected domain's subdomains, and a free-text LN-reference field for an exact code (`33.55`). The assistant also answers explicit `domain 33` / `LN 33.55` prompts (explicit-only detection that never trips on chapter:verse notation like `John 3.16`)
-  - Match terms bolded inside result verses
-  - In-input Search and Clear buttons; pagination; saved-search persistence (rename, delete)
-- **Notes** index with keyword search, tag dropdown, reference filter, sort, and server-side pagination
-- Highlights, notes, saved searches, and assistant sessions scoped to the signed-in user — verse-level on Greek tokens, word-level on English text
-- **AI Study Assistant** at `/assistant`:
-  - Deterministic-first retrieval: signal extraction (references, Greek words, topics, morphology, intent) → parallel corpus search → model synthesis with a single `getPassage` refinement step; signal extraction uses longest-first book aliases, strips parsed references/book aliases/morphology codes before topic extraction, maps stable entity topics (Jesus, Christ, God, Lord, Jerusalem) to Greek lemmas, and preserves known or quoted multi-word phrases for phrase-aware retrieval; the planner scopes word searches to the named book/chapter, returns whole chapters and cross-chapter passages in full (assembled from per-chapter fetches), and samples large corpus surveys with a true-count marker (e.g. `116 hit(s) … (91 more)`); passage assembly is bounded for safety (a per-corpus line ceiling plus pathological-span guards) and total evidence is capped so even large or malformed prompts stay within request and saved-note limits
-  - **Hybrid semantic retrieval** on topical questions (Phase 4a): `searchSemantic` fuses pgvector KNN over WEB verse embeddings with keyword FTS via Reciprocal Rank Fusion, filters hits to the SBLGNT citation spine, filters embeddings to the current model, and expands each hit to an on-spine ±2 verse window. Requires `OPENAI_API_KEY` and the Phase 4a migrations applied; gracefully no-ops to deterministic retrieval otherwise. Ingestion: `npm run embed:verses` (idempotent, skips empty verses, and re-embeds when the embedding model or WEB text hash changes)
-  - User-confirmed **scholarly-model escalation** — a "Use scholarly model" affordance re-runs the prompt on `gpt-5.4` (never automatic)
-  - Live OpenAI synthesis when `OPENAI_API_KEY` is set; deterministic local fallback otherwise
-  - **Grounding / Silence Protocol** — before any answer is returned or stored, the assistant verifies its citations against the SBLGNT. If a Greek quote falls below the 0.90 similarity threshold or a reference cannot be resolved, the answer is withheld and the UI displays "Withheld — insufficient textual evidence" rather than risk an unsupported claim. WEB (English) citations are a display aid only: a WEB mismatch appends a caveat but does not withhold.
-  - Structured citations and `ToolTraceEntry[]` retrieval trace visible in the UI
-  - Q&A history persisted to `AiSession` / `AiMessage` with typed JSON `metadata`
-  - Markdown export of any generated answer
-- Import tracking for open Bible text sources via the `ImportRun` table
+Deferred beyond the current scope: OT Hebrew/Aramaic, LXX, Strong's numbers, speaker quotation metadata, explicit Greek-English word alignment, broader synonym expansion, and a more general multi-tool agent loop.
 
-### Design
-The Reader uses an editorial-scholar aesthetic: Spectral display serif, Inter Tight UI sans, Gentium Plus for polytonic Greek (purpose-built diacritic positioning), a derived accent palette (`accent.50`–`900` from `#365f7e`), codex-style left-rule pattern, paper-grain background.
+## Product Surface
 
-Not included yet: NET import, Hebrew Bible, LXX, cloud sync, or PDF/DOCX/PPTX export.
+- **Reader** at `/read`
+  - Parallel SBLGNT Greek and WEB English display.
+  - Greek token popovers with lemma, morphology, gloss, and Louw-Nida domain/subdomain labels when present.
+  - English word highlighting, Greek token highlighting, notes, verse navigation, chapter navigation, and last-passage restore.
+- **Search** at `/search`
+  - Keyword search with PostgreSQL full-text search over `Verse.textSearch`.
+  - Lemma search over token lemmas.
+  - Morphology search over token morphology codes.
+  - Louw-Nida domain search with domain/subdomain dropdowns and exact LN-reference lookup.
+  - Saved searches scoped to the signed-in user.
+- **AI Study Assistant** at `/assistant`
+  - Runs local retrieval before synthesis.
+  - Shows structured citations and retrieval trace entries.
+  - Supports live OpenAI synthesis when configured, deterministic local fallback when not configured, and user-confirmed scholarly-model escalation.
+  - Applies the Grounding / Silence Protocol before returning or storing an answer.
+- **Notes** at `/notes`
+  - User-scoped notes, generated study notes, tags, reference filters, search, sorting, pagination, and Markdown export.
+- **Authentication**
+  - Protected app pages redirect to `/signin`.
+  - Auth.js v5 uses JWT sessions with a DB-backed revocation watermark.
+  - Local development can use the dev credentials provider; production should use GitHub OAuth or another real provider.
 
-## Setup
+The root route redirects to `/read`.
 
-1. **Install dependencies:**
+## Architecture
+
+| Layer | Primary files | Notes |
+| --- | --- | --- |
+| App routes | `app/read`, `app/search`, `app/assistant`, `app/notes`, `app/signin`, `app/api/*` | Next.js App Router surfaces and server endpoints. |
+| Reader/search data | `lib/search.ts`, `lib/bible.ts`, `lib/louwNida.ts`, `lib/references.ts` | Canonical passage, token, search, domain, and reference helpers. |
+| Assistant orchestration | `lib/ai/assistant.ts`, `lib/ai/signals.ts`, `lib/ai/retrievalPlanner.ts`, `lib/ai/synthesis.ts`, `lib/ai/grounding.ts` | Deterministic-first assistant pipeline and grounding checks. |
+| Semantic retrieval | `lib/search/semantic.ts`, `lib/search/rerank.ts`, `scripts/embed-verses.ts` | pgvector embeddings, hybrid RRF retrieval, and optional Voyage rerank through Vercel AI Gateway. |
+| Persistence | `prisma/schema.prisma`, `prisma/migrations/*` | PostgreSQL schema, handwritten FTS/vector migrations, Auth.js adapter tables, notes, saved searches, assistant history, import runs. |
+| Evaluation | `eval/*`, `scripts/eval-gate.ts`, `scripts/eval-report.ts`, `.github/workflows/*` | Deterministic gate and nightly hybrid faithfulness report. |
+
+Core stack:
+
+- Next.js 15.3 / React 19 / TypeScript 5.8
+- Prisma 6.7 / PostgreSQL
+- Auth.js v5 beta
+- OpenAI Node SDK v4 and AI SDK v6
+- Vitest, Playwright, ESLint, TypeScript, v8 coverage
+
+## Assistant Retrieval Pipeline
+
+The assistant is deliberately retrieval-first. A normal request flows through:
+
+1. Route the prompt and detect whether the user requested scholarly escalation.
+2. Extract references, book/chapter scope, Greek words, topics, morphology, domain signals, and phrase terms.
+3. Plan deterministic searches first: passage lookup, lemma, morphology, keyword, domain, and scoped chapter searches.
+4. Add semantic retrieval for topical prompts when `OPENAI_API_KEY` and embeddings are available.
+5. Optionally rerank semantic candidates through Vercel AI Gateway when `AI_GATEWAY_API_KEY` is set.
+6. Synthesize from the retrieved evidence.
+7. Verify citations and Greek quotes against the SBLGNT citation spine.
+8. Store the response only after grounding succeeds; otherwise store and display the withheld answer state.
+
+WEB citations are display aids. SBLGNT is the citation authority used for grounding.
+
+## Corpus And Data Sources
+
+| Source | Role | Notes |
+| --- | --- | --- |
+| SBLGNT / MorphGNT | Greek NT text, tokens, lemmas, morphology | SBLGNT is the grounding and citation spine. |
+| WEB USFM | English NT display/search aid | Public-domain English text. |
+| MACULA Greek | Glosses and lexical enrichment | Adds glosses, Louw-Nida code arrays, and Pericope Adulterae token coverage. |
+| UBS Louw-Nida lexical domains | Semantic domain labels | Vendored JSON in `data/louw-nida/`, imported into `LouwNidaDomain`. |
+
+Louw-Nida data attribution: *A Greek-English Lexicon of the New Testament Based on Semantic Domains* domain labels are from UBS (`ubsicap/ubs-open-license`), licensed CC-BY-SA 4.0. Keep attribution and ShareAlike obligations with any redistribution of the data or adapted domain-label dataset. See `data/louw-nida/NOTICE.md`.
+
+## Local Setup
+
+Prerequisites:
+
+- Node.js `>=22.15`
+- PostgreSQL, typically a Neon branch for development
+- A shell that can run npm scripts
+
+Install dependencies:
 
 ```bash
 npm install
 ```
 
-On Windows, if a Node tool fails with `unable to verify the first certificate` / `UNABLE_TO_VERIFY_LEAF_SIGNATURE`, the cause is usually a local TLS-intercepting root (corporate proxy, AV HTTPS scanning such as Norton Web/Mail Shield) that lives in the Windows certificate store but isn't in Node's bundled CA list. The fix is Node's `--use-system-ca` flag, which extends trust to the Windows store.
-
-The project's npm scripts (`dev`, `build`, `start`, the `import:*`/`embed:*`/`eval:*`/`db:*` tasks, `test:integration`, `test:acceptance`, `security:audit`) already bake in this flag via `cross-env`, so they work in any shell with **no env var setup** — even a freshly opened terminal that never inherited the variable. Chained scripts use `cross-env-shell` so the flag reaches every command in the chain.
-
-The one step that *cannot* be self-armed is `npm install` / `npm ci` itself: the dependency download happens before any package.json script runs, so the flag has to be in the environment first. For that initial install, set it ad-hoc — `NODE_OPTIONS=--use-system-ca npm install` (Bash) / `$env:NODE_OPTIONS="--use-system-ca"; npm install` (PowerShell) — or persist it at user scope with `setx NODE_OPTIONS "--use-system-ca"` (run once, then open a new shell; note: a process only inherits the variable if it was launched *after* this — fully restart your editor/terminal). See `docs/security-register.md` for the `NODE_EXTRA_CA_CERTS` alternative.
-
-2. **Create an `.env` file:**
+Create `.env` from `.env.example`, then set at least:
 
 ```bash
-cp .env.example .env
+DATABASE_URL="postgresql://..."
+DIRECT_URL="postgresql://..."
+AUTH_SECRET="..."
+AUTH_URL="http://localhost:3000"
+AUTH_DEV_ENABLED="1"
 ```
 
-- Set `DATABASE_URL` to a running PostgreSQL instance. The default in `.env.example` expects Postgres on `localhost:5433`.
-- Set `OPENAI_API_KEY` to enable live assistant mode. Without it, the assistant gracefully falls back to local-only retrieval. `OPENAI_MAX_OUTPUT_TOKENS` (default `2400`) caps any single response,, `OPENAI_REQUEST_TIMEOUT_MS` (default `120000`) bounds how long the client waits for a response — keep it large enough that a full answer at the configured token cap can finish generating, or the client abandons completed responses and shows the local fallback — and `OPENAI_TEMPERATURE` (default `0.3`, range `0`–`2`) sets the synthesis sampling temperature; lower values reduce sampling noise such as occasional foreign-language token leaks in the prose. Next.js reads system environment variables with higher precedence than `.env`, so a user/system-level `OPENAI_API_KEY` is also picked up automatically.
-- `AI_GATEWAY_API_KEY` *(optional)* — enables Voyage rerank-2.5 reranking of the assistant's semantic results via Vercel AI Gateway. Unset → retrieval falls back to RRF ordering with no behavior change. `RERANK_MODEL` (default `voyage/rerank-2.5`) and `RERANK_TIMEOUT_MS` (default `3000`) tune it.
-- Set `AUTH_SECRET` to a long random string. Required by Auth.js v5 in every environment — generate one with `openssl rand -base64 32`.
-- Set `AUTH_URL` to the public URL of the app (`http://localhost:3000` in dev).
-- For local sign-in without a real OAuth provider, set `AUTH_DEV_ENABLED=1`. The sign-in page lives at `/signin` and the global header carries a "Sign out" button once authenticated. **Never set `AUTH_DEV_ENABLED=1` in production.**
-- Protected pages (`/read`, `/search`, `/notes`, `/assistant`) redirect unauthenticated visitors to `/signin`. Sign-out triggers the Sprint 4 JWT revocation watermark (`User.sessionsValidFrom`), so a replayed session cookie captured before sign-out is rejected with `401` on the next request.
-- For GitHub OAuth in production, set both `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`.
-
-3. **Apply migrations and seed the corpus:**
+Apply migrations:
 
 ```bash
 npm run db:migrate:deploy
+```
+
+Use migrations, not `db:push`. `db:push` is intentionally disabled because the FTS and vector features depend on handwritten migrations for `unaccent`, `bible_simple`, generated `tsvector`, GIN indexes, `pgvector`, `VerseEmbedding`, and embedding hash columns.
+
+For a minimal local sample dataset:
+
+```bash
 npm run db:seed
 ```
 
-> **Use migrations, not `db:push`.** The Lexical FTS and vector-search features live in hand-written migrations that create `unaccent`, `bible_simple`, the **generated** `Verse.textSearch` column, `pgvector`, `VerseEmbedding`, and the embedding `textHash` column. `npm run db:push` is intentionally disabled because schema-push cannot recreate those SQL details safely; run `npm run db:migrate:deploy` to apply the checked-in migrations.
-
-4. **Start the app:**
+For the full open-text NT corpus, run the import flow instead of relying on the sample seed:
 
 ```bash
-npm run dev
-```
+npm run import:louw-nida
 
-Open `http://localhost:3000/read`.
-
-## Testing
-
-```bash
-# 200 unit tests across 28 files (~5s)
-npm run test:unit
-
-# Same suite with the v8 coverage gate (80% lines/statements over app/api + lib)
-npm run test:coverage
-
-# Real-Prisma integration tests for ownership + FK cascade.
-# These write/delete data, so they run against an isolated test database —
-# configure .env.test (cp .env.test.example .env.test) pointing at a Neon branch.
-npm run test:integration
-
-# Playwright end-to-end suite — signs in via dev credentials provider,
-# then exercises reader/search/assistant/notes (~30s). Also uses .env.test.
-npm run test:acceptance
-```
-
-> **Test database:** `npm run test:integration` and `npm run test:acceptance` load `.env.test`
-> (gitignored) instead of `.env`, so they hit a throwaway **Neon branch** rather than your working
-> database. Copy `.env.test.example` to `.env.test` and fill in the branch connection strings.
-
-Verification gate (matches the `verify` npm script, runs lint + tsc + build + coverage):
-
-```bash
-npm run verify
-```
-
-`npm run verify` exits 0 on the current `main`. The full release gate adds `npm run test:integration`, `npm run test:acceptance`, and `npm run security:audit`.
-
-## Evaluation harness (Milestone 3 Phase 6)
-
-A two-tier quality harness over the retrieval-first assistant pipeline. The dataset lives at `eval/dataset/golden-set.json` (≈20 curated NT-exegesis questions spanning exact-verse / lemma-survey / conceptual / domain / cross-chapter).
-
-```bash
-# Blocking PR gate — deterministic, DB-only, no API key. Runs each golden
-# question through deterministic retrieval and enforces a TYPE-AWARE gate.
-npm run eval:gate
-
-# Non-blocking nightly / on-demand hybrid quality report (writes
-# eval/output/report.{html,json}).
-npm run eval:report
-```
-
-**`eval:gate`** (needs only `DATABASE_URL` via `.env.test`) protects deterministic evidence retrieval and citation safety. It is **type-aware** — it gates the signals each query type can actually guarantee deterministically, and reports the rest:
-
-| Query type | Gated | Report-only |
-|---|---|---|
-| exact-verse, cross-chapter | recall **and** precision (= 1.0) | — |
-| lemma-survey | recall (= 1.0) | precision (structurally low: golden is a curated subset) |
-| conceptual | — | recall + precision (vector-dependent — evaluated in the nightly report) |
-| domain | — | recall + precision (until domain goldens are validated/scoped) |
-
-Plus two global hard gates over **all** items: **citation resolvability = 100%** (every cited reference resolves to a real SBLGNT verse) and **required lemma coverage = 100%**. Context recall is measured over the full retrieved evidence the synthesizer sees, not just the citation sample.
-
-**`eval:report`** is **dual-key**: `OPENAI_API_KEY` powers query embeddings (pgvector KNN) + live synthesis; `AI_GATEWAY_API_KEY` powers Voyage rerank + the LLM-as-judge faithfulness score (`EVAL_JUDGE_MODEL`, default `anthropic/claude-sonnet-4.6`; `EVAL_JUDGE_TIMEOUT_MS` default 30 s). Each question records explicit `synthesisStatus` / `judgeStatus`, so a missing key, wrong model slug, timeout, or provider error is labeled rather than silently dropped. The gate protects deterministic retrieval + citation safety; the report monitors full hybrid-pipeline quality. Generative-hallucination protection lives in the production runtime grounding verifier plus this nightly report.
-
-`eval:gate` should run in CI alongside `test:integration` / `test:acceptance` (it needs the DB) — **not** inside the DB-free `npm run verify`.
-
-## Open Text Imports
-
-The project includes an import script for three Greek/English NT data sources. Each run is tracked in the `ImportRun` table.
-
-> These data scripts (`import:open-bible`, `import:macula-glosses`, `import:louw-nida`, `embed:verses`) run through `tsx --env-file=.env`, so they read `DATABASE_URL` (and, for `embed:verses`, `OPENAI_API_KEY`) from your `.env`. Set those there before running, or pass a different file explicitly, e.g. `tsx --env-file=.env.test scripts/embed-verses.ts` to target the test branch. Already-set shell/system env vars are preserved.
-
-| Source | Purpose | Provides |
-|---|---|---|
-| MorphGNT SBLGNT | Per-word Greek tokens + morphology | `Token` rows + `Verse.text` for the SBLGNT corpus |
-| WEB USFM | English text | `Verse.text` for the WEB corpus |
-| MACULA Greek (SBLGNT) | English glosses + lexical/morph augmentation | Updates `Token.gloss` on existing rows; **inserts tokens and verses for the Pericope Adulterae** (John 7:53–8:11), which MorphGNT omits per the SBL bracketed-text convention; populates `Token.louwNida` and `Token.lnDomain` Louw-Nida code arrays |
-| UBS Louw-Nida lexical domains | Semantic-domain reference labels | `LouwNidaDomain` reference table (738 domain/subdomain nodes) — seed with `import:louw-nida` before re-running `import:macula-glosses` |
-
-Full import (all three sources, from local files):
-
-```bash
 npm run import:open-bible -- \
   --morphgnt-url-base https://raw.githubusercontent.com/morphgnt/sblgnt/master \
   --web-usfm-dir ./data/web-usfm \
   --macula-greek-tsv ./data/macula-greek/macula-greek-SBLGNT.tsv
 ```
 
-Individual sources:
-
-```bash
-# MorphGNT direct from GitHub
-npm run import:open-bible -- --morphgnt-url-base https://raw.githubusercontent.com/morphgnt/sblgnt/master
-
-# WEB only, from a local USFM directory
-npm run import:open-bible -- --web-usfm-dir ./data/web-usfm
-
-# MACULA Greek glosses only (default URL points at Clear-Bible main)
-npm run import:macula-glosses
-```
-
-Seed the Louw-Nida semantic-domain reference table (738 domain/subdomain nodes from the vendored UBS dataset), then re-run MACULA glosses to backfill token codes:
-
-```bash
-# 1. Seed LouwNidaDomain reference table (idempotent upsert)
-npm run import:louw-nida
-
-# 2. Backfill Token.louwNida / Token.lnDomain code arrays
-npm run import:macula-glosses
-```
-
-The morphology popover in the reader now shows **Domain** and **Subdomain** labels for Greek tokens that carry Louw-Nida codes. Phase 5b adds domain-aware retrieval on top of this data: a GIN index on `Token.louwNida`, the `/search` **domain** mode (domain / subdomain dropdowns + free-text LN-reference field), and explicit-only assistant routing for `domain 33` / `LN 33.55` prompts.
-
-After the corpus is imported, generate or refresh the semantic-search embeddings (idempotent; requires `OPENAI_API_KEY` in `.env`). The script re-embeds only rows whose embedding is missing, whose model differs from `text-embedding-3-small`, or whose stored `textHash` no longer matches the current WEB verse text:
+After the corpus is imported, generate semantic-search embeddings if live semantic retrieval is needed:
 
 ```bash
 npm run embed:verses
 ```
 
-Source repositories: MorphGNT at `https://github.com/morphgnt/sblgnt`, WEB USFM at `https://ebible.org/Scriptures/engwebp_usfm.zip` (the downloaded zip is checked in at the project root as `engwebp_usfm.zip`; unzipped contents live in `data/web-usfm/`), MACULA Greek at `https://github.com/Clear-Bible/macula-greek`, UBS Louw-Nida lexical domains (`ubsicap/ubs-open-license`) vendored at `data/louw-nida/UBSGreekNTDicLexicalDomains-v1.1-en.JSON`.
+`embed:verses` requires `OPENAI_API_KEY`. It is idempotent and re-embeds only when an embedding is missing, the model changes, or the stored WEB text hash is stale.
 
-**Louw-Nida data attribution:** *A Greek-English Lexicon of the New Testament Based on Semantic Domains* domain labels © UBS (`ubsicap/ubs-open-license`), licensed **CC-BY-SA 4.0**. Attribution and ShareAlike notice: `data/louw-nida/NOTICE.md`. The ShareAlike obligation applies to redistribution of the data or any adapted database derived from it.
+Start the app:
 
-### MACULA Pericope Adulterae overrides
+```bash
+npm run dev
+```
 
-MACULA's coverage of John 7:53–8:11 was added later than the core SBLGNT and is poorly punctuated upstream — many clause-final stops are missing, a few are wrong, and one row has `;;` embedded in the actual word column. `scripts/import-open-bible.ts` carries a `MACULA_OVERRIDES` table that patches each affected token's `text` and/or `after` field against Holmes 2010 SBL GNT before parsing. Overridden verses are force-refreshed on every import so override edits land on tokens that already exist in the DB. If Clear-Bible ever publishes a curated PA, drop the matching entries from the override table.
+Open `http://localhost:3000`. Unauthenticated visits to protected pages redirect to `/signin`.
 
-## Sample Acceptance Path
+### Windows TLS Note
 
-1. Open `/read`.
-2. View John 1:1-5 in Greek and English.
-3. Click `logos` / `λόγος` to see the morphology popover (`N-NSM` for John 1:1).
-4. Use `Search lemma` to open lemma results at `/search?mode=lemma&q=λόγος&book=John` (40 hits).
-5. Save the search, then add a note or highlight from the reader.
-6. Open `/assistant` and ask: `Show me every use of λόγος in John 1 and summarize the pattern.`
-7. Review the **Retrieval trace** panel — entries are structured as `searchLemma({"lemma":"λόγος","book":"John"})`.
-8. Confirm the metadata bar shows `Live` (when `OPENAI_API_KEY` is set) or `Local fallback`.
-9. Click **Save generated note**, then **Export Markdown** to download the study note.
+Most npm scripts set `NODE_OPTIONS=--use-system-ca` so Node trusts the Windows certificate store when a local proxy or antivirus product intercepts TLS. The first `npm install` happens before package scripts can apply that flag. If dependency installation fails with `unable to verify the first certificate` or `UNABLE_TO_VERIFY_LEAF_SIGNATURE`, run the install with `NODE_OPTIONS=--use-system-ca` set in the shell, or set it once at user scope and reopen the terminal.
+
+## Environment Variables
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `DATABASE_URL` | Yes | Runtime PostgreSQL connection. Neon pooled URL is recommended for deployed runtime. |
+| `DIRECT_URL` | Yes | Direct PostgreSQL connection for Prisma migrations. |
+| `AUTH_SECRET` | Yes | Auth.js secret. Generate a long random value. |
+| `AUTH_URL` | Yes | Public app URL, for example `http://localhost:3000` locally. |
+| `AUTH_DEV_ENABLED` | Local only | Set to `1` for local dev sign-in. Never enable in production. |
+| `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | Production auth | Enables GitHub OAuth when both are set. |
+| `OPENAI_API_KEY` | Optional | Enables live synthesis, query embeddings, and `embed:verses`. Without it, assistant synthesis falls back locally. |
+| `OPENAI_DEFAULT_MODEL` | Optional | Default live synthesis model. |
+| `OPENAI_SCHOLARLY_MODEL` | Optional | Model used only for user-confirmed scholarly escalation. |
+| `OPENAI_REQUEST_TIMEOUT_MS`, `OPENAI_MAX_OUTPUT_TOKENS`, `OPENAI_TEMPERATURE` | Optional | Runtime bounds and sampling settings for synthesis. |
+| `TEXTLAB_ASSISTANT_DISABLE_LIVE` | Optional | Set to `1` to force local fallback even when an OpenAI key is present. |
+| `AI_GATEWAY_API_KEY` | Optional | Enables Voyage rerank and the eval report judge through Vercel AI Gateway. |
+| `RERANK_MODEL`, `RERANK_TIMEOUT_MS` | Optional | Rerank model and timeout overrides. |
+| `EVAL_JUDGE_MODEL`, `EVAL_JUDGE_TIMEOUT_MS` | Optional | Nightly eval judge model and timeout. |
+
+Integration, acceptance, and eval scripts load `.env.test`; configure it from `.env.test.example` against a throwaway Neon branch. These commands write and delete test data.
+
+## Commands
+
+```bash
+# Development
+npm run dev
+npm run build
+npm run start
+
+# Database
+npm run db:migrate:deploy
+npm run db:seed
+npm run import:louw-nida
+npm run import:open-bible
+npm run import:macula-glosses
+npm run embed:verses
+
+# Verification
+npm run lint
+npx tsc --noEmit --pretty false
+npm run test:unit
+npm run test:coverage
+npm run verify
+npm run test:integration
+npm run test:acceptance
+npm run security:audit
+
+# Evaluation
+npm run eval:gate
+npm run eval:report
+```
+
+`npm run verify` runs lint, TypeScript, build, and coverage. The full release gate also includes integration tests, acceptance tests, security audit, and the eval gate.
+
+## Evaluation Harness
+
+Milestone 3 Phase 6 added a two-tier quality harness over `eval/dataset/golden-set.json`.
+
+`npm run eval:gate` is the blocking deterministic gate. It is DB-only and does not require API keys. It checks type-aware retrieval quality, citation resolvability, and required lemma coverage.
+
+`npm run eval:report` is the non-blocking hybrid quality report. It runs the full retrieval pipeline with semantic retrieval, synthesis, rerank, and LLM-as-judge faithfulness scoring when the relevant keys are present. It writes self-contained HTML and JSON output under `eval/output/`.
+
+GitHub Actions automation is present and configured:
+
+- `.github/workflows/eval-gate.yml` runs on pull requests and pushes to `main`.
+- `.github/workflows/nightly-eval-report.yml` runs on a nightly schedule and via `workflow_dispatch`.
+
+To enable those workflows in a fork or fresh deployment, configure the required eval database/API secrets and make `Eval Gate / gate` a required status check for protected branches.
+
+The gate protects deterministic evidence retrieval and citation safety. The report monitors full hybrid-pipeline answer quality. Runtime hallucination protection remains the production grounding verifier.
+
+## Current Follow-Ups
+
+- **PostCSS advisory:** moderate upstream-blocked advisory tracked in `docs/security-register.md`; re-run `npm run security:audit` after Next.js upgrades.
+- **Grounding prose sweep:** the Silence Protocol verifies structured `claims[]`; a future hardening pass should also detect unsupported inline prose citations.
+- **Natural-language range parsing:** `Matthew 5:1-12` style ranges work; "from X to Y" / "X through Y" ranges remain a retrieval-planner follow-up.
+- **Topical exact-verse fan-out:** decide whether explicit verse lookups with topic words should suppress extra topic searches.
+- **Domain gate promotion:** domain recall is report-only until the domain golden set is fully validated and scoped.
+- **Coverage headroom:** branch coverage is close to the current gate; targeted tests in assistant/search code should come before raising the branch threshold.
+- **Developer onboarding:** add a focused guide for extending the assistant dispatch/retrieval-planner branch pattern.
+- **Data expansion:** OT Hebrew/Aramaic, LXX, Strong's, speaker data, explicit alignment, broader query expansion, and a general multi-tool agent loop remain beyond Milestone 3.
+
+## Smoke Path
+
+1. Start the app and sign in through `/signin`.
+2. Open `/read` and view John 1.
+3. Click a Greek token to inspect morphology and domain metadata.
+4. Open `/search` and try keyword, lemma, morphology, and domain modes.
+5. Open `/assistant` and ask a scoped corpus question, such as `Show me every use of logos in John 1 and summarize the pattern.`
+6. Review the retrieval trace and citations.
+7. Save the generated note and export it as Markdown.
+8. Run `npm run eval:gate` against the test database before treating retrieval changes as ready.
 
 ## Project Documentation
 
-- `docs/archived/MILESTONE_2_PLAN.md`, `docs/archived/MILESTONE_2_5_PLAN.md` — historical milestone planning
-- `docs/PROJECT_STATE.md` — current state snapshot and logical next steps
-- `docs/ui-review/pass-{1,2,3}-*.md` — three-pass UI review (functional bugs / layout / UX & design), 55 findings, 100% closed across PRs 1–11
-- `docs/archived/security-testing-remediation-plan.md` — Phase 3.0 hardening plan (auth, validation, headers, coverage) — all four sprints landed
-- `docs/security-register.md` — known security advisories with mitigations
-- `docs/superpowers/plans/` — execution plans for prior code review remediations
+Start here:
+
+- `docs/PROJECT_STATE.md` - current state snapshot, outstanding items, and logical next steps.
+- `docs/HiFi-exegesis-nt-roadmap.md` - Milestone 3 roadmap, gap analysis, completed phases, and deferred scope.
+- `docs/security-register.md` - accepted advisories, security exceptions, and operational hardening notes.
+- `eval/dataset/golden-set.json` - curated eval questions and expected evidence.
+- `eval/`, `scripts/eval-gate.ts`, and `scripts/eval-report.ts` - eval harness implementation and entry points.
+
+Historical planning and implementation notes live under:
+
+- `docs/archived/`
+- `docs/ui-review/`
+- `docs/superpowers/specs/`
+- `docs/superpowers/plans/`

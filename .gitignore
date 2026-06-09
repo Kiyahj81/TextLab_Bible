@@ -13,3 +13,4 @@ test-results
 data/
 .claude/
 eval/output/
+.idea/

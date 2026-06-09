@@ -149,6 +149,15 @@ sprint and at every Next.js minor upgrade. Cross-check each open row.
   launched *after* `setx` set it, so editors/terminals opened earlier
   silently run without it. Baking the flag into the scripts removes that
   failure mode for everything except `npm install` itself.
+- **Node floor — requires Node ≥ 22.15 (2026-06-09):** `--use-system-ca`
+  was added in Node 22.15 / 24; older Node rejects it in `NODE_OPTIONS`
+  with `node: --use-system-ca is not allowed in NODE_OPTIONS` (exit 9).
+  Because the flag now lives in shared scripts that CI also runs, the
+  CI Node had to support it: the eval-gate and nightly-report workflows
+  were bumped from Node 20 → 24 (matching local dev), and `engines.node`
+  + `.nvmrc` pin the floor so the drift can't recur. Caught by Codex as
+  a P1 on PR #15 — the original Node-20 gate run failed at `npm ci`
+  postinstall.
 - **`npm install`/`npm ci` cannot be self-armed:** the dependency
   download runs before any package.json script (postinstall included),
   so the flag must already be in the environment. Use

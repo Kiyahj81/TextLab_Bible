@@ -135,11 +135,49 @@ sprint and at every Next.js minor upgrade. Cross-check each open row.
 - **Resolved on the maintainer's Windows machine (2026-05-26):** Norton
   AV's "Web/Mail Shield" intercepts the registry TLS and re-signs with
   a root that lives in the Windows certificate store. Node 22+ does
-  not consult the Windows store by default. Fix: set the user-level
-  env var `NODE_OPTIONS=--use-system-ca` (e.g. via
-  `setx NODE_OPTIONS "--use-system-ca"`), then re-open the shell.
-  Node will then trust the Windows store in addition to its bundled
-  CAs and `npm audit` succeeds.
+  not consult the Windows store by default. Fix: Node's
+  `--use-system-ca` flag, which trusts the Windows store in addition to
+  its bundled CAs.
+- **Hardened to not depend on the env var (2026-06-09):** every
+  Node-spawning npm script now bakes in `--use-system-ca` via `cross-env`
+  (chained scripts use `cross-env-shell` so the flag reaches every
+  command in the chain). `npm run security:audit`, `build`, the
+  `import:*`/`embed:*`/`eval:*`/`db:*` tasks, and the integration/
+  acceptance tests therefore succeed in any shell, even a freshly opened
+  terminal that never inherited `NODE_OPTIONS`. Rationale: env-var
+  inheritance is fragile — a process only sees `NODE_OPTIONS` if it was
+  launched *after* `setx` set it, so editors/terminals opened earlier
+  silently run without it. Baking the flag into the scripts removes that
+  failure mode for everything except `npm install` itself.
+- **Node floor — requires Node ≥ 22.15 (2026-06-09):** `--use-system-ca`
+  was added in Node 22.15 / 24; older Node rejects it in `NODE_OPTIONS`
+  with `node: --use-system-ca is not allowed in NODE_OPTIONS` (exit 9).
+  Because the flag now lives in shared scripts that CI also runs, the
+  CI Node had to support it: the eval-gate and nightly-report workflows
+  were bumped from Node 20 → 24 (matching local dev), and `engines.node`
+  + `.nvmrc` pin the floor so the drift can't recur. Caught by Codex as
+  a P1 on PR #15 — the original Node-20 gate run failed at `npm ci`
+  postinstall.
+- **`npm install`/`npm ci` cannot be self-armed:** the dependency
+  download runs before any package.json script (postinstall included),
+  so the flag must already be in the environment. Use
+  `NODE_OPTIONS=--use-system-ca npm install` ad-hoc, or persist it at
+  user scope via `setx NODE_OPTIONS "--use-system-ca"` (then fully
+  restart the shell/editor so it inherits the value).
+- The user-level `NODE_OPTIONS=--use-system-ca` env var remains set on
+  the maintainer's machine as a belt-and-suspenders default and to cover
+  the install step.
+- **Accepted assumption — scripts OVERWRITE `NODE_OPTIONS` (Codex P2, PR
+  #15):** the `cross-env NODE_OPTIONS=--use-system-ca` prefix replaces any
+  inherited `NODE_OPTIONS` rather than appending to it. Verified safe for
+  this repo: nothing in `.github/`, `next.config`, or Vercel sets
+  `NODE_OPTIONS` for another purpose, the maintainer's user-scope value is
+  already `--use-system-ca` (identical → no-op overwrite), and CI leaves it
+  unset. So no `--max-old-space-size` / `--require` (memory/instrumentation)
+  options are being dropped. **Hardening debt:** if a conflicting
+  `NODE_OPTIONS` is ever introduced (e.g. a build-memory flag in CI),
+  switch from `cross-env` to a small wrapper that *appends* `--use-system-ca`
+  to the existing value instead of overwriting.
 - Alternative if `--use-system-ca` is unavailable or undesired: export
   the intercepting root to a `.pem` file and set
   `NODE_EXTRA_CA_CERTS=<path-to-that-pem>`.

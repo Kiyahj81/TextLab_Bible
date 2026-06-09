@@ -41,7 +41,11 @@ Not included yet: NET import, Hebrew Bible, LXX, cloud sync, or PDF/DOCX/PPTX ex
 npm install
 ```
 
-On Windows, if `npm install`, `npm audit`, or any other Node tool fails with `unable to verify the first certificate` / `UNABLE_TO_VERIFY_LEAF_SIGNATURE`, the cause is usually a local TLS-intercepting root (corporate proxy, AV HTTPS scanning such as Norton Web/Mail Shield) that lives in the Windows certificate store but isn't in Node's bundled CA list. Persist the fix at user scope with `setx NODE_OPTIONS "--use-system-ca"` (run once, then open a new shell), or set it ad-hoc per invocation via `NODE_OPTIONS=--use-system-ca` (Bash) / `$env:NODE_OPTIONS="--use-system-ca"; ...` (PowerShell). See `docs/security-register.md` for the `NODE_EXTRA_CA_CERTS` alternative.
+On Windows, if a Node tool fails with `unable to verify the first certificate` / `UNABLE_TO_VERIFY_LEAF_SIGNATURE`, the cause is usually a local TLS-intercepting root (corporate proxy, AV HTTPS scanning such as Norton Web/Mail Shield) that lives in the Windows certificate store but isn't in Node's bundled CA list. The fix is Node's `--use-system-ca` flag, which extends trust to the Windows store.
+
+The project's npm scripts (`dev`, `build`, `start`, the `import:*`/`embed:*`/`eval:*`/`db:*` tasks, `test:integration`, `test:acceptance`, `security:audit`) already bake in this flag via `cross-env`, so they work in any shell with **no env var setup** — even a freshly opened terminal that never inherited the variable. Chained scripts use `cross-env-shell` so the flag reaches every command in the chain.
+
+The one step that *cannot* be self-armed is `npm install` / `npm ci` itself: the dependency download happens before any package.json script runs, so the flag has to be in the environment first. For that initial install, set it ad-hoc — `NODE_OPTIONS=--use-system-ca npm install` (Bash) / `$env:NODE_OPTIONS="--use-system-ca"; npm install` (PowerShell) — or persist it at user scope with `setx NODE_OPTIONS "--use-system-ca"` (run once, then open a new shell; note: a process only inherits the variable if it was launched *after* this — fully restart your editor/terminal). See `docs/security-register.md` for the `NODE_EXTRA_CA_CERTS` alternative.
 
 2. **Create an `.env` file:**
 

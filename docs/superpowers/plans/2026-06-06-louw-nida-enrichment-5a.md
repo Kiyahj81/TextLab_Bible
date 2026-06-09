@@ -994,7 +994,7 @@ Run:
 git log --oneline main..HEAD
 git push -u origin milestone-3/phase-5-louw-nida
 ```
-Then open a PR. Per project memory: review any Codex/Greptile automated PR comments and fix valid findings before merging.
+Then open a PR. Per project memory: review any Codex automated PR comments and fix valid findings before merging.
 
 ---
 

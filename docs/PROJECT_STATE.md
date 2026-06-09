@@ -346,10 +346,14 @@ A few open questions that aren't blockers but will need a call before the next v
 
 ## Quick reference
 
+> The npm scripts bake in `--use-system-ca` via `cross-env`, so none of the
+> commands below need a `NODE_OPTIONS` prefix — they work in any shell. Only the
+> initial `npm install` still needs the flag in the environment (see Setup in
+> `README.md`).
+
 ### Verify a clean state
 
 ```powershell
-$env:NODE_OPTIONS="--use-system-ca"
 npm run verify          # lint + tsc + build + coverage gate
 npm run test:integration # real-Prisma ownership + FK suite (uses .env.test / Neon test branch)
 npm run test:acceptance  # Playwright end-to-end (uses .env.test / Neon test branch)
@@ -360,7 +364,7 @@ All three should exit 0.
 ### Start the dev server
 
 ```powershell
-$env:NODE_OPTIONS="--use-system-ca"; npm run dev
+npm run dev
 ```
 
 App at [http://localhost:3000](http://localhost:3000). With `OPENAI_API_KEY` set (system env or `.env`), assistant runs in live mode; without it, deterministic local-retrieval fallback.
@@ -368,7 +372,7 @@ App at [http://localhost:3000](http://localhost:3000). With `OPENAI_API_KEY` set
 ### Re-audit dependencies
 
 ```powershell
-$env:NODE_OPTIONS="--use-system-ca"; npm run security:audit
+npm run security:audit
 ```
 
-Expected residual until Next bumps bundled postcss: 1 moderate (GHSA-qx2v-qp2m-jg93). See `docs/security-register.md` for the mitigation rationale. The `NODE_OPTIONS=--use-system-ca` env var is persisted at user scope on the maintainer's Windows machine so the registry TLS chain validates against the Windows root store; see `docs/security-register.md` for background on why and for the `NODE_EXTRA_CA_CERTS` alternative.
+Expected residual until Next bumps bundled postcss: 1 moderate (GHSA-qx2v-qp2m-jg93). See `docs/security-register.md` for the mitigation rationale. The registry TLS chain validates against the Windows root store via the `--use-system-ca` flag baked into the script; the `NODE_OPTIONS=--use-system-ca` env var also remains persisted at user scope on the maintainer's machine as a fallback and for `npm install`. See `docs/security-register.md` for background and the `NODE_EXTRA_CA_CERTS` alternative.

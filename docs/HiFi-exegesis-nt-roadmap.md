@@ -245,7 +245,7 @@ fusion of FTS + vector results (k=60), then cross-encoder rerank (top-30→top-5
 4. ✅ Re-run `npm run import:louw-nida` (seed reference table), then `npm run import:macula-glosses` (backfill token codes).
 5. ✅ Morphology popover surfaces Domain/Subdomain labels (5a); assistant domain routing + `/search` domain mode (5b).
 
-**Phase 5b follow-up (perf, deferred — Greptile PR #12):** `app/search/page.tsx` awaits `getLouwNidaDomainOptions()` sequentially before the search on every `/search` request (even non-domain modes, since `SearchPanel` always needs the options for client-side mode switching). Parallelize it with `books`/`savedSearches`/the search in a single `Promise.all`, then compute `domainSearchLabel(...)` after both resolve — collapses ~2 sequential DB round-trips into 1. Non-blocking (Greptile 5/5).
+**Phase 5b follow-up (perf, deferred — from PR #12 review):** `app/search/page.tsx` awaits `getLouwNidaDomainOptions()` sequentially before the search on every `/search` request (even non-domain modes, since `SearchPanel` always needs the options for client-side mode switching). Parallelize it with `books`/`savedSearches`/the search in a single `Promise.all`, then compute `domainSearchLabel(...)` after both resolve — collapses ~2 sequential DB round-trips into 1. Non-blocking.
 
 **Phase 6 — Evaluation harness. ✅ DONE (branch `milestone-3/phase-6-eval-harness`).** A two-tier
 harness in `eval/` over a ~20-item curated golden set (`eval/dataset/golden-set.json`). **Blocking PR

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decodeMorphCode } from "@/lib/morphology";
+import { decodeMorphCode, normalizeMorphCodeQuery } from "@/lib/morphology";
 
 describe("decodeMorphCode", () => {
   it("decodes nominals", () => {
@@ -50,5 +50,26 @@ describe("decodeMorphCode", () => {
   it("decodes genderless pronoun parses (case + number only)", () => {
     expect(decodeMorphCode("RPDP")).toBe("personal pronoun — dative plural");
     expect(decodeMorphCode("RPNS")).toBe("personal pronoun — nominative singular");
+  });
+});
+
+describe("normalizeMorphCodeQuery", () => {
+  it("reorders Robinson finite verbs to the stored person-first shape", () => {
+    expect(normalizeMorphCodeQuery("V-PAI-3S")).toBe("V-3PAI-S");
+    expect(normalizeMorphCodeQuery("V-RAI-3S")).toBe("V-3XAI-S");
+    expect(normalizeMorphCodeQuery("V-PAM-2P")).toBe("V-2PAD-P");
+    expect(normalizeMorphCodeQuery("v-pai-3s")).toBe("V-3PAI-S");
+  });
+
+  it("joins Robinson participles and translates infinitive tense", () => {
+    expect(normalizeMorphCodeQuery("V-PAP-NSM")).toBe("V-PAPNSM");
+    expect(normalizeMorphCodeQuery("V-RAN")).toBe("V-XAN");
+  });
+
+  it("passes through stored-scheme and non-verb codes unchanged", () => {
+    expect(normalizeMorphCodeQuery("V-3PAI-S")).toBe("V-3PAI-S");
+    expect(normalizeMorphCodeQuery("N-NSM")).toBe("N-NSM");
+    expect(normalizeMorphCodeQuery("RANSM")).toBe("RANSM");
+    expect(normalizeMorphCodeQuery("V-3PAI")).toBe("V-3PAI");
   });
 });

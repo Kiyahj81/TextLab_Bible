@@ -9,7 +9,7 @@ const { prismaMock } = vi.hoisted(() => ({
 
 vi.mock("@/lib/db", () => ({ prisma: prismaMock }));
 
-import { searchLemma } from "@/lib/search";
+import { searchLemma, searchMorphology } from "@/lib/search";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -51,5 +51,31 @@ describe("searchLemma case-insensitivity", () => {
     const expected = { equals: "διάβολος", mode: "insensitive" };
     expect(prismaMock.token.findMany.mock.calls[0][0].where.lemma).toEqual(expected);
     expect(prismaMock.token.count.mock.calls[0][0].where.lemma).toEqual(expected);
+  });
+});
+
+describe("searchMorphology Robinson normalization", () => {
+  it("normalizes a Robinson finite verb code to the stored MorphGNT person-first scheme before matching", async () => {
+    prismaMock.token.count.mockResolvedValue(0);
+    prismaMock.token.findMany.mockResolvedValue([]);
+    prismaMock.verse.findMany.mockResolvedValue([]);
+
+    await searchMorphology({ morphCode: "V-PAI-3S", matchMode: "exact" });
+
+    // Robinson "V-PAI-3S" (person-last) must be normalized to stored "V-3PAI-S" (person-first).
+    const expected = { equals: "V-3PAI-S", mode: "insensitive" };
+    expect(prismaMock.token.findMany.mock.calls[0][0].where.morphCode).toEqual(expected);
+    expect(prismaMock.token.count.mock.calls[0][0].where.morphCode).toEqual(expected);
+  });
+
+  it("passes through a stored-scheme MorphGNT code unchanged", async () => {
+    prismaMock.token.count.mockResolvedValue(0);
+    prismaMock.token.findMany.mockResolvedValue([]);
+    prismaMock.verse.findMany.mockResolvedValue([]);
+
+    await searchMorphology({ morphCode: "V-3PAI-S", matchMode: "exact" });
+
+    const expected = { equals: "V-3PAI-S", mode: "insensitive" };
+    expect(prismaMock.token.findMany.mock.calls[0][0].where.morphCode).toEqual(expected);
   });
 });

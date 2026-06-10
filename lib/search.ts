@@ -6,6 +6,7 @@ import { reciprocalRankFusion, type RankedRef } from "@/lib/search/rrf";
 import { EMBEDDING_MODEL, SEMANTIC_INDEX_CORPUS, formatVectorLiteral } from "@/lib/search/semanticIndex";
 import { rerankCandidates } from "@/lib/search/rerank";
 import { resolveTokenDomains } from "@/lib/louwNida";
+import { normalizeMorphCodeQuery } from "@/lib/morphology";
 
 export {
   EMBEDDING_MODEL,
@@ -555,7 +556,7 @@ export async function searchMorphology(input: {
   book?: string;
   chapter?: number;
 } & PaginationInput) {
-  const morphCode = input.morphCode.trim();
+  const morphCode = normalizeMorphCodeQuery(input.morphCode.trim());
   const book = normalizeBook(input.book);
   const pagination = normalizePagination(input);
 

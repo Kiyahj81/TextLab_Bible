@@ -29,6 +29,71 @@ const MOODS: Record<string, string> = { I: "indicative", D: "imperative", S: "su
 const DEGREES: Record<string, string> = { C: "comparative", S: "superlative" };
 const PERSON_ORDINALS: Record<string, string> = { "1": "1st", "2": "2nd", "3": "3rd" };
 
+// Robinson tense/mood letters that differ from the stored MorphGNT scheme.
+// Robinson R=perfect → stored X; Robinson M=imperative → stored D.
+const ROBINSON_TENSE_MAP: Record<string, string> = { R: "X" };
+const ROBINSON_MOOD_MAP: Record<string, string> = { M: "D" };
+
+// Robinson finite verb: V-<tense><voice><mood>-<person><number>
+// e.g. "V-PAI-3S" (present active indicative 3rd singular)
+const ROBINSON_FINITE_RE = /^V-([PIFRAXY])([AMP])([ISOMD])-([123])([SP])$/i;
+
+// Robinson participle: V-<tense><voice>P-<case><number><gender>
+// e.g. "V-PAP-NSM" (present active participle nominative singular masculine)
+const ROBINSON_PARTICIPLE_RE = /^V-([PIFRAXY])([AMP])P-([NGDAV])([SP])([MFN])$/i;
+
+// Robinson infinitive: V-<tense><voice>N
+// e.g. "V-PAN" (present active infinitive), "V-RAN" → "V-XAN"
+const ROBINSON_INFINITIVE_RE = /^V-([PIFRAXY])([AMP])N$/i;
+
+/**
+ * Normalizes a Robinson-convention morph code query to the stored MorphGNT
+ * scheme used in Token.morphCode, so that user- or assistant-supplied Robinson
+ * codes match the corpus.
+ *
+ * Differences handled:
+ *  - Finite verbs: Robinson person-LAST ("V-PAI-3S") → stored person-FIRST ("V-3PAI-S")
+ *  - Tense letter: Robinson R=perfect → stored X
+ *  - Mood letter:  Robinson M=imperative → stored D
+ *  - Participles:  Robinson dashed ("V-PAP-NSM") → stored joined ("V-PAPNSM")
+ *  - Infinitives:  tense R→X only (shape otherwise identical)
+ *
+ * Input is uppercased before matching so lowercase queries work. Anything
+ * that is already in MorphGNT form or is not a recognized Robinson pattern
+ * (nouns, pronouns, prefixes, arbitrary text) is returned unchanged.
+ */
+export function normalizeMorphCodeQuery(code: string): string {
+  const upper = code.toUpperCase();
+
+  // Robinson finite verb: V-TAM-PSN → V-P T A M - S (person-first)
+  const finiteMatch = ROBINSON_FINITE_RE.exec(upper);
+  if (finiteMatch) {
+    const [, tense, voice, mood, person, number] = finiteMatch;
+    const t = ROBINSON_TENSE_MAP[tense] ?? tense;
+    const m = ROBINSON_MOOD_MAP[mood] ?? mood;
+    return `V-${person}${t}${voice}${m}-${number}`;
+  }
+
+  // Robinson participle: V-TAP-CGN → V-TAPNGN (dash removed)
+  const participleMatch = ROBINSON_PARTICIPLE_RE.exec(upper);
+  if (participleMatch) {
+    const [, tense, voice, caseCode, number, gender] = participleMatch;
+    const t = ROBINSON_TENSE_MAP[tense] ?? tense;
+    return `V-${t}${voice}P${caseCode}${number}${gender}`;
+  }
+
+  // Robinson infinitive: V-TAN → V-TAN (same shape, but tense R→X)
+  const infinitiveMatch = ROBINSON_INFINITIVE_RE.exec(upper);
+  if (infinitiveMatch) {
+    const [, tense, voice] = infinitiveMatch;
+    const t = ROBINSON_TENSE_MAP[tense] ?? tense;
+    return `V-${t}${voice}N`;
+  }
+
+  // Pass through: already MorphGNT-scheme, nominals, prefixes, arbitrary text.
+  return code;
+}
+
 export function decodeMorphCode(morphCode: string): string | null {
   const code = morphCode.trim();
   if (!code) return null;

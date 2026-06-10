@@ -5,7 +5,50 @@ import { BookmarkPlus, Pencil, Search, Trash2, X } from "lucide-react";
 import { Fragment, useState } from "react";
 import { splitWithMatches } from "@/lib/search-highlight";
 import type { DomainOptions } from "@/lib/search";
+import { readerHref } from "@/lib/references";
 import { useAutoDismissMap, useAutoDismissString } from "@/lib/useAutoDismissStatus";
+
+const MODES = [
+  { value: "keyword", label: "Keyword" },
+  { value: "lemma", label: "Lemma" },
+  { value: "morphology", label: "Morphology" },
+  { value: "domain", label: "Domain" }
+] as const;
+
+const MODE_HINTS: Record<string, { placeholder: string; hint: string }> = {
+  keyword: {
+    placeholder: 'e.g. righteousness, "born again"',
+    hint: "Searches verse text in every corpus. Use quotes for exact phrases and a leading - to exclude a word."
+  },
+  lemma: {
+    placeholder: "e.g. λόγος, ἀγάπη, πίστις",
+    hint: "Finds every inflected form of a Greek dictionary headword (case-insensitive)."
+  },
+  morphology: {
+    placeholder: "e.g. N-NSM, V-3PAI-S",
+    hint: "MorphGNT parsing codes. Switch Morph match to Prefix to broaden (e.g. V-3PAI)."
+  },
+  domain: {
+    placeholder: "e.g. 33.55",
+    hint: "Louw–Nida semantic domains. Pick a domain, narrow by subdomain, or enter an exact LN reference."
+  }
+};
+
+function buildExampleSearches(domainOptions: DomainOptions): { label: string; href: string }[] {
+  const examples = [
+    { label: "Lemma: λόγος", href: `/search?mode=lemma&q=${encodeURIComponent("λόγος")}` },
+    { label: 'Keyword: "born again"', href: `/search?mode=keyword&q=${encodeURIComponent('"born again"')}` },
+    { label: "Morphology: N-NSM", href: "/search?mode=morphology&q=N-NSM&matchMode=exact" }
+  ];
+  const domain = domainOptions.domains.find((d) => d.number === 25);
+  if (domain) {
+    examples.push({
+      label: `Domain ${domain.number}: ${domain.label}`,
+      href: `/search?mode=domain&domain=${encodeURIComponent(domain.code)}`
+    });
+  }
+  return examples;
+}
 
 export type SearchPanelResult =
   | {
@@ -13,6 +56,7 @@ export type SearchPanelResult =
       corpus: string;
       reference: string;
       text: string;
+      onSpine?: boolean;
     }
   | {
       kind: "token";
@@ -78,7 +122,7 @@ export function SearchPanel({
   hasSearch: boolean;
   searchLabel: string;
 }) {
-  const [activeMode, setActiveMode] = useState(mode);
+  const [activeMode, setActiveMode] = useState(MODES.some((m) => m.value === mode) ? mode : "keyword");
   const [queryValue, setQueryValue] = useState(query);
   const [selectedDomain, setSelectedDomain] = useState(domain);
   const [selectedSubdomain, setSelectedSubdomain] = useState(subdomain);
@@ -201,109 +245,119 @@ export function SearchPanel({
     <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_220px]">
       <div className="space-y-6">
       <form className="space-y-3 rounded-md border border-stone-300 bg-white p-4 shadow-sm" action="/search">
-        <div className="grid gap-3 md:grid-cols-[180px_1fr]">
-          <label className="space-y-1">
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mode</span>
-            <select
-              name="mode"
-              value={activeMode}
-              onChange={(event) => setActiveMode(event.target.value)}
-              className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm"
-            >
-              <option value="keyword">Keyword</option>
-              <option value="lemma">Lemma</option>
-              <option value="morphology">Morphology</option>
-              <option value="domain">Domain</option>
-            </select>
-          </label>
-          {activeMode === "domain" ? (
-            <div className="grid gap-3 sm:grid-cols-3">
-              <label className="space-y-1">
-                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Domain</span>
-                <select
-                  name="domain"
-                  value={selectedDomain}
-                  onChange={(event) => onDomainChange(event.target.value)}
-                  className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm"
-                >
-                  <option value="">Any domain</option>
-                  {domainOptions.domains.map((d) => (
-                    <option key={d.code} value={d.code}>{`${d.number} — ${d.label}`}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="space-y-1">
-                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Subdomain</span>
-                <select
-                  name="subdomain"
-                  value={selectedSubdomain}
-                  onChange={(event) => onSubdomainChange(event.target.value)}
-                  disabled={!selectedDomain}
-                  className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm disabled:opacity-50"
-                >
-                  <option value="">Any subdomain</option>
-                  {(domainOptions.subdomainsByDomain[selectedDomain] ?? []).map((s) => (
-                    <option key={s.code} value={s.code}>{s.label}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="space-y-1">
-                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">LN reference</span>
-                <div className="flex items-center gap-2">
-                  <input
-                    name="ln"
-                    value={lnValue}
-                    onChange={(event) => setLnValue(event.target.value)}
-                    placeholder="e.g. 33.55"
-                    className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-accent-600"
-                  />
-                  <button
-                    type="submit"
-                    aria-label="Search"
-                    title="Search"
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-accent-700 text-white transition-colors hover:bg-accent-800"
-                  >
-                    <Search size={16} aria-hidden />
-                  </button>
-                </div>
-              </label>
-            </div>
-          ) : (
-            <label className="space-y-1">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Query</span>
-              <div className="relative">
+        <fieldset>
+          <legend className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mode</legend>
+          <div className="mt-1 inline-flex flex-wrap rounded-md border border-stone-300 bg-stone-100 p-0.5">
+            {MODES.map((m) => (
+              <label
+                key={m.value}
+                className={`cursor-pointer rounded px-3 py-1.5 text-sm font-medium transition-colors focus-within:ring-2 focus-within:ring-accent-400 ${
+                  activeMode === m.value
+                    ? "bg-accent-700 text-white shadow-sm forced-colors:outline forced-colors:outline-2 forced-colors:outline-offset-[-2px]"
+                    : "text-slate-600 hover:text-slate-950"
+                }`}
+              >
                 <input
-                  name="q"
-                  value={queryValue}
-                  onChange={(event) => setQueryValue(event.target.value)}
-                  className="w-full rounded-md border border-stone-300 px-3 py-2 pr-20 text-sm outline-none focus:border-accent-600"
-                  placeholder="λόγος, N-NSM, righteousness"
+                  type="radio"
+                  name="mode"
+                  value={m.value}
+                  checked={activeMode === m.value}
+                  onChange={() => setActiveMode(m.value)}
+                  className="sr-only"
                 />
-                <div className="absolute inset-y-0 right-1 flex items-center gap-0.5">
-                  {queryValue ? (
-                    <button
-                      type="button"
-                      onClick={() => setQueryValue("")}
-                      aria-label="Clear query"
-                      title="Clear"
-                      className="flex h-7 w-7 items-center justify-center rounded text-slate-400 transition-colors hover:bg-stone-100 hover:text-slate-700"
-                    >
-                      <X size={16} aria-hidden />
-                    </button>
-                  ) : null}
-                  <button
-                    type="submit"
-                    aria-label="Search"
-                    title="Search"
-                    className="flex h-7 w-7 items-center justify-center rounded bg-accent-700 text-white transition-colors hover:bg-accent-800"
-                  >
-                    <Search size={16} aria-hidden />
-                  </button>
-                </div>
+                {m.label}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        {activeMode === "domain" ? (
+          <div className="grid gap-3 sm:grid-cols-3">
+            <label className="space-y-1">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Domain</span>
+              <select
+                name="domain"
+                value={selectedDomain}
+                onChange={(event) => onDomainChange(event.target.value)}
+                className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm"
+              >
+                <option value="">Any domain</option>
+                {domainOptions.domains.map((d) => (
+                  <option key={d.code} value={d.code}>{`${d.number} — ${d.label}`}</option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Subdomain</span>
+              <select
+                name="subdomain"
+                value={selectedSubdomain}
+                onChange={(event) => onSubdomainChange(event.target.value)}
+                disabled={!selectedDomain}
+                className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm disabled:opacity-50"
+              >
+                <option value="">Any subdomain</option>
+                {(domainOptions.subdomainsByDomain[selectedDomain] ?? []).map((s) => (
+                  <option key={s.code} value={s.code}>{s.label}</option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">LN reference</span>
+              <div className="flex items-center gap-2">
+                <input
+                  name="ln"
+                  value={lnValue}
+                  onChange={(event) => setLnValue(event.target.value)}
+                  placeholder={MODE_HINTS.domain.placeholder}
+                  className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-accent-600"
+                />
+                <button
+                  type="submit"
+                  aria-label="Search"
+                  title="Search"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-accent-700 text-white transition-colors hover:bg-accent-800"
+                >
+                  <Search size={16} aria-hidden />
+                </button>
               </div>
             </label>
-          )}
-        </div>
+          </div>
+        ) : (
+          <label className="block space-y-1">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Query</span>
+            <div className="relative">
+              <input
+                name="q"
+                value={queryValue}
+                onChange={(event) => setQueryValue(event.target.value)}
+                className="w-full rounded-md border border-stone-300 px-3 py-2 pr-20 text-sm outline-none focus:border-accent-600"
+                placeholder={(MODE_HINTS[activeMode] ?? MODE_HINTS.keyword).placeholder}
+              />
+              <div className="absolute inset-y-0 right-1 flex items-center gap-0.5">
+                {queryValue ? (
+                  <button
+                    type="button"
+                    onClick={() => setQueryValue("")}
+                    aria-label="Clear query"
+                    title="Clear"
+                    className="flex h-7 w-7 items-center justify-center rounded text-slate-400 transition-colors hover:bg-stone-100 hover:text-slate-700"
+                  >
+                    <X size={16} aria-hidden />
+                  </button>
+                ) : null}
+                <button
+                  type="submit"
+                  aria-label="Search"
+                  title="Search"
+                  className="flex h-7 w-7 items-center justify-center rounded bg-accent-700 text-white transition-colors hover:bg-accent-800"
+                >
+                  <Search size={16} aria-hidden />
+                </button>
+              </div>
+            </div>
+          </label>
+        )}
+        <p className="text-xs text-slate-500">{(MODE_HINTS[activeMode] ?? MODE_HINTS.keyword).hint}</p>
         <div className="grid gap-3 border-t border-stone-200 pt-3 sm:grid-cols-2 md:grid-cols-4">
           <label className="space-y-1">
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Book</span>
@@ -358,7 +412,7 @@ export function SearchPanel({
           <p className="mt-1 text-sm text-slate-600">
             {hasSearch
               ? `${count} result${count === 1 ? "" : "s"} for ${searchLabel}${pageCount ? `, page ${page} of ${pageCount}` : ""}`
-              : "Enter a search query."}
+              : "Search the corpus by keyword, lemma, morphology, or semantic domain."}
           </p>
           {query ? (
             <div className="mt-3 flex flex-wrap items-center gap-3">
@@ -376,10 +430,26 @@ export function SearchPanel({
           ) : null}
         </div>
         <div className="divide-y divide-stone-200">
+          {!hasSearch ? (
+            <div className="p-4">
+              <p className="text-sm text-slate-600">Try an example:</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {buildExampleSearches(domainOptions).map((example) => (
+                  <Link
+                    key={example.label}
+                    href={example.href}
+                    className="rounded-full border border-stone-300 bg-white px-3 py-1.5 text-sm text-slate-700 transition-colors hover:border-accent-600 hover:text-accent-700"
+                  >
+                    {example.label}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          ) : null}
           {results.map((result, index) => (
             <article key={`${result.reference}-${index}`} className="p-4">
               <div className="flex flex-wrap items-center gap-2 text-sm">
-                <span className="oldstyle-nums font-display text-base font-semibold text-slate-900">{result.reference}</span>
+                <ReferenceLink reference={result.reference} linkable={result.kind === "keyword" ? result.onSpine !== false : undefined} />
                 <span className="rounded bg-stone-100 px-2 py-1 text-xs text-slate-600">{result.corpus}</span>
                 {result.kind === "token" ? (
                   <span className="rounded bg-blue-50 px-2 py-1 text-xs text-blue-900">{result.morphCode}</span>
@@ -403,7 +473,16 @@ export function SearchPanel({
             </article>
           ))}
           {hasSearch && results.length === 0 ? (
-            <div className="p-4 text-sm text-slate-600">No matching sample-data results.</div>
+            <div className="p-4 text-sm">
+              <p className="text-slate-700">No results for {searchLabel}.</p>
+              <p className="mt-1 text-slate-500">
+                {mode === "morphology"
+                  ? "Try switching Morph match to Prefix, or remove the book and chapter filters."
+                  : mode === "domain"
+                    ? "This domain has no results in the loaded corpus. Try removing the book and chapter filters."
+                    : "Check the spelling, try a broader term, or remove the book and chapter filters."}
+              </p>
+            </div>
           ) : null}
         </div>
         {hasSearch && pageCount > 1 ? (
@@ -501,6 +580,21 @@ export function SearchPanel({
         </div>
       </aside>
     </div>
+  );
+}
+
+function ReferenceLink({ reference, linkable = true }: { reference: string; linkable?: boolean }) {
+  const className = "oldstyle-nums font-display text-base font-semibold text-slate-900";
+  const href = readerHref(reference);
+  if (!href || !linkable) return <span className={className}>{reference}</span>;
+  return (
+    <Link
+      href={href}
+      title="Open in reader"
+      className={`${className} underline-offset-4 transition-colors hover:text-accent-700 hover:underline`}
+    >
+      {reference}
+    </Link>
   );
 }
 

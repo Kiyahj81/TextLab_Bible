@@ -65,3 +65,15 @@ describe("SearchPanel result references", () => {
     expect(link.getAttribute("href")).toBe("/read?book=John&chapter=1&verse=1");
   });
 });
+
+describe("SearchPanel remount key", () => {
+  it("resets client form state when the key changes", () => {
+    const { rerender } = render(<SearchPanel key="a" {...baseProps} mode="keyword" />);
+    fireEvent.change(screen.getByLabelText("Mode"), { target: { value: "lemma" } });
+    expect((screen.getByLabelText("Mode") as HTMLSelectElement).value).toBe("lemma");
+
+    // New props + new key (as page.tsx now supplies) → fresh state.
+    rerender(<SearchPanel key="b" {...baseProps} mode="domain" />);
+    expect((screen.getByLabelText("Mode") as HTMLSelectElement).value).toBe("domain");
+  });
+});

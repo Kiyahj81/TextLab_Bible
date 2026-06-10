@@ -1,5 +1,6 @@
 import { DismissibleIntro } from "@/components/DismissibleIntro";
 import { SearchPanel, SearchPanelResult } from "@/components/SearchPanel";
+import { searchStateKey } from "@/lib/searchStateKey";
 import { requirePageAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { parsePositiveInt } from "@/lib/params";
@@ -105,6 +106,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
         </DismissibleIntro>
       </div>
       <SearchPanel
+        key={searchStateKey({ mode, query, book, chapter, matchMode, domain, subdomain, ln })}
         mode={mode}
         query={query}
         book={book}

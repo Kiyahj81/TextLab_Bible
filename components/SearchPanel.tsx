@@ -6,7 +6,7 @@ import { Fragment, useState } from "react";
 import { splitWithMatches } from "@/lib/search-highlight";
 import { decodeMorphCode } from "@/lib/morphology";
 import type { DomainOptions } from "@/lib/search";
-import { readerHref } from "@/lib/references";
+import { bookName, readerHref } from "@/lib/references";
 import { useAutoDismissMap, useAutoDismissString } from "@/lib/useAutoDismissStatus";
 
 const MODES = [
@@ -428,6 +428,8 @@ export function SearchPanel({
               </button>
               {saveStatus ? <span className="text-sm text-slate-600">{saveStatus}</span> : null}
             </div>
+          ) : hasSearch && mode === "domain" ? (
+            <p className="mt-3 text-sm text-slate-500">Domain searches can&apos;t be saved yet.</p>
           ) : null}
         </div>
         <div className="divide-y divide-stone-200">
@@ -553,7 +555,7 @@ export function SearchPanel({
                 >
                   <span className="font-medium text-slate-950">{item.label}</span>
                   <span className="mt-1 block text-xs text-slate-500">
-                    {item.mode} {item.book ? `in ${item.book}` : "in all books"}
+                    {item.mode} {item.book ? `in ${bookName(item.book)}` : "in all books"}
                   </span>
                 </Link>
               )}

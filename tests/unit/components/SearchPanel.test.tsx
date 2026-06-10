@@ -180,3 +180,22 @@ describe("SearchPanel morph tooltip", () => {
     expect(screen.getByTitle("noun — nominative singular masculine")).toBeTruthy();
   });
 });
+
+describe("SearchPanel saved searches", () => {
+  it("shows friendly book names instead of osis ids", () => {
+    render(
+      <SearchPanel
+        {...baseProps}
+        savedSearches={[
+          { id: "s1", label: "lemma: ἀγάπη", mode: "lemma", query: "ἀγάπη", book: "1Cor", chapter: null, matchMode: null }
+        ]}
+      />
+    );
+    expect(screen.getByText(/in 1 Corinthians/)).toBeTruthy();
+  });
+
+  it("explains that domain searches cannot be saved", () => {
+    render(<SearchPanel {...baseProps} mode="domain" domain="025" hasSearch={true} searchLabel="Domain 25" />);
+    expect(screen.getByText(/can't be saved yet/i)).toBeTruthy();
+  });
+});

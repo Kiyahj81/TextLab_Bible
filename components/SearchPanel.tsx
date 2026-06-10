@@ -34,6 +34,22 @@ const MODE_HINTS: Record<string, { placeholder: string; hint: string }> = {
   }
 };
 
+function buildExampleSearches(domainOptions: DomainOptions): { label: string; href: string }[] {
+  const examples = [
+    { label: "Lemma: λόγος", href: `/search?mode=lemma&q=${encodeURIComponent("λόγος")}` },
+    { label: 'Keyword: "born again"', href: `/search?mode=keyword&q=${encodeURIComponent('"born again"')}` },
+    { label: "Morphology: N-NSM", href: "/search?mode=morphology&q=N-NSM&matchMode=exact" }
+  ];
+  const domain = domainOptions.domains.find((d) => d.number === 25) ?? domainOptions.domains[0];
+  if (domain) {
+    examples.push({
+      label: `Domain ${domain.number}: ${domain.label}`,
+      href: `/search?mode=domain&domain=${encodeURIComponent(domain.code)}`
+    });
+  }
+  return examples;
+}
+
 export type SearchPanelResult =
   | {
       kind: "keyword";
@@ -395,7 +411,7 @@ export function SearchPanel({
           <p className="mt-1 text-sm text-slate-600">
             {hasSearch
               ? `${count} result${count === 1 ? "" : "s"} for ${searchLabel}${pageCount ? `, page ${page} of ${pageCount}` : ""}`
-              : "Enter a search query."}
+              : "Search the corpus by keyword, lemma, morphology, or semantic domain."}
           </p>
           {query ? (
             <div className="mt-3 flex flex-wrap items-center gap-3">
@@ -413,6 +429,22 @@ export function SearchPanel({
           ) : null}
         </div>
         <div className="divide-y divide-stone-200">
+          {!hasSearch ? (
+            <div className="p-4">
+              <p className="text-sm text-slate-600">Try an example:</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {buildExampleSearches(domainOptions).map((example) => (
+                  <Link
+                    key={example.label}
+                    href={example.href}
+                    className="rounded-full border border-stone-300 bg-white px-3 py-1.5 text-sm text-slate-700 transition-colors hover:border-accent-600 hover:text-accent-700"
+                  >
+                    {example.label}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          ) : null}
           {results.map((result, index) => (
             <article key={`${result.reference}-${index}`} className="p-4">
               <div className="flex flex-wrap items-center gap-2 text-sm">

@@ -112,3 +112,20 @@ describe("SearchPanel mode control", () => {
     expect((screen.getByRole("radio", { name: "Keyword" }) as HTMLInputElement).checked).toBe(true);
   });
 });
+
+describe("SearchPanel empty state", () => {
+  it("shows example search chips before any search", () => {
+    render(<SearchPanel {...baseProps} />);
+    expect(screen.getByRole("link", { name: "Lemma: λόγος" }).getAttribute("href")).toBe(
+      `/search?mode=lemma&q=${encodeURIComponent("λόγος")}`
+    );
+    expect(screen.getByRole("link", { name: "Domain 25: Attitudes and Emotions" }).getAttribute("href")).toBe(
+      "/search?mode=domain&domain=025"
+    );
+  });
+
+  it("hides example chips once a search has run", () => {
+    render(<SearchPanel {...baseProps} hasSearch={true} searchLabel='"x"' />);
+    expect(screen.queryByText("Try an example:")).toBeNull();
+  });
+});

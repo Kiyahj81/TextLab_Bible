@@ -269,6 +269,16 @@ describe("SearchPanel save search payload", () => {
   });
 });
 
+describe("SearchPanel disabled pagination", () => {
+  it("renders disabled pagination as text, not focusable links", () => {
+    render(
+      <SearchPanel {...baseProps} hasSearch={true} searchLabel='"x"' results={[tokenResult]} count={50} page={1} pageCount={2} />
+    );
+    expect(screen.queryByRole("link", { name: "Previous" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Next" })).toBeTruthy();
+  });
+});
+
 describe("SearchPanel rename input", () => {
   it("exposes an accessible name", () => {
     render(

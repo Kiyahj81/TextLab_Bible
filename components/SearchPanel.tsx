@@ -508,25 +508,33 @@ export function SearchPanel({
         </div>
         {hasSearch && pageCount > 1 ? (
           <nav className="flex flex-wrap items-center justify-between gap-3 border-t border-stone-200 p-4 text-sm">
-            <Link
-              className={`rounded-md border border-stone-300 px-3 py-2 ${
-                page <= 1 ? "pointer-events-none opacity-50" : "hover:border-slate-500"
-              }`}
-              href={searchHref({ mode, query, book, chapter, matchMode, domain, subdomain, ln, page: previousPage, pageSize })}
-            >
-              Previous
-            </Link>
+            {page <= 1 ? (
+              <span aria-disabled="true" className="rounded-md border border-stone-200 px-3 py-2 text-slate-400">
+                Previous
+              </span>
+            ) : (
+              <Link
+                className="rounded-md border border-stone-300 px-3 py-2 hover:border-slate-500"
+                href={searchHref({ mode, query, book, chapter, matchMode, domain, subdomain, ln, page: previousPage, pageSize })}
+              >
+                Previous
+              </Link>
+            )}
             <span className="text-slate-600">
               Showing {rangeStart}–{rangeEnd} of {count}
             </span>
-            <Link
-              className={`rounded-md border border-stone-300 px-3 py-2 ${
-                page >= pageCount ? "pointer-events-none opacity-50" : "hover:border-slate-500"
-              }`}
-              href={searchHref({ mode, query, book, chapter, matchMode, domain, subdomain, ln, page: nextPage, pageSize })}
-            >
-              Next
-            </Link>
+            {page >= pageCount ? (
+              <span aria-disabled="true" className="rounded-md border border-stone-200 px-3 py-2 text-slate-400">
+                Next
+              </span>
+            ) : (
+              <Link
+                className="rounded-md border border-stone-300 px-3 py-2 hover:border-slate-500"
+                href={searchHref({ mode, query, book, chapter, matchMode, domain, subdomain, ln, page: nextPage, pageSize })}
+              >
+                Next
+              </Link>
+            )}
           </nav>
         ) : null}
       </section>

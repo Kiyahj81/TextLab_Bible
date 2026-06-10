@@ -199,3 +199,13 @@ describe("SearchPanel saved searches", () => {
     expect(screen.getByText(/can't be saved yet/i)).toBeTruthy();
   });
 });
+
+describe("SearchPanel pagination", () => {
+  it("shows the absolute result range", () => {
+    const results = Array.from({ length: 25 }, (_, i) => ({ ...tokenResult, reference: `John 1:${i + 1}` }));
+    render(
+      <SearchPanel {...baseProps} hasSearch={true} searchLabel='"x"' results={results} count={116} page={2} pageCount={5} />
+    );
+    expect(screen.getByText(/Showing 26–50 of 116/)).toBeTruthy();
+  });
+});

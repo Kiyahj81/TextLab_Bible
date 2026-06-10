@@ -240,6 +240,8 @@ export function SearchPanel({
 
   const previousPage = Math.max(page - 1, 1);
   const nextPage = Math.min(page + 1, Math.max(pageCount, 1));
+  const rangeStart = results.length === 0 ? 0 : (page - 1) * pageSize + 1;
+  const rangeEnd = results.length === 0 ? 0 : rangeStart + results.length - 1;
   const showMorphMatch = activeMode === "morphology";
 
   return (
@@ -504,7 +506,7 @@ export function SearchPanel({
               Previous
             </Link>
             <span className="text-slate-600">
-              Showing {results.length} of {count}
+              Showing {rangeStart}–{rangeEnd} of {count}
             </span>
             <Link
               className={`rounded-md border border-stone-300 px-3 py-2 ${

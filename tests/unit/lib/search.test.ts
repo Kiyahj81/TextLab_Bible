@@ -77,5 +77,6 @@ describe("searchMorphology Robinson normalization", () => {
 
     const expected = { equals: "V-3PAI-S", mode: "insensitive" };
     expect(prismaMock.token.findMany.mock.calls[0][0].where.morphCode).toEqual(expected);
+    expect(prismaMock.token.count.mock.calls[0][0].where.morphCode).toEqual(expected);
   });
 });

@@ -463,7 +463,7 @@ export function SearchPanel({
             </div>
           ) : null}
           {results.map((result, index) => (
-            <article key={`${result.reference}-${index}`} className="p-4">
+            <article key={`${result.reference}-${index}`} className="border-l-2 border-transparent p-4 transition-colors hover:border-accent-400 hover:bg-stone-50/70">
               <div className="flex flex-wrap items-center gap-2 text-sm">
                 <ReferenceLink reference={result.reference} linkable={result.kind === "keyword" ? result.onSpine !== false : undefined} />
                 <span className="rounded bg-stone-100 px-2 py-1 text-xs text-slate-600">{result.corpus}</span>

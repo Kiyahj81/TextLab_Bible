@@ -1571,13 +1571,18 @@ git commit -m "Pin the search form while scrolling long result lists" -m "Co-Aut
 **Files:**
 - Modify: `README.md` (Product Surface → Search bullet), `docs/PROJECT_STATE.md`
 
-- [ ] **Step 1: Update README**
+- [ ] **Step 1: Update README (holistic pass, per CLAUDE.md)**
 
-In the `/search` Product Surface bullet list, reflect the new surface: segmented mode control with per-mode hints, example-search empty state, result references linking into the reader, morphology tooltips, and the dependent chapter filter. Keep it to the existing bullet style.
+CLAUDE.md requires README.md to read as **one coherent, unified document** that someone new to the project can understand — not a patchwork of appended notes. The user revamped the README on 2026-06-09; preserve its structure and format. Concretely:
+
+1. Read the ENTIRE README first, not just the Search section.
+2. Integrate the new search behavior into the existing prose/bullet style wherever search is described — at minimum: the `/search` Product Surface bullets (segmented mode control with per-mode hints, example-search empty state, result references linking into the reader for on-spine hits, morphology tooltips, dependent chapter filter, per-mode no-results guidance), and any other section that mentions search behavior (e.g. the Smoke Path step that exercises `/search`, the intro feature summary) so no section contradicts another.
+3. Do NOT bolt on a "what's new" list or changelog-style additions; rewrite the affected sentences/bullets in place so the document reads as if written in one sitting.
+4. After editing, re-read the full README top to bottom and fix any inconsistencies introduced (terminology, tense, duplicate mentions).
 
 - [ ] **Step 2: Update PROJECT_STATE**
 
-Add a short subsection under "Post-review feature work" titled "Search UI improvements (2026-06)" listing the three phases and their PR numbers, and note the new helpers (`readerHref`, `searchStateKey`, `searchLabel`, `decodeMorphCode`) plus the acceptance-script label update.
+Add a short subsection under "Post-review feature work" titled "Search UI improvements (2026-06)" listing the three phases and their PR numbers, and note the new helpers (`readerHref`, `searchStateKey`, `searchLabel`, `decodeMorphCode`), the `onSpine` keyword-result flag (Codex P2 fix on the Phase 1 PR), plus the acceptance-script label update.
 
 - [ ] **Step 3: Final verification**
 

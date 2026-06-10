@@ -472,7 +472,14 @@ export function SearchPanel({
             </article>
           ))}
           {hasSearch && results.length === 0 ? (
-            <div className="p-4 text-sm text-slate-600">No matching sample-data results.</div>
+            <div className="p-4 text-sm">
+              <p className="text-slate-700">No results for {searchLabel}.</p>
+              <p className="mt-1 text-slate-500">
+                {mode === "morphology"
+                  ? "Try switching Morph match to Prefix, or remove the book and chapter filters."
+                  : "Check the spelling, try a broader term, or remove the book and chapter filters."}
+              </p>
+            </div>
           ) : null}
         </div>
         {hasSearch && pageCount > 1 ? (

@@ -129,3 +129,12 @@ describe("SearchPanel empty state", () => {
     expect(screen.queryByText("Try an example:")).toBeNull();
   });
 });
+
+describe("SearchPanel no-results state", () => {
+  it("shows recovery guidance instead of sample-data copy", () => {
+    render(<SearchPanel {...baseProps} hasSearch={true} searchLabel='"zzz"' results={[]} />);
+    expect(screen.getByText(/No results for/)).toBeTruthy();
+    expect(screen.getByText(/broader term/)).toBeTruthy();
+    expect(screen.queryByText(/sample-data/)).toBeNull();
+  });
+});

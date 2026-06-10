@@ -69,11 +69,32 @@ describe("SearchPanel result references", () => {
 describe("SearchPanel remount key", () => {
   it("resets client form state when the key changes", () => {
     const { rerender } = render(<SearchPanel key="a" {...baseProps} mode="keyword" />);
-    fireEvent.change(screen.getByLabelText("Mode"), { target: { value: "lemma" } });
-    expect((screen.getByLabelText("Mode") as HTMLSelectElement).value).toBe("lemma");
+    fireEvent.click(screen.getByRole("radio", { name: "Lemma" }));
+    expect((screen.getByRole("radio", { name: "Lemma" }) as HTMLInputElement).checked).toBe(true);
 
-    // New props + new key (as page.tsx now supplies) → fresh state.
     rerender(<SearchPanel key="b" {...baseProps} mode="domain" />);
-    expect((screen.getByLabelText("Mode") as HTMLSelectElement).value).toBe("domain");
+    expect((screen.getByRole("radio", { name: "Domain" }) as HTMLInputElement).checked).toBe(true);
+  });
+});
+
+describe("SearchPanel mode control", () => {
+  it("renders the four modes as a radio group", () => {
+    render(<SearchPanel {...baseProps} />);
+    expect(screen.getAllByRole("radio")).toHaveLength(4);
+    expect((screen.getByRole("radio", { name: "Keyword" }) as HTMLInputElement).checked).toBe(true);
+  });
+
+  it("switches placeholder and hint with the selected mode", () => {
+    render(<SearchPanel {...baseProps} />);
+    fireEvent.click(screen.getByRole("radio", { name: "Lemma" }));
+    expect(screen.getByPlaceholderText(/λόγος, ἀγάπη/)).toBeTruthy();
+    expect(screen.getByText(/inflected form/i)).toBeTruthy();
+  });
+
+  it("shows domain filters when Domain mode is selected", () => {
+    render(<SearchPanel {...baseProps} />);
+    fireEvent.click(screen.getByRole("radio", { name: "Domain" }));
+    expect(screen.getByRole("combobox", { name: "Domain" })).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Subdomain" })).toBeTruthy();
   });
 });

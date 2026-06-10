@@ -5,6 +5,7 @@ import { requirePageAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { parsePositiveInt } from "@/lib/params";
 import { bookName } from "@/lib/references";
+import { querySearchLabel, scopeSuffix } from "@/lib/searchLabel";
 import { getAvailableReaderBooks, getLouwNidaDomainOptions, searchDomain, searchKeyword, searchLemma, searchMorphology } from "@/lib/search";
 import type { DomainOptions } from "@/lib/search";
 
@@ -50,7 +51,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
     pageCount = search.pagination.pageCount;
     results = search.results.map((result) => ({ kind: "token" as const, ...result }));
     hasSearch = true;
-    searchLabel = domainSearchLabel(search.filter, domainOptions);
+    searchLabel = domainSearchLabel(search.filter, domainOptions) + scopeSuffix(book, parsedChapter);
     page = Math.min(requestedPage, Math.max(pageCount, 1));
   } else if (query.trim()) {
     if (mode === "lemma") {
@@ -78,7 +79,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
     }
 
     hasSearch = true;
-    searchLabel = `"${query}"`;
+    searchLabel = querySearchLabel(mode, query, book, parsedChapter);
     // Clamp the displayed page to a valid range so out-of-bounds URLs (e.g.
     // ?page=999 for a 7-page result) render the last real page instead of
     // an empty list with a Previous link that walks down through phantom pages.

@@ -187,7 +187,7 @@ async function run() {
     await page.getByRole("button", { name: "λόγος" }).first().click();
     await page.getByRole("link", { name: "Search lemma" }).click();
     await page.waitForURL(/\/search/);
-    await page.getByText('40 results for "λόγος"').waitFor();
+    await page.getByText('40 results for lemma "λόγος" in John').waitFor();
     await page.getByText("John 1:1").first().waitFor();
     result.interactions.push('Search lemma opened /search and showed 40 λόγος results.');
     await page.getByRole("button", { name: "Save search" }).click();

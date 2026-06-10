@@ -249,7 +249,7 @@ export function SearchPanel({
   return (
     <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_220px]">
       <div className="space-y-6">
-      <form className="space-y-3 rounded-md border border-stone-300 bg-white p-4 shadow-sm" action="/search">
+      <form className="space-y-3 rounded-md border border-stone-300 bg-white p-4 shadow-sm xl:sticky xl:top-6 xl:z-10" action="/search">
         <fieldset>
           <legend className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mode</legend>
           <div className="mt-1 inline-flex flex-wrap rounded-md border border-stone-300 bg-stone-100 p-0.5">

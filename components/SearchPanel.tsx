@@ -276,7 +276,7 @@ export function SearchPanel({
           </div>
         </fieldset>
         {activeMode === "domain" ? (
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-[1fr_1fr_1fr_auto]">
             <label className="space-y-1">
               <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Domain</span>
               <select
@@ -308,24 +308,20 @@ export function SearchPanel({
             </label>
             <label className="space-y-1">
               <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">LN reference</span>
-              <div className="flex items-center gap-2">
-                <input
-                  name="ln"
-                  value={lnValue}
-                  onChange={(event) => setLnValue(event.target.value)}
-                  placeholder={MODE_HINTS.domain.placeholder}
-                  className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-accent-600"
-                />
-                <button
-                  type="submit"
-                  aria-label="Search"
-                  title="Search"
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-accent-700 text-white transition-colors hover:bg-accent-800"
-                >
-                  <Search size={16} aria-hidden />
-                </button>
-              </div>
+              <input
+                name="ln"
+                value={lnValue}
+                onChange={(event) => setLnValue(event.target.value)}
+                placeholder={MODE_HINTS.domain.placeholder}
+                className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-accent-600"
+              />
             </label>
+            <button
+              type="submit"
+              className="self-end rounded-md bg-accent-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-800"
+            >
+              Search
+            </button>
           </div>
         ) : (
           <label className="block space-y-1">

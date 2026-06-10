@@ -235,3 +235,12 @@ describe("SearchPanel page size", () => {
     expect(select.value).toBe("37");
   });
 });
+
+describe("SearchPanel domain submit", () => {
+  it("renders a standalone labeled Search button in domain mode", () => {
+    render(<SearchPanel {...baseProps} />);
+    fireEvent.click(screen.getByRole("radio", { name: "Domain" }));
+    const button = screen.getByRole("button", { name: "Search" });
+    expect(button.textContent).toBe("Search");
+  });
+});

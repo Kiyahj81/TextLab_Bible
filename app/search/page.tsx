@@ -24,6 +24,9 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
   // input is disabled until a book is chosen) and would filter invisibly —
   // scopeSuffix omits it and the input can't display it. Ignore it.
   const parsedChapter = book ? parsePositiveInt(chapter) : undefined;
+  // Mirror the server-side rule in the UI state: a chapter without a book is ignored,
+  // so don't let it linger in the (disabled) input or the remount key either.
+  const effectiveChapter = book ? chapter : "";
   const requestedPage = parsePositiveInt(getParam(params.page)) ?? 1;
   const pageSize = Math.min(parsePositiveInt(getParam(params.pageSize)) ?? 25, 100);
   const matchMode = getParam(params.matchMode) === "prefix" ? "prefix" : "exact";
@@ -110,11 +113,11 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
         </DismissibleIntro>
       </div>
       <SearchPanel
-        key={searchStateKey({ mode, query, book, chapter, matchMode, domain, subdomain, ln })}
+        key={searchStateKey({ mode, query, book, chapter: effectiveChapter, matchMode, domain, subdomain, ln })}
         mode={mode}
         query={query}
         book={book}
-        chapter={chapter}
+        chapter={effectiveChapter}
         matchMode={matchMode}
         domain={domain}
         subdomain={subdomain}

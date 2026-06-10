@@ -41,4 +41,9 @@ describe("decodeMorphCode", () => {
     expect(decodeMorphCode("D-C")).toBe("adverb — comparative");
     expect(decodeMorphCode("D-S")).toBe("adverb — superlative");
   });
+
+  it("decodes the seed-aligned demonstrative and finite-verb shapes", () => {
+    expect(decodeMorphCode("RDNSM")).toBe("demonstrative pronoun — nominative singular masculine");
+    expect(decodeMorphCode("V-3IAI-S")).toBe("verb — imperfect active indicative, 3rd person singular");
+  });
 });

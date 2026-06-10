@@ -269,6 +269,21 @@ describe("SearchPanel save search payload", () => {
   });
 });
 
+describe("SearchPanel rename input", () => {
+  it("exposes an accessible name", () => {
+    render(
+      <SearchPanel
+        {...baseProps}
+        savedSearches={[
+          { id: "s1", label: "keyword: light", mode: "keyword", query: "light", book: null, chapter: null, matchMode: null }
+        ]}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: /rename/i }));
+    expect(screen.getByRole("textbox", { name: "Saved search name" })).toBeTruthy();
+  });
+});
+
 describe("SearchPanel status live regions", () => {
   it("announces save status via a polite live region", async () => {
     vi.stubGlobal(

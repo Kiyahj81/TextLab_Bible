@@ -540,6 +540,7 @@ export function SearchPanel({
               {editingId === item.id ? (
                 <input
                   autoFocus
+                  aria-label="Saved search name"
                   defaultValue={item.label}
                   onBlur={(event) => renameSavedSearch(item.id, event.target.value)}
                   onKeyDown={(event) => {

@@ -40,7 +40,7 @@ function buildExampleSearches(domainOptions: DomainOptions): { label: string; hr
     { label: 'Keyword: "born again"', href: `/search?mode=keyword&q=${encodeURIComponent('"born again"')}` },
     { label: "Morphology: N-NSM", href: "/search?mode=morphology&q=N-NSM&matchMode=exact" }
   ];
-  const domain = domainOptions.domains.find((d) => d.number === 25) ?? domainOptions.domains[0];
+  const domain = domainOptions.domains.find((d) => d.number === 25);
   if (domain) {
     examples.push({
       label: `Domain ${domain.number}: ${domain.label}`,
@@ -477,7 +477,9 @@ export function SearchPanel({
               <p className="mt-1 text-slate-500">
                 {mode === "morphology"
                   ? "Try switching Morph match to Prefix, or remove the book and chapter filters."
-                  : "Check the spelling, try a broader term, or remove the book and chapter filters."}
+                  : mode === "domain"
+                    ? "This domain has no results in the loaded corpus. Try removing the book and chapter filters."
+                    : "Check the spelling, try a broader term, or remove the book and chapter filters."}
               </p>
             </div>
           ) : null}

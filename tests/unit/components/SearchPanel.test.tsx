@@ -128,6 +128,17 @@ describe("SearchPanel empty state", () => {
     render(<SearchPanel {...baseProps} hasSearch={true} searchLabel='"x"' />);
     expect(screen.queryByText("Try an example:")).toBeNull();
   });
+
+  it("omits the domain chip when domain 25 is unavailable", () => {
+    render(
+      <SearchPanel
+        {...baseProps}
+        domainOptions={{ domains: [{ code: "001", number: 1, label: "Geographical Objects" }], subdomainsByDomain: {} }}
+      />
+    );
+    expect(screen.queryByText(/^Domain 1:/)).toBeNull();
+    expect(screen.getByRole("link", { name: "Lemma: λόγος" })).toBeTruthy();
+  });
 });
 
 describe("SearchPanel no-results state", () => {
@@ -136,5 +147,16 @@ describe("SearchPanel no-results state", () => {
     expect(screen.getByText(/No results for/)).toBeTruthy();
     expect(screen.getByText(/broader term/)).toBeTruthy();
     expect(screen.queryByText(/sample-data/)).toBeNull();
+  });
+
+  it("shows morphology-specific recovery guidance", () => {
+    render(<SearchPanel {...baseProps} mode="morphology" hasSearch={true} searchLabel='"V-3PAI"' results={[]} />);
+    expect(screen.getByText(/Try switching Morph match to Prefix/)).toBeTruthy();
+    expect(screen.queryByText(/broader term/)).toBeNull();
+  });
+
+  it("shows domain-specific recovery guidance", () => {
+    render(<SearchPanel {...baseProps} mode="domain" hasSearch={true} searchLabel="Domain 25" results={[]} />);
+    expect(screen.getByText(/no results in the loaded corpus/i)).toBeTruthy();
   });
 });

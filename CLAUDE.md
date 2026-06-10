@@ -1,2 +1,2 @@
-Check the following files: README.md and /docs/PROJECT_STATE.md to ensure that they are up to date after major changes to this project.
+Check the following files: README.md and /docs/PROJECT_STATE.md to ensure that they are up to date after major changes to this project. For README.md, ensure that it reads as one coherent and unified document that anyone new to the project can understand. Maintain the current structure and format, but update the content to be accurate and up to date. For PROJECT_STATE.md, ensure that it is up to date with the latest changes to the project.
 Check /docs/security-register.md for known security advisories, exceptions, and outstanding hardening debt. Add new ones as discovered. Update whenever an advisory is accepted, mitigated, or closed.

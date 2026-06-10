@@ -200,6 +200,17 @@ describe("SearchPanel saved searches", () => {
   });
 });
 
+describe("SearchPanel chapter filter", () => {
+  it("disables chapter until a book is chosen", () => {
+    render(<SearchPanel {...baseProps} />);
+    const chapterInput = screen.getByPlaceholderText("Choose a book first") as HTMLInputElement;
+    expect(chapterInput.disabled).toBe(true);
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Book" }), { target: { value: "John" } });
+    expect((screen.getByPlaceholderText("Any") as HTMLInputElement).disabled).toBe(false);
+  });
+});
+
 describe("SearchPanel pagination", () => {
   it("shows the absolute result range", () => {
     const results = Array.from({ length: 25 }, (_, i) => ({ ...tokenResult, reference: `John 1:${i + 1}` }));

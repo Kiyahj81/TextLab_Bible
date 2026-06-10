@@ -125,6 +125,7 @@ export function SearchPanel({
 }) {
   const [activeMode, setActiveMode] = useState(MODES.some((m) => m.value === mode) ? mode : "keyword");
   const [queryValue, setQueryValue] = useState(query);
+  const [selectedBook, setSelectedBook] = useState(book);
   const [selectedDomain, setSelectedDomain] = useState(domain);
   const [selectedSubdomain, setSelectedSubdomain] = useState(subdomain);
   const [lnValue, setLnValue] = useState(ln);
@@ -365,7 +366,12 @@ export function SearchPanel({
         <div className="grid gap-3 border-t border-stone-200 pt-3 sm:grid-cols-2 md:grid-cols-4">
           <label className="space-y-1">
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Book</span>
-            <select name="book" defaultValue={book} className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm">
+            <select
+              name="book"
+              value={selectedBook}
+              onChange={(event) => setSelectedBook(event.target.value)}
+              className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm"
+            >
               <option value="">All books</option>
               {books.map((bookOption) => (
                 <option key={bookOption.osisId} value={bookOption.osisId}>
@@ -378,9 +384,12 @@ export function SearchPanel({
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Chapter</span>
             <input
               name="chapter"
+              type="number"
+              min="1"
               defaultValue={chapter}
-              className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-accent-600"
-              placeholder="Any"
+              disabled={!selectedBook}
+              placeholder={selectedBook ? "Any" : "Choose a book first"}
+              className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-accent-600 disabled:bg-stone-50 disabled:opacity-60"
             />
           </label>
           <label className="space-y-1">

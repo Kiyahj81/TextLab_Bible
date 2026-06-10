@@ -209,3 +209,18 @@ describe("SearchPanel pagination", () => {
     expect(screen.getByText(/Showing 26–50 of 116/)).toBeTruthy();
   });
 });
+
+describe("SearchPanel page size", () => {
+  it("offers standard page sizes as a select", () => {
+    render(<SearchPanel {...baseProps} />);
+    const select = screen.getByRole("combobox", { name: "Page size" }) as HTMLSelectElement;
+    expect(select.value).toBe("25");
+    expect(Array.from(select.options).map((o) => o.value)).toEqual(["10", "25", "50", "100"]);
+  });
+
+  it("keeps a non-standard size from the URL selectable", () => {
+    render(<SearchPanel {...baseProps} pageSize={37} />);
+    const select = screen.getByRole("combobox", { name: "Page size" }) as HTMLSelectElement;
+    expect(select.value).toBe("37");
+  });
+});

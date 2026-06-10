@@ -243,6 +243,7 @@ export function SearchPanel({
   const rangeStart = results.length === 0 ? 0 : (page - 1) * pageSize + 1;
   const rangeEnd = results.length === 0 ? 0 : rangeStart + results.length - 1;
   const showMorphMatch = activeMode === "morphology";
+  const pageSizeOptions = Array.from(new Set([10, 25, 50, 100, pageSize])).sort((a, b) => a - b);
 
   return (
     <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_220px]">
@@ -384,14 +385,17 @@ export function SearchPanel({
           </label>
           <label className="space-y-1">
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Page size</span>
-            <input
+            <select
               name="pageSize"
-              type="number"
-              min="1"
-              max="100"
-              defaultValue={pageSize}
-              className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-accent-600"
-            />
+              defaultValue={String(pageSize)}
+              className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm"
+            >
+              {pageSizeOptions.map((size) => (
+                <option key={size} value={size}>
+                  {size}
+                </option>
+              ))}
+            </select>
           </label>
           {showMorphMatch ? (
             <label className="space-y-1">

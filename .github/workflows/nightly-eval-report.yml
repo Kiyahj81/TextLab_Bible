@@ -25,7 +25,7 @@ concurrency:
 jobs:
   report:
     runs-on: ubuntu-latest
-    timeout-minutes: 30 # ~20 questions x (embed + rerank + synthesis + 30s judge)
+    timeout-minutes: 45 # ~20 questions x (embed + rerank + synthesis + judge); judge worst case ~4.5min (3 x 90s + backoff), typical a few seconds
     env:
       # `prisma.config.ts` (and the schema) require these via env() at config
       # LOAD, and Prisma loads that config on every CLI command — including the
@@ -62,6 +62,10 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           # Voyage rerank + faithfulness judge (Vercel AI Gateway):
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+          # Per-attempt judge budget (default 30s). The nightly report is not
+          # latency-sensitive, and tight budgets were aborting judge calls
+          # mid-retry ("Delay was aborted" errors in the June 9/10 reports).
+          EVAL_JUDGE_TIMEOUT_MS: "90000"
         run: npm run eval:report
 
       - name: Upload report

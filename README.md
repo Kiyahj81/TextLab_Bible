@@ -166,7 +166,7 @@ Most npm scripts set `NODE_OPTIONS=--use-system-ca` so Node trusts the Windows c
 | `TEXTLAB_ASSISTANT_DISABLE_LIVE` | Optional | Set to `1` to force local fallback even when an OpenAI key is present. |
 | `AI_GATEWAY_API_KEY` | Optional | Enables Voyage rerank and the eval report judge through Vercel AI Gateway. |
 | `RERANK_MODEL`, `RERANK_TIMEOUT_MS` | Optional | Rerank model and timeout overrides. |
-| `EVAL_JUDGE_MODEL`, `EVAL_JUDGE_TIMEOUT_MS` | Optional | Nightly eval judge model and timeout. |
+| `EVAL_JUDGE_MODEL`, `EVAL_JUDGE_TIMEOUT_MS` | Optional | Nightly eval judge model and per-attempt timeout (the judge retries transient provider errors, up to 3 attempts). |
 
 Integration, acceptance, and eval scripts load `.env.test`; configure it from `.env.test.example` against a throwaway Neon branch. These commands write and delete test data.
 

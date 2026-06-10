@@ -710,9 +710,9 @@ describe("semanticCall via runRetrievalPlan", () => {
       expect(searchLemma).not.toHaveBeenCalledWith(
         expect.objectContaining({ lemma: ENGLISH_TO_GREEK_LEMMA[entity] })
       );
-      expect(searchLemma).toHaveBeenCalledWith(
-        expect.objectContaining({ lemma: ENGLISH_TO_GREEK_LEMMA.prayer })
-      );
+      for (const prayerLemma of ENGLISH_TO_GREEK_LEMMA.prayer as readonly string[]) {
+        expect(searchLemma).toHaveBeenCalledWith(expect.objectContaining({ lemma: prayerLemma }));
+      }
       expect(searchSemanticDetailed).toHaveBeenCalledWith(
         expect.objectContaining({ query: prompt, keywords: "prayer" })
       );
@@ -770,9 +770,9 @@ describe("semanticCall via runRetrievalPlan", () => {
     await runRetrievalPlan(extractSignals(prompt), prompt);
 
     expect(searchKeyword).not.toHaveBeenCalledWith(expect.objectContaining({ query: "teach" }));
-    expect(searchLemma).toHaveBeenCalledWith(
-      expect.objectContaining({ lemma: ENGLISH_TO_GREEK_LEMMA.prayer })
-    );
+    for (const prayerLemma of ENGLISH_TO_GREEK_LEMMA.prayer as readonly string[]) {
+      expect(searchLemma).toHaveBeenCalledWith(expect.objectContaining({ lemma: prayerLemma }));
+    }
     expect(searchLemma).not.toHaveBeenCalledWith(
       expect.objectContaining({ lemma: ENGLISH_TO_GREEK_LEMMA.jesus })
     );

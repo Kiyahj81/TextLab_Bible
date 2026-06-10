@@ -4,6 +4,7 @@ import Link from "next/link";
 import { BookmarkPlus, Pencil, Search, Trash2, X } from "lucide-react";
 import { Fragment, useState } from "react";
 import { splitWithMatches } from "@/lib/search-highlight";
+import { decodeMorphCode } from "@/lib/morphology";
 import type { DomainOptions } from "@/lib/search";
 import { readerHref } from "@/lib/references";
 import { useAutoDismissMap, useAutoDismissString } from "@/lib/useAutoDismissStatus";
@@ -452,7 +453,12 @@ export function SearchPanel({
                 <ReferenceLink reference={result.reference} linkable={result.kind === "keyword" ? result.onSpine !== false : undefined} />
                 <span className="rounded bg-stone-100 px-2 py-1 text-xs text-slate-600">{result.corpus}</span>
                 {result.kind === "token" ? (
-                  <span className="rounded bg-blue-50 px-2 py-1 text-xs text-blue-900">{result.morphCode}</span>
+                  <span
+                    title={decodeMorphCode(result.morphCode) ?? undefined}
+                    className="cursor-help rounded bg-blue-50 px-2 py-1 text-xs text-blue-900"
+                  >
+                    {result.morphCode}
+                  </span>
                 ) : null}
               </div>
               {result.kind === "token" ? (

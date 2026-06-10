@@ -171,3 +171,12 @@ describe("SearchPanel no-results state", () => {
     expect(screen.getByText(/no results in the loaded corpus/i)).toBeTruthy();
   });
 });
+
+describe("SearchPanel morph tooltip", () => {
+  it("explains the morph code via a title tooltip", () => {
+    render(
+      <SearchPanel {...baseProps} hasSearch={true} searchLabel='lemma "λόγος"' count={1} pageCount={1} results={[tokenResult]} />
+    );
+    expect(screen.getByTitle("noun — nominative singular masculine")).toBeTruthy();
+  });
+});

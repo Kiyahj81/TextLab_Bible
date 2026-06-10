@@ -105,7 +105,7 @@ export function SearchPanel({
   hasSearch: boolean;
   searchLabel: string;
 }) {
-  const [activeMode, setActiveMode] = useState(mode);
+  const [activeMode, setActiveMode] = useState(MODES.some((m) => m.value === mode) ? mode : "keyword");
   const [queryValue, setQueryValue] = useState(query);
   const [selectedDomain, setSelectedDomain] = useState(domain);
   const [selectedSubdomain, setSelectedSubdomain] = useState(subdomain);
@@ -235,7 +235,9 @@ export function SearchPanel({
               <label
                 key={m.value}
                 className={`cursor-pointer rounded px-3 py-1.5 text-sm font-medium transition-colors focus-within:ring-2 focus-within:ring-accent-400 ${
-                  activeMode === m.value ? "bg-accent-700 text-white shadow-sm" : "text-slate-600 hover:text-slate-950"
+                  activeMode === m.value
+                    ? "bg-accent-700 text-white shadow-sm forced-colors:outline forced-colors:outline-2 forced-colors:outline-offset-[-2px]"
+                    : "text-slate-600 hover:text-slate-950"
                 }`}
               >
                 <input

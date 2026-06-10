@@ -97,4 +97,18 @@ describe("SearchPanel mode control", () => {
     expect(screen.getByRole("combobox", { name: "Domain" })).toBeTruthy();
     expect(screen.getByRole("combobox", { name: "Subdomain" })).toBeTruthy();
   });
+
+  it("submits the selected mode through the form GET contract", () => {
+    render(<SearchPanel {...baseProps} />);
+    fireEvent.click(screen.getByRole("radio", { name: "Lemma" }));
+    const lemmaRadio = screen.getByRole("radio", { name: "Lemma" }) as HTMLInputElement;
+    expect(lemmaRadio.name).toBe("mode");
+    expect(lemmaRadio.value).toBe("lemma");
+    expect(lemmaRadio.checked).toBe(true);
+  });
+
+  it("falls back to keyword when the URL carries an unknown mode", () => {
+    render(<SearchPanel {...baseProps} mode="garbage" />);
+    expect((screen.getByRole("radio", { name: "Keyword" }) as HTMLInputElement).checked).toBe(true);
+  });
 });

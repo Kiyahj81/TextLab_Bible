@@ -36,4 +36,8 @@ describe("readerHref", () => {
   it("returns null for unparseable references", () => {
     expect(readerHref("not a reference")).toBeNull();
   });
+
+  it("links a verse range to the first verse", () => {
+    expect(readerHref("Rom 8:1-4")).toBe("/read?book=Rom&chapter=8&verse=1");
+  });
 });

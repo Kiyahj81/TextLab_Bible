@@ -437,7 +437,9 @@ export function SearchPanel({
                 <BookmarkPlus size={16} />
                 Save search
               </button>
-              {saveStatus ? <span className="text-sm text-slate-600">{saveStatus}</span> : null}
+              <span role="status" aria-live="polite" className="text-sm text-slate-600">
+                {saveStatus ?? ""}
+              </span>
             </div>
           ) : hasSearch && mode === "domain" ? (
             <p className="mt-3 text-sm text-slate-500">Domain searches can&apos;t be saved yet.</p>
@@ -589,9 +591,9 @@ export function SearchPanel({
                   <Trash2 size={12} aria-hidden />
                   Delete
                 </button>
-                {itemStatus[item.id] ? (
-                  <span className="ml-auto text-slate-500">{itemStatus[item.id]}</span>
-                ) : null}
+                <span role="status" aria-live="polite" className="ml-auto text-slate-500">
+                  {itemStatus[item.id] ?? ""}
+                </span>
               </div>
             </div>
           ))}

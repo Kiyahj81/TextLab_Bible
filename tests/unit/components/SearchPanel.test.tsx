@@ -268,3 +268,21 @@ describe("SearchPanel save search payload", () => {
     expect(captured!.mode).toBe("keyword");
   });
 });
+
+describe("SearchPanel status live regions", () => {
+  it("announces save status via a polite live region", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          savedSearch: { id: "n1", label: "keyword: light", mode: "keyword", query: "light", book: null, chapter: null, matchMode: null }
+        })
+      })
+    );
+    render(<SearchPanel {...baseProps} query="light" hasSearch={true} searchLabel='keyword "light"' />);
+    fireEvent.click(screen.getByRole("button", { name: /save search/i }));
+    await screen.findByText("Search saved.");
+    expect(screen.getAllByRole("status").some((el) => el.textContent === "Search saved.")).toBe(true);
+  });
+});

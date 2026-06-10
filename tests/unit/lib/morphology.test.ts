@@ -27,4 +27,18 @@ describe("decodeMorphCode", () => {
     expect(decodeMorphCode("ZZTOP")).toBeNull();
     expect(decodeMorphCode("")).toBeNull();
   });
+
+  it("decodes person-marked pronouns", () => {
+    expect(decodeMorphCode("RP1NS")).toBe("personal pronoun — 1st person nominative singular");
+    expect(decodeMorphCode("RP2AS")).toBe("personal pronoun — 2nd person accusative singular");
+  });
+
+  it("decodes gendered third-person pronouns via the nominal branch", () => {
+    expect(decodeMorphCode("RPNSM")).toBe("personal pronoun — nominative singular masculine");
+  });
+
+  it("decodes adverb degree", () => {
+    expect(decodeMorphCode("D-C")).toBe("adverb — comparative");
+    expect(decodeMorphCode("D-S")).toBe("adverb — superlative");
+  });
 });

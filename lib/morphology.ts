@@ -39,6 +39,17 @@ export function decodeMorphCode(morphCode: string): string | null {
   const rest = code.slice(2).replace(/^-/, "");
   if (!rest) return posLabel;
 
+  // Adverb/particle degree: rest is exactly "C" or "S" and pos is not a verb
+  if (pos !== "V-" && (rest === "C" || rest === "S")) {
+    return `${posLabel} — ${DEGREES[rest]}`;
+  }
+
+  // Personal/interrogative/demonstrative/relative pronoun with leading person digit
+  if ((pos === "RP" || pos === "RI" || pos === "RD" || pos === "RR") && /^[123]/.test(rest)) {
+    const detail = decodePronoun(rest);
+    return detail ? `${posLabel} — ${detail}` : posLabel;
+  }
+
   const detail = pos === "V-" ? decodeVerb(rest) : decodeNominal(rest);
   return detail ? `${posLabel} — ${detail}` : posLabel;
 }
@@ -49,6 +60,14 @@ function decodeNominal(rest: string): string | null {
   const [, caseCode, numberCode, genderCode, degreeCode] = match;
   const base = `${CASES[caseCode]} ${NUMBERS[numberCode]} ${GENDERS[genderCode]}`;
   return degreeCode ? `${base}, ${DEGREES[degreeCode]}` : base;
+}
+
+function decodePronoun(rest: string): string | null {
+  // Digit-led person + case + number, e.g. "1NS", "2AS"
+  const match = rest.match(/^([123])([NGDAV])([SP])$/);
+  if (!match) return null;
+  const [, person, caseCode, numberCode] = match;
+  return `${PERSON_ORDINALS[person]} person ${CASES[caseCode]} ${NUMBERS[numberCode]}`;
 }
 
 function decodeVerb(rest: string): string | null {

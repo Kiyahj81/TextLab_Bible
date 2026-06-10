@@ -168,7 +168,7 @@ export function SearchPanel({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          mode: activeMode,
+          mode,
           query,
           // Omit empty optional fields — the server schema rejects empty
           // strings on coerced-number / enum fields (chapter, matchMode).

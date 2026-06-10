@@ -43,53 +43,75 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
 
   const domainOptions = await getLouwNidaDomainOptions();
 
+  // Helper: fetch with requestedPage; if the result's pageCount is smaller,
+  // clamp to the last valid page and refetch so we never render an empty offset.
+  // Normal requests (requestedPage ≤ pageCount) take exactly one fetch.
+  // Zero-result searches (pageCount 0) clamp to 1; if requestedPage was already
+  // 1 a refetch is harmless (same args), and for requestedPage > 1 with 0
+  // results the refetch returns empty again — correct behaviour.
+  async function fetchClamped<T extends { pagination: { pageCount: number } }>(
+    run: (page: number) => Promise<T>
+  ): Promise<{ search: T; page: number }> {
+    let search = await run(requestedPage);
+    const clamped = Math.min(requestedPage, Math.max(search.pagination.pageCount, 1));
+    if (clamped !== requestedPage) search = await run(clamped);
+    return { search, page: clamped };
+  }
+
   if (mode === "domain" && (domain || subdomain || ln)) {
-    const search = await searchDomain({
-      domain: domain || undefined,
-      subdomain: subdomain || undefined,
-      ln: ln || undefined,
-      book: book || undefined,
-      chapter: parsedChapter,
-      page: requestedPage,
-      pageSize
-    });
+    const { search, page: clampedPage } = await fetchClamped((p) =>
+      searchDomain({
+        domain: domain || undefined,
+        subdomain: subdomain || undefined,
+        ln: ln || undefined,
+        book: book || undefined,
+        chapter: parsedChapter,
+        page: p,
+        pageSize
+      })
+    );
     count = search.count;
     pageCount = search.pagination.pageCount;
     results = search.results.map((result) => ({ kind: "token" as const, ...result }));
     hasSearch = true;
     searchLabel = domainSearchLabel(search.filter, domainOptions) + scopeSuffix(book, parsedChapter);
-    page = Math.min(requestedPage, Math.max(pageCount, 1));
+    page = clampedPage;
   } else if (query.trim()) {
     if (mode === "lemma") {
-      const search = await searchLemma({ lemma: query, book: book || undefined, chapter: parsedChapter, page: requestedPage, pageSize });
+      const { search, page: clampedPage } = await fetchClamped((p) =>
+        searchLemma({ lemma: query, book: book || undefined, chapter: parsedChapter, page: p, pageSize })
+      );
       count = search.count;
       pageCount = search.pagination.pageCount;
       results = search.results.map((result) => ({ kind: "token" as const, ...result }));
+      page = clampedPage;
     } else if (mode === "morphology") {
-      const search = await searchMorphology({
-        morphCode: query,
-        matchMode,
-        book: book || undefined,
-        chapter: parsedChapter,
-        page: requestedPage,
-        pageSize
-      });
+      const { search, page: clampedPage } = await fetchClamped((p) =>
+        searchMorphology({
+          morphCode: query,
+          matchMode,
+          book: book || undefined,
+          chapter: parsedChapter,
+          page: p,
+          pageSize
+        })
+      );
       count = search.count;
       pageCount = search.pagination.pageCount;
       results = search.results.map((result) => ({ kind: "token" as const, ...result }));
+      page = clampedPage;
     } else {
-      const search = await searchKeyword({ query, book: book || undefined, chapter: parsedChapter, page: requestedPage, pageSize });
+      const { search, page: clampedPage } = await fetchClamped((p) =>
+        searchKeyword({ query, book: book || undefined, chapter: parsedChapter, page: p, pageSize })
+      );
       count = search.pagination.total;
       pageCount = search.pagination.pageCount;
       results = search.results.map((result) => ({ kind: "keyword" as const, ...result }));
+      page = clampedPage;
     }
 
     hasSearch = true;
     searchLabel = querySearchLabel(mode, query, book, parsedChapter);
-    // Clamp the displayed page to a valid range so out-of-bounds URLs (e.g.
-    // ?page=999 for a 7-page result) render the last real page instead of
-    // an empty list with a Previous link that walks down through phantom pages.
-    page = Math.min(requestedPage, Math.max(pageCount, 1));
   }
 
   const [books, savedSearches] = await Promise.all([

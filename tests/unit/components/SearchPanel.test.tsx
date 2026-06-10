@@ -244,3 +244,26 @@ describe("SearchPanel domain submit", () => {
     expect(button.textContent).toBe("Search");
   });
 });
+
+describe("SearchPanel save search payload", () => {
+  it("saves the executed search's mode, not a toggled-but-unsubmitted mode", async () => {
+    let captured: Record<string, unknown> | null = null;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(async (_url: string, init: { body: string }) => {
+        captured = JSON.parse(init.body);
+        return {
+          ok: true,
+          json: async () => ({
+            savedSearch: { id: "n1", label: "keyword: light", mode: "keyword", query: "light", book: null, chapter: null, matchMode: null }
+          })
+        };
+      })
+    );
+    render(<SearchPanel {...baseProps} mode="keyword" query="light" hasSearch={true} searchLabel='keyword "light"' />);
+    fireEvent.click(screen.getByRole("radio", { name: "Lemma" }));
+    fireEvent.click(screen.getByRole("button", { name: /save search/i }));
+    await screen.findByText("Search saved.");
+    expect(captured.mode).toBe("keyword");
+  });
+});

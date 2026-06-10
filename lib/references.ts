@@ -64,6 +64,12 @@ export function parseReference(
   return { book, chapter, verse, ...(verseEnd !== undefined ? { verseEnd } : {}) };
 }
 
+export function readerHref(reference: string): string | null {
+  const parsed = parseReference(reference);
+  if (!parsed) return null;
+  return `/read?book=${encodeURIComponent(parsed.book)}&chapter=${parsed.chapter}&verse=${parsed.verse}`;
+}
+
 export function parseTags(input: string) {
   return input
     .split(",")

@@ -295,6 +295,11 @@ describe("SearchPanel rename input", () => {
 });
 
 describe("SearchPanel status live regions", () => {
+  it("pre-renders the save-status live region even without a query", () => {
+    render(<SearchPanel {...baseProps} />);
+    expect(screen.getAllByRole("status").length).toBeGreaterThan(0);
+  });
+
   it("announces save status via a polite live region", async () => {
     vi.stubGlobal(
       "fetch",

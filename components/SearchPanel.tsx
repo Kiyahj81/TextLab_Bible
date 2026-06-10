@@ -437,13 +437,13 @@ export function SearchPanel({
                 <BookmarkPlus size={16} />
                 Save search
               </button>
-              <span role="status" aria-live="polite" className="text-sm text-slate-600">
-                {saveStatus ?? ""}
-              </span>
             </div>
           ) : hasSearch && mode === "domain" ? (
             <p className="mt-3 text-sm text-slate-500">Domain searches can&apos;t be saved yet.</p>
           ) : null}
+          <span role="status" aria-live="polite" className="text-sm text-slate-600">
+            {saveStatus ?? ""}
+          </span>
         </div>
         <div className="divide-y divide-stone-200">
           {!hasSearch ? (

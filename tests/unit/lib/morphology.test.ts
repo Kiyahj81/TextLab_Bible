@@ -46,4 +46,9 @@ describe("decodeMorphCode", () => {
     expect(decodeMorphCode("RDNSM")).toBe("demonstrative pronoun — nominative singular masculine");
     expect(decodeMorphCode("V-3IAI-S")).toBe("verb — imperfect active indicative, 3rd person singular");
   });
+
+  it("decodes genderless pronoun parses (case + number only)", () => {
+    expect(decodeMorphCode("RPDP")).toBe("personal pronoun — dative plural");
+    expect(decodeMorphCode("RPNS")).toBe("personal pronoun — nominative singular");
+  });
 });

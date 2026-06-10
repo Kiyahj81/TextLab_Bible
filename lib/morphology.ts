@@ -44,9 +44,13 @@ export function decodeMorphCode(morphCode: string): string | null {
     return `${posLabel} — ${DEGREES[rest]}`;
   }
 
-  // Personal/interrogative/demonstrative/relative pronoun with leading person digit
-  if ((pos === "RP" || pos === "RI" || pos === "RD" || pos === "RR") && /^[123]/.test(rest)) {
-    const detail = decodePronoun(rest);
+  // Personal/interrogative/demonstrative/relative pronoun family:
+  // Try digit-led person decode, then case+number+gender (nominal), then case+number only.
+  if (pos === "RP" || pos === "RI" || pos === "RD" || pos === "RR") {
+    const detail =
+      decodePronoun(rest) ??
+      decodeNominal(rest) ??
+      decodeCaseNumber(rest);
     return detail ? `${posLabel} — ${detail}` : posLabel;
   }
 
@@ -68,6 +72,13 @@ function decodePronoun(rest: string): string | null {
   if (!match) return null;
   const [, person, caseCode, numberCode] = match;
   return `${PERSON_ORDINALS[person]} person ${CASES[caseCode]} ${NUMBERS[numberCode]}`;
+}
+
+function decodeCaseNumber(rest: string): string | null {
+  const match = rest.match(/^([NGDAV])([SP])$/);
+  if (!match) return null;
+  const [, caseCode, numberCode] = match;
+  return `${CASES[caseCode]} ${NUMBERS[numberCode]}`;
 }
 
 function decodeVerb(rest: string): string | null {

@@ -2,6 +2,8 @@
 // SearchPanel seeds useState from server props; without a remount, client-side
 // navigation (e.g. clicking a saved search) leaves the form showing stale
 // mode/query — the same bug class PR 16 fixed in ReaderControls.
+// `page` and `pageSize` are intentionally excluded: paginating through results
+// should not remount the panel or reset its form fields.
 export function searchStateKey(params: {
   mode: string;
   query: string;
@@ -12,7 +14,7 @@ export function searchStateKey(params: {
   subdomain: string;
   ln: string;
 }): string {
-  return [
+  return JSON.stringify([
     params.mode,
     params.query,
     params.book,
@@ -21,5 +23,5 @@ export function searchStateKey(params: {
     params.domain,
     params.subdomain,
     params.ln
-  ].join("|");
+  ]);
 }

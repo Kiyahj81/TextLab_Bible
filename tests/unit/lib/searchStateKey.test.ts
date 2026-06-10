@@ -22,4 +22,10 @@ describe("searchStateKey", () => {
     expect(searchStateKey({ ...base, ln: "33.55" })).not.toBe(searchStateKey(base));
     expect(searchStateKey({ ...base, book: "John" })).not.toBe(searchStateKey(base));
   });
+
+  it("does not collide when the delimiter character appears in a value", () => {
+    expect(searchStateKey({ ...base, query: "foo|bar", book: "" })).not.toBe(
+      searchStateKey({ ...base, query: "foo", book: "bar" })
+    );
+  });
 });

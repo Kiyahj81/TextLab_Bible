@@ -487,13 +487,18 @@ export async function searchKeyword(input: {
 
   const total = Number(countRows[0]?.count ?? BigInt(0));
 
+  const spine = rows.length > 0
+    ? await filterToSblSpine(rows.map((row) => ({ book: row.osisId, chapter: row.chapter, verse: row.verse })))
+    : new Set<string>();
+
   return {
     query,
     pagination: paginationResult(pagination, total),
     results: rows.map((row) => ({
       corpus: row.corpus,
       reference: formatReference(row.osisId, row.chapter, row.verse),
-      text: row.text
+      text: row.text,
+      onSpine: spine.has(spineKey(row.osisId, row.chapter, row.verse))
     }))
   };
 }

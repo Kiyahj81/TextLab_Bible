@@ -141,6 +141,17 @@ describe("SearchPanel empty state", () => {
   });
 });
 
+describe("SearchPanel off-spine keyword hits", () => {
+  it("renders off-spine references as plain text, not links", () => {
+    const offSpine: SearchPanelResult = { kind: "keyword", corpus: "WEB", reference: "Acts 8:37", text: "Philip said...", onSpine: false };
+    const onSpine: SearchPanelResult = { kind: "keyword", corpus: "WEB", reference: "Acts 8:36", text: "See, here is water...", onSpine: true };
+    render(<SearchPanel {...baseProps} hasSearch={true} searchLabel='"water"' count={2} pageCount={1} results={[offSpine, onSpine]} />);
+    expect(screen.queryByRole("link", { name: /Acts 8:37/ })).toBeNull();
+    expect(screen.getByText("Acts 8:37")).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Acts 8:36/ })).toBeTruthy();
+  });
+});
+
 describe("SearchPanel no-results state", () => {
   it("shows recovery guidance instead of sample-data copy", () => {
     render(<SearchPanel {...baseProps} hasSearch={true} searchLabel='"zzz"' results={[]} />);

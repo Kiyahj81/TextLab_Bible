@@ -56,6 +56,7 @@ export type SearchPanelResult =
       corpus: string;
       reference: string;
       text: string;
+      onSpine?: boolean;
     }
   | {
       kind: "token";
@@ -448,7 +449,7 @@ export function SearchPanel({
           {results.map((result, index) => (
             <article key={`${result.reference}-${index}`} className="p-4">
               <div className="flex flex-wrap items-center gap-2 text-sm">
-                <ReferenceLink reference={result.reference} />
+                <ReferenceLink reference={result.reference} linkable={result.kind === "keyword" ? result.onSpine !== false : undefined} />
                 <span className="rounded bg-stone-100 px-2 py-1 text-xs text-slate-600">{result.corpus}</span>
                 {result.kind === "token" ? (
                   <span className="rounded bg-blue-50 px-2 py-1 text-xs text-blue-900">{result.morphCode}</span>
@@ -582,10 +583,10 @@ export function SearchPanel({
   );
 }
 
-function ReferenceLink({ reference }: { reference: string }) {
+function ReferenceLink({ reference, linkable = true }: { reference: string; linkable?: boolean }) {
   const className = "oldstyle-nums font-display text-base font-semibold text-slate-900";
   const href = readerHref(reference);
-  if (!href) return <span className={className}>{reference}</span>;
+  if (!href || !linkable) return <span className={className}>{reference}</span>;
   return (
     <Link
       href={href}

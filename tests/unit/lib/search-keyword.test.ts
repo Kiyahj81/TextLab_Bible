@@ -30,14 +30,19 @@ describe("searchKeyword FTS", () => {
         { corpus: "SBLGNT", osisId: "John", chapter: 1, verse: 1, text: "Ἐν ἀρχῇ ἦν ὁ λόγος" },
         { corpus: "SBLGNT", osisId: "John", chapter: 1, verse: 14, text: "Καὶ ὁ λόγος σὰρξ ἐγένετο" }
       ]);
+    // filterToSblSpine: both verses exist on the SBLGNT spine
+    prismaMock.verse.findMany.mockResolvedValueOnce([
+      { chapter: 1, verse: 1, book: { osisId: "John" } },
+      { chapter: 1, verse: 14, book: { osisId: "John" } }
+    ]);
 
     const out = await searchKeyword({ query: "λόγος", corpus: "SBLGNT" });
 
     expect(prismaMock.$queryRaw).toHaveBeenCalledTimes(2);
     expect(out.pagination.total).toBe(2);
     expect(out.results).toEqual([
-      { corpus: "SBLGNT", reference: "John 1:1", text: "Ἐν ἀρχῇ ἦν ὁ λόγος" },
-      { corpus: "SBLGNT", reference: "John 1:14", text: "Καὶ ὁ λόγος σὰρξ ἐγένετο" }
+      { corpus: "SBLGNT", reference: "John 1:1", text: "Ἐν ἀρχῇ ἦν ὁ λόγος", onSpine: true },
+      { corpus: "SBLGNT", reference: "John 1:14", text: "Καὶ ὁ λόγος σὰρξ ἐγένετο", onSpine: true }
     ]);
   });
 
@@ -72,6 +77,24 @@ describe("searchKeyword FTS", () => {
     const sql = sqlTextFrom(prismaMock.$queryRaw.mock.calls[0]);
     expect(sql).toContain("osisid");
     expect(sql).toContain("chapter");
+  });
+
+  it("annotates onSpine true for rows the spine query returns and false for those it does not", async () => {
+    prismaMock.$queryRaw
+      .mockResolvedValueOnce([{ count: BigInt(2) }])
+      .mockResolvedValueOnce([
+        { corpus: "WEB", osisId: "Acts", chapter: 8, verse: 36, text: "See, here is water..." },
+        { corpus: "WEB", osisId: "Acts", chapter: 8, verse: 37, text: "Philip said..." }
+      ]);
+    // Spine query only returns Acts 8:36 (Acts 8:37 is WEB-only)
+    prismaMock.verse.findMany.mockResolvedValueOnce([
+      { chapter: 8, verse: 36, book: { osisId: "Acts" } }
+    ]);
+
+    const out = await searchKeyword({ query: "water" });
+
+    expect(out.results[0]).toMatchObject({ reference: "Acts 8:36", onSpine: true });
+    expect(out.results[1]).toMatchObject({ reference: "Acts 8:37", onSpine: false });
   });
 });
 

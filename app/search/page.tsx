@@ -20,7 +20,10 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
   const query = getParam(params.q) ?? "";
   const book = getParam(params.book) ?? "";
   const chapter = getParam(params.chapter) ?? "";
-  const parsedChapter = parsePositiveInt(chapter);
+  // A chapter filter without a book is unreachable from the form (the chapter
+  // input is disabled until a book is chosen) and would filter invisibly —
+  // scopeSuffix omits it and the input can't display it. Ignore it.
+  const parsedChapter = book ? parsePositiveInt(chapter) : undefined;
   const requestedPage = parsePositiveInt(getParam(params.page)) ?? 1;
   const pageSize = Math.min(parsePositiveInt(getParam(params.pageSize)) ?? 25, 100);
   const matchMode = getParam(params.matchMode) === "prefix" ? "prefix" : "exact";

@@ -25,7 +25,12 @@ concurrency:
 jobs:
   report:
     runs-on: ubuntu-latest
-    timeout-minutes: 45 # ~20 questions x (embed + rerank + synthesis + judge); judge worst case ~4.5min (3 x 90s + backoff), typical a few seconds
+    # Must cover the SEQUENTIAL worst case: the report is only written after all
+    # ~20 questions finish, and each judge can take ~4.6min (3 x 90s + backoff)
+    # under sustained provider failure — ~100min total before retrieval/synthesis.
+    # Typical runs finish in a few minutes; a generous ceiling is harmless here
+    # (read-only job, concurrency-grouped, next run is 24h away).
+    timeout-minutes: 120
     env:
       # `prisma.config.ts` (and the schema) require these via env() at config
       # LOAD, and Prisma loads that config on every CLI command — including the

@@ -171,3 +171,100 @@ describe("SearchPanel no-results state", () => {
     expect(screen.getByText(/no results in the loaded corpus/i)).toBeTruthy();
   });
 });
+
+describe("SearchPanel morph tooltip", () => {
+  it("explains the morph code via a title tooltip", () => {
+    render(
+      <SearchPanel {...baseProps} hasSearch={true} searchLabel='lemma "λόγος"' count={1} pageCount={1} results={[tokenResult]} />
+    );
+    expect(screen.getByTitle("noun — nominative singular masculine")).toBeTruthy();
+  });
+});
+
+describe("SearchPanel saved searches", () => {
+  it("shows friendly book names instead of osis ids", () => {
+    render(
+      <SearchPanel
+        {...baseProps}
+        savedSearches={[
+          { id: "s1", label: "lemma: ἀγάπη", mode: "lemma", query: "ἀγάπη", book: "1Cor", chapter: null, matchMode: null }
+        ]}
+      />
+    );
+    expect(screen.getByText(/in 1 Corinthians/)).toBeTruthy();
+  });
+
+  it("explains that domain searches cannot be saved", () => {
+    render(<SearchPanel {...baseProps} mode="domain" domain="025" hasSearch={true} searchLabel="Domain 25" />);
+    expect(screen.getByText(/can't be saved yet/i)).toBeTruthy();
+  });
+});
+
+describe("SearchPanel chapter filter", () => {
+  it("disables chapter until a book is chosen", () => {
+    render(<SearchPanel {...baseProps} />);
+    const chapterInput = screen.getByPlaceholderText("Choose a book first") as HTMLInputElement;
+    expect(chapterInput.disabled).toBe(true);
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Book" }), { target: { value: "John" } });
+    expect((screen.getByPlaceholderText("Any") as HTMLInputElement).disabled).toBe(false);
+  });
+});
+
+describe("SearchPanel pagination", () => {
+  it("shows the absolute result range", () => {
+    const results = Array.from({ length: 25 }, (_, i) => ({ ...tokenResult, reference: `John 1:${i + 1}` }));
+    render(
+      <SearchPanel {...baseProps} hasSearch={true} searchLabel='"x"' results={results} count={116} page={2} pageCount={5} />
+    );
+    expect(screen.getByText(/Showing 26–50 of 116/)).toBeTruthy();
+  });
+});
+
+describe("SearchPanel page size", () => {
+  it("offers standard page sizes as a select", () => {
+    render(<SearchPanel {...baseProps} />);
+    const select = screen.getByRole("combobox", { name: "Page size" }) as HTMLSelectElement;
+    expect(select.value).toBe("25");
+    expect(Array.from(select.options).map((o) => o.value)).toEqual(["10", "25", "50", "100"]);
+  });
+
+  it("keeps a non-standard size from the URL selectable", () => {
+    render(<SearchPanel {...baseProps} pageSize={37} />);
+    const select = screen.getByRole("combobox", { name: "Page size" }) as HTMLSelectElement;
+    expect(select.value).toBe("37");
+  });
+});
+
+describe("SearchPanel domain submit", () => {
+  it("renders a standalone labeled Search button in domain mode", () => {
+    render(<SearchPanel {...baseProps} />);
+    fireEvent.click(screen.getByRole("radio", { name: "Domain" }));
+    const button = screen.getByRole("button", { name: "Search" });
+    expect(button.textContent).toBe("Search");
+  });
+});
+
+describe("SearchPanel save search payload", () => {
+  it("saves the executed search's mode, not a toggled-but-unsubmitted mode", async () => {
+    let captured: Record<string, unknown> | null = null;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(async (_url: string, init: { body: string }) => {
+        captured = JSON.parse(init.body);
+        return {
+          ok: true,
+          json: async () => ({
+            savedSearch: { id: "n1", label: "keyword: light", mode: "keyword", query: "light", book: null, chapter: null, matchMode: null }
+          })
+        };
+      })
+    );
+    render(<SearchPanel {...baseProps} mode="keyword" query="light" hasSearch={true} searchLabel='keyword "light"' />);
+    fireEvent.click(screen.getByRole("radio", { name: "Lemma" }));
+    fireEvent.click(screen.getByRole("button", { name: /save search/i }));
+    await screen.findByText("Search saved.");
+    expect(captured).not.toBeNull();
+    expect(captured!.mode).toBe("keyword");
+  });
+});

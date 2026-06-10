@@ -4,8 +4,9 @@ import Link from "next/link";
 import { BookmarkPlus, Pencil, Search, Trash2, X } from "lucide-react";
 import { Fragment, useState } from "react";
 import { splitWithMatches } from "@/lib/search-highlight";
+import { decodeMorphCode } from "@/lib/morphology";
 import type { DomainOptions } from "@/lib/search";
-import { readerHref } from "@/lib/references";
+import { bookName, readerHref } from "@/lib/references";
 import { useAutoDismissMap, useAutoDismissString } from "@/lib/useAutoDismissStatus";
 
 const MODES = [
@@ -124,6 +125,7 @@ export function SearchPanel({
 }) {
   const [activeMode, setActiveMode] = useState(MODES.some((m) => m.value === mode) ? mode : "keyword");
   const [queryValue, setQueryValue] = useState(query);
+  const [selectedBook, setSelectedBook] = useState(book);
   const [selectedDomain, setSelectedDomain] = useState(domain);
   const [selectedSubdomain, setSelectedSubdomain] = useState(subdomain);
   const [lnValue, setLnValue] = useState(ln);
@@ -166,7 +168,7 @@ export function SearchPanel({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          mode: activeMode,
+          mode,
           query,
           // Omit empty optional fields — the server schema rejects empty
           // strings on coerced-number / enum fields (chapter, matchMode).
@@ -239,7 +241,10 @@ export function SearchPanel({
 
   const previousPage = Math.max(page - 1, 1);
   const nextPage = Math.min(page + 1, Math.max(pageCount, 1));
+  const rangeStart = results.length === 0 ? 0 : (page - 1) * pageSize + 1;
+  const rangeEnd = results.length === 0 ? 0 : rangeStart + results.length - 1;
   const showMorphMatch = activeMode === "morphology";
+  const pageSizeOptions = Array.from(new Set([10, 25, 50, 100, pageSize])).sort((a, b) => a - b);
 
   return (
     <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_220px]">
@@ -271,7 +276,7 @@ export function SearchPanel({
           </div>
         </fieldset>
         {activeMode === "domain" ? (
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-[1fr_1fr_1fr_auto]">
             <label className="space-y-1">
               <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Domain</span>
               <select
@@ -303,24 +308,20 @@ export function SearchPanel({
             </label>
             <label className="space-y-1">
               <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">LN reference</span>
-              <div className="flex items-center gap-2">
-                <input
-                  name="ln"
-                  value={lnValue}
-                  onChange={(event) => setLnValue(event.target.value)}
-                  placeholder={MODE_HINTS.domain.placeholder}
-                  className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-accent-600"
-                />
-                <button
-                  type="submit"
-                  aria-label="Search"
-                  title="Search"
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-accent-700 text-white transition-colors hover:bg-accent-800"
-                >
-                  <Search size={16} aria-hidden />
-                </button>
-              </div>
+              <input
+                name="ln"
+                value={lnValue}
+                onChange={(event) => setLnValue(event.target.value)}
+                placeholder={MODE_HINTS.domain.placeholder}
+                className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-accent-600"
+              />
             </label>
+            <button
+              type="submit"
+              className="self-end rounded-md bg-accent-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-800"
+            >
+              Search
+            </button>
           </div>
         ) : (
           <label className="block space-y-1">
@@ -361,7 +362,12 @@ export function SearchPanel({
         <div className="grid gap-3 border-t border-stone-200 pt-3 sm:grid-cols-2 md:grid-cols-4">
           <label className="space-y-1">
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Book</span>
-            <select name="book" defaultValue={book} className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm">
+            <select
+              name="book"
+              value={selectedBook}
+              onChange={(event) => setSelectedBook(event.target.value)}
+              className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm"
+            >
               <option value="">All books</option>
               {books.map((bookOption) => (
                 <option key={bookOption.osisId} value={bookOption.osisId}>
@@ -374,21 +380,27 @@ export function SearchPanel({
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Chapter</span>
             <input
               name="chapter"
+              type="number"
+              min="1"
               defaultValue={chapter}
-              className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-accent-600"
-              placeholder="Any"
+              disabled={!selectedBook}
+              placeholder={selectedBook ? "Any" : "Choose a book first"}
+              className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-accent-600 disabled:bg-stone-50 disabled:opacity-60"
             />
           </label>
           <label className="space-y-1">
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Page size</span>
-            <input
+            <select
               name="pageSize"
-              type="number"
-              min="1"
-              max="100"
-              defaultValue={pageSize}
-              className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-accent-600"
-            />
+              defaultValue={String(pageSize)}
+              className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm"
+            >
+              {pageSizeOptions.map((size) => (
+                <option key={size} value={size}>
+                  {size}
+                </option>
+              ))}
+            </select>
           </label>
           {showMorphMatch ? (
             <label className="space-y-1">
@@ -427,6 +439,8 @@ export function SearchPanel({
               </button>
               {saveStatus ? <span className="text-sm text-slate-600">{saveStatus}</span> : null}
             </div>
+          ) : hasSearch && mode === "domain" ? (
+            <p className="mt-3 text-sm text-slate-500">Domain searches can&apos;t be saved yet.</p>
           ) : null}
         </div>
         <div className="divide-y divide-stone-200">
@@ -452,7 +466,12 @@ export function SearchPanel({
                 <ReferenceLink reference={result.reference} linkable={result.kind === "keyword" ? result.onSpine !== false : undefined} />
                 <span className="rounded bg-stone-100 px-2 py-1 text-xs text-slate-600">{result.corpus}</span>
                 {result.kind === "token" ? (
-                  <span className="rounded bg-blue-50 px-2 py-1 text-xs text-blue-900">{result.morphCode}</span>
+                  <span
+                    title={decodeMorphCode(result.morphCode) ?? undefined}
+                    className="cursor-help rounded bg-blue-50 px-2 py-1 text-xs text-blue-900"
+                  >
+                    {result.morphCode}
+                  </span>
                 ) : null}
               </div>
               {result.kind === "token" ? (
@@ -496,7 +515,7 @@ export function SearchPanel({
               Previous
             </Link>
             <span className="text-slate-600">
-              Showing {results.length} of {count}
+              Showing {rangeStart}–{rangeEnd} of {count}
             </span>
             <Link
               className={`rounded-md border border-stone-300 px-3 py-2 ${
@@ -547,7 +566,7 @@ export function SearchPanel({
                 >
                   <span className="font-medium text-slate-950">{item.label}</span>
                   <span className="mt-1 block text-xs text-slate-500">
-                    {item.mode} {item.book ? `in ${item.book}` : "in all books"}
+                    {item.mode} {item.book ? `in ${bookName(item.book)}` : "in all books"}
                   </span>
                 </Link>
               )}

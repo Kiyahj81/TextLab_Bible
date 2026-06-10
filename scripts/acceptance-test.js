@@ -187,7 +187,7 @@ async function run() {
     await page.getByRole("button", { name: "λόγος" }).first().click();
     await page.getByRole("link", { name: "Search lemma" }).click();
     await page.waitForURL(/\/search/);
-    await page.getByText('40 results for "λόγος"').waitFor();
+    await page.getByText('40 results for lemma "λόγος" in John').waitFor();
     await page.getByText("John 1:1").first().waitFor();
     result.interactions.push('Search lemma opened /search and showed 40 λόγος results.');
     await page.getByRole("button", { name: "Save search" }).click();
@@ -292,7 +292,11 @@ async function run() {
         // these are browser autofill / extension injections (e.g. caret-color, empty style={{}}),
         // not real app bugs. Same noise that drove the earlier caret-color filter.
         !(message.includes("hydration-mismatch") &&
-          (message.includes('caret-color:"transparent"') || message.includes("style={{}}")))
+          (message.includes('caret-color:"transparent"') || message.includes("style={{}}"))) &&
+        // Tolerate Chrome's preload-timing heuristic for Next dev assets — under
+        // dev-server compile latency, CSS is consumed later than Chrome's "few
+        // seconds" window. Reproduces on unmodified main; not an app bug.
+        !(message.includes("preloaded using link preload") && message.includes("_next/static/"))
     );
     assert(relevantConsole.length === 0, `console errors/warnings found: ${relevantConsole.join("; ")}`);
 

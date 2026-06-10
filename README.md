@@ -2,7 +2,7 @@
 
 TextLab Bible is a full-stack New Testament Greek exegesis app with a corpus-backed reader, search, notes, and a retrieval-first AI Study Assistant. The current corpus scope is the NT-Greek subset: SBLGNT Greek, WEB English, MorphGNT morphology, MACULA gloss enrichment, and UBS Louw-Nida semantic domains.
 
-Milestone 3 is complete for this scope. The app now includes lexical full-text search, vector/hybrid retrieval, optional cross-encoder reranking through Vercel AI Gateway, Louw-Nida domain search, grounded assistant synthesis, and a two-tier evaluation harness.
+Milestone 3 is complete for this scope. The app now includes lexical full-text search, vector/hybrid retrieval, optional cross-encoder reranking through Vercel AI Gateway, Louw-Nida domain search, grounded assistant synthesis, and a two-tier evaluation harness. The search surface offers segmented keyword, lemma, morphology, and domain modes with inline guidance, example searches, results that link straight into the reader, and human-readable morphology tooltips.
 
 Deferred beyond the current scope: OT Hebrew/Aramaic, LXX, Strong's numbers, speaker quotation metadata, explicit Greek-English word alignment, broader synonym expansion, and a more general multi-tool agent loop.
 
@@ -13,11 +13,14 @@ Deferred beyond the current scope: OT Hebrew/Aramaic, LXX, Strong's numbers, spe
   - Greek token popovers with lemma, morphology, gloss, and Louw-Nida domain/subdomain labels when present.
   - English word highlighting, Greek token highlighting, notes, verse navigation, chapter navigation, and last-passage restore.
 - **Search** at `/search`
+  - A segmented mode control (Keyword / Lemma / Morphology / Domain) with per-mode placeholders, hint text, and clickable example searches on the empty state; the no-results state gives per-mode recovery guidance.
   - Keyword search with PostgreSQL full-text search over `Verse.textSearch`.
   - Lemma search over token lemmas.
-  - Morphology search over token morphology codes.
+  - Morphology search over token morphology codes, with Robinson-ordered queries (for example `V-PAI-3S`) normalized to the stored scheme and human-readable tooltips on result codes (`V-3PAI-S` reads as "verb — present active indicative, 3rd person singular").
   - Louw-Nida domain search with domain/subdomain dropdowns and exact LN-reference lookup.
-  - Saved searches scoped to the signed-in user.
+  - Result references link into the reader at the matching passage; keyword hits that fall outside the SBLGNT citation spine render as plain text. A results label names the mode and scope (for example `116 results for lemma "λόγος" in John`).
+  - Friendly pagination with absolute ranges (`Showing 26–50 of 116`) and a page-size selector; the chapter filter is numeric and stays disabled until a book is chosen.
+  - Saved searches scoped to the signed-in user, showing friendly book names and persisting the executed mode; status, rename, and delete feedback announce through accessible live regions.
 - **AI Study Assistant** at `/assistant`
   - Runs local retrieval before synthesis.
   - Shows structured citations and retrieval trace entries.
@@ -37,7 +40,7 @@ The root route redirects to `/read`.
 | Layer | Primary files | Notes |
 | --- | --- | --- |
 | App routes | `app/read`, `app/search`, `app/assistant`, `app/notes`, `app/signin`, `app/api/*` | Next.js App Router surfaces and server endpoints. |
-| Reader/search data | `lib/search.ts`, `lib/bible.ts`, `lib/louwNida.ts`, `lib/references.ts` | Canonical passage, token, search, domain, and reference helpers. |
+| Reader/search data | `lib/search.ts`, `lib/bible.ts`, `lib/louwNida.ts`, `lib/references.ts`, `lib/searchLabel.ts`, `lib/morphology.ts` | Canonical passage, token, search, domain, and reference helpers, plus the `readerHref` link builder, result-label formatting, and the morphology-code decoder/normalizer. |
 | Assistant orchestration | `lib/ai/assistant.ts`, `lib/ai/signals.ts`, `lib/ai/retrievalPlanner.ts`, `lib/ai/synthesis.ts`, `lib/ai/grounding.ts` | Deterministic-first assistant pipeline and grounding checks. |
 | Semantic retrieval | `lib/search/semantic.ts`, `lib/search/rerank.ts`, `scripts/embed-verses.ts` | pgvector embeddings, hybrid RRF retrieval, and optional Voyage rerank through Vercel AI Gateway. |
 | Persistence | `prisma/schema.prisma`, `prisma/migrations/*` | PostgreSQL schema, handwritten FTS/vector migrations, Auth.js adapter tables, notes, saved searches, assistant history, import runs. |
@@ -233,7 +236,7 @@ The gate protects deterministic evidence retrieval and citation safety. The repo
 1. Start the app and sign in through `/signin`.
 2. Open `/read` and view John 1.
 3. Click a Greek token to inspect morphology and domain metadata.
-4. Open `/search` and try keyword, lemma, morphology, and domain modes.
+4. Open `/search`, try the keyword, lemma, morphology, and domain modes (the empty-state example chips are a quick way in), then follow a result reference into the reader.
 5. Open `/assistant` and ask a scoped corpus question, such as `Show me every use of logos in John 1 and summarize the pattern.`
 6. Review the retrieval trace and citations.
 7. Save the generated note and export it as Markdown.

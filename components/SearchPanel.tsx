@@ -249,7 +249,7 @@ export function SearchPanel({
   return (
     <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_220px]">
       <div className="space-y-6">
-      <form className="space-y-3 rounded-md border border-stone-300 bg-white p-4 shadow-sm" action="/search">
+      <form className="space-y-3 rounded-md border border-stone-300 bg-white p-4 shadow-sm xl:sticky xl:top-6 xl:z-10" action="/search">
         <fieldset>
           <legend className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mode</legend>
           <div className="mt-1 inline-flex flex-wrap rounded-md border border-stone-300 bg-stone-100 p-0.5">
@@ -437,11 +437,13 @@ export function SearchPanel({
                 <BookmarkPlus size={16} />
                 Save search
               </button>
-              {saveStatus ? <span className="text-sm text-slate-600">{saveStatus}</span> : null}
             </div>
           ) : hasSearch && mode === "domain" ? (
             <p className="mt-3 text-sm text-slate-500">Domain searches can&apos;t be saved yet.</p>
           ) : null}
+          <span role="status" aria-live="polite" className="text-sm text-slate-600">
+            {saveStatus ?? ""}
+          </span>
         </div>
         <div className="divide-y divide-stone-200">
           {!hasSearch ? (
@@ -461,7 +463,7 @@ export function SearchPanel({
             </div>
           ) : null}
           {results.map((result, index) => (
-            <article key={`${result.reference}-${index}`} className="p-4">
+            <article key={`${result.reference}-${index}`} className="border-l-2 border-transparent p-4 transition-colors hover:border-accent-400 hover:bg-stone-50/70">
               <div className="flex flex-wrap items-center gap-2 text-sm">
                 <ReferenceLink reference={result.reference} linkable={result.kind === "keyword" ? result.onSpine !== false : undefined} />
                 <span className="rounded bg-stone-100 px-2 py-1 text-xs text-slate-600">{result.corpus}</span>
@@ -506,25 +508,33 @@ export function SearchPanel({
         </div>
         {hasSearch && pageCount > 1 ? (
           <nav className="flex flex-wrap items-center justify-between gap-3 border-t border-stone-200 p-4 text-sm">
-            <Link
-              className={`rounded-md border border-stone-300 px-3 py-2 ${
-                page <= 1 ? "pointer-events-none opacity-50" : "hover:border-slate-500"
-              }`}
-              href={searchHref({ mode, query, book, chapter, matchMode, domain, subdomain, ln, page: previousPage, pageSize })}
-            >
-              Previous
-            </Link>
+            {page <= 1 ? (
+              <span aria-disabled="true" className="rounded-md border border-stone-200 px-3 py-2 text-slate-400">
+                Previous
+              </span>
+            ) : (
+              <Link
+                className="rounded-md border border-stone-300 px-3 py-2 hover:border-slate-500"
+                href={searchHref({ mode, query, book, chapter, matchMode, domain, subdomain, ln, page: previousPage, pageSize })}
+              >
+                Previous
+              </Link>
+            )}
             <span className="text-slate-600">
               Showing {rangeStart}–{rangeEnd} of {count}
             </span>
-            <Link
-              className={`rounded-md border border-stone-300 px-3 py-2 ${
-                page >= pageCount ? "pointer-events-none opacity-50" : "hover:border-slate-500"
-              }`}
-              href={searchHref({ mode, query, book, chapter, matchMode, domain, subdomain, ln, page: nextPage, pageSize })}
-            >
-              Next
-            </Link>
+            {page >= pageCount ? (
+              <span aria-disabled="true" className="rounded-md border border-stone-200 px-3 py-2 text-slate-400">
+                Next
+              </span>
+            ) : (
+              <Link
+                className="rounded-md border border-stone-300 px-3 py-2 hover:border-slate-500"
+                href={searchHref({ mode, query, book, chapter, matchMode, domain, subdomain, ln, page: nextPage, pageSize })}
+              >
+                Next
+              </Link>
+            )}
           </nav>
         ) : null}
       </section>
@@ -538,6 +548,7 @@ export function SearchPanel({
               {editingId === item.id ? (
                 <input
                   autoFocus
+                  aria-label="Saved search name"
                   defaultValue={item.label}
                   onBlur={(event) => renameSavedSearch(item.id, event.target.value)}
                   onKeyDown={(event) => {
@@ -589,9 +600,9 @@ export function SearchPanel({
                   <Trash2 size={12} aria-hidden />
                   Delete
                 </button>
-                {itemStatus[item.id] ? (
-                  <span className="ml-auto text-slate-500">{itemStatus[item.id]}</span>
-                ) : null}
+                <span role="status" aria-live="polite" className="ml-auto text-slate-500">
+                  {itemStatus[item.id] ?? ""}
+                </span>
               </div>
             </div>
           ))}

@@ -268,3 +268,51 @@ describe("SearchPanel save search payload", () => {
     expect(captured!.mode).toBe("keyword");
   });
 });
+
+describe("SearchPanel disabled pagination", () => {
+  it("renders disabled pagination as text, not focusable links", () => {
+    render(
+      <SearchPanel {...baseProps} hasSearch={true} searchLabel='"x"' results={[tokenResult]} count={50} page={1} pageCount={2} />
+    );
+    expect(screen.queryByRole("link", { name: "Previous" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Next" })).toBeTruthy();
+  });
+});
+
+describe("SearchPanel rename input", () => {
+  it("exposes an accessible name", () => {
+    render(
+      <SearchPanel
+        {...baseProps}
+        savedSearches={[
+          { id: "s1", label: "keyword: light", mode: "keyword", query: "light", book: null, chapter: null, matchMode: null }
+        ]}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: /rename/i }));
+    expect(screen.getByRole("textbox", { name: "Saved search name" })).toBeTruthy();
+  });
+});
+
+describe("SearchPanel status live regions", () => {
+  it("pre-renders the save-status live region even without a query", () => {
+    render(<SearchPanel {...baseProps} />);
+    expect(screen.getAllByRole("status").length).toBeGreaterThan(0);
+  });
+
+  it("announces save status via a polite live region", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          savedSearch: { id: "n1", label: "keyword: light", mode: "keyword", query: "light", book: null, chapter: null, matchMode: null }
+        })
+      })
+    );
+    render(<SearchPanel {...baseProps} query="light" hasSearch={true} searchLabel='keyword "light"' />);
+    fireEvent.click(screen.getByRole("button", { name: /save search/i }));
+    await screen.findByText("Search saved.");
+    expect(screen.getAllByRole("status").some((el) => el.textContent === "Search saved.")).toBe(true);
+  });
+});

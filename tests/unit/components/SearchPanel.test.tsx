@@ -264,6 +264,7 @@ describe("SearchPanel save search payload", () => {
     fireEvent.click(screen.getByRole("radio", { name: "Lemma" }));
     fireEvent.click(screen.getByRole("button", { name: /save search/i }));
     await screen.findByText("Search saved.");
-    expect(captured.mode).toBe("keyword");
+    expect(captured).not.toBeNull();
+    expect(captured!.mode).toBe("keyword");
   });
 });

@@ -294,6 +294,18 @@ describe("SearchPanel rename input", () => {
   });
 });
 
+describe("SearchPanel page size auto-apply", () => {
+  it("submits the form when a new page size is selected", () => {
+    const submitSpy = vi
+      .spyOn(HTMLFormElement.prototype, "requestSubmit")
+      .mockImplementation(() => {});
+    render(<SearchPanel {...baseProps} query="light" hasSearch={true} searchLabel='keyword "light"' />);
+    fireEvent.change(screen.getByRole("combobox", { name: "Page size" }), { target: { value: "50" } });
+    expect(submitSpy).toHaveBeenCalledTimes(1);
+    submitSpy.mockRestore();
+  });
+});
+
 describe("SearchPanel status live regions", () => {
   it("pre-renders the save-status live region even without a query", () => {
     render(<SearchPanel {...baseProps} />);

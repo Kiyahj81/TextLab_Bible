@@ -393,6 +393,7 @@ export function SearchPanel({
             <select
               name="pageSize"
               defaultValue={String(pageSize)}
+              onChange={(event) => event.currentTarget.form?.requestSubmit()}
               className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm"
             >
               {pageSizeOptions.map((size) => (

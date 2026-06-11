@@ -17,7 +17,7 @@
 
 ## PR 1 — Docs & repo hygiene
 
-Branch: `docs/production-launch-followups` (already exists; contains the design spec and this plan).
+Branch: `chore/docs-hygiene` off `main`. (The design spec and this plan were merged ahead of the arc via the standalone `docs/production-launch-followups` PR.)
 
 ### Task 1: `.gitattributes` — LF for migration SQL
 

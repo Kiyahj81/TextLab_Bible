@@ -51,7 +51,8 @@ PROJECT_STATE.
    mis-wiring (production had silently pointed at the wrong Neon project since
    2026-05-27; fixed 2026-06-11) if not already present. No new advisories.
 
-This PR also carries this design doc and the implementation plan.
+(This design doc and the implementation plan land ahead of the arc via their own
+docs-only PR, so they are on `main` regardless of what is being worked on.)
 
 ## PR 2 — Production sign-in: allowlist + OAuth setup + smoke test
 

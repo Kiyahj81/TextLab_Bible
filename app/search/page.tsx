@@ -163,7 +163,10 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
           query: item.query,
           book: item.book,
           chapter: item.chapter,
-          matchMode: item.matchMode
+          matchMode: item.matchMode,
+          domain: item.domain,
+          subdomain: item.subdomain,
+          ln: item.ln
         }))}
       />
     </div>

@@ -194,9 +194,10 @@ describe("SearchPanel saved searches", () => {
     expect(screen.getByText(/in 1 Corinthians/)).toBeTruthy();
   });
 
-  it("explains that domain searches cannot be saved", () => {
+  it("offers Save search for an executed domain search", () => {
     render(<SearchPanel {...baseProps} mode="domain" domain="025" hasSearch={true} searchLabel="Domain 25" />);
-    expect(screen.getByText(/can't be saved yet/i)).toBeTruthy();
+    expect(screen.queryByText(/can't be saved yet/i)).toBeNull();
+    expect(screen.getByRole("button", { name: /save search/i })).toBeTruthy();
   });
 });
 
@@ -386,5 +387,53 @@ describe("SearchPanel English toggle", () => {
       />
     );
     expect(screen.getByText("In the beginning was the Word")).toBeTruthy();
+  });
+});
+
+describe("SearchPanel domain save", () => {
+  it("saves an executed domain search with its filter fields and a friendly label", async () => {
+    let captured: Record<string, unknown> | null = null;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(async (_url: string, init: { body: string }) => {
+        captured = JSON.parse(init.body);
+        return {
+          ok: true,
+          json: async () => ({
+            savedSearch: {
+              id: "d1", label: "domain: 25 — Attitudes and Emotions", mode: "domain",
+              query: null, book: null, chapter: null, matchMode: null,
+              domain: "025", subdomain: null, ln: null
+            }
+          })
+        };
+      })
+    );
+    render(
+      <SearchPanel {...baseProps} mode="domain" domain="025" hasSearch={true} searchLabel="Domain 25 — Attitudes and Emotions" />
+    );
+    fireEvent.click(screen.getByRole("button", { name: /save search/i }));
+    await screen.findByText("Search saved.");
+    expect(captured).not.toBeNull();
+    expect(captured!.mode).toBe("domain");
+    expect(captured!.domain).toBe("025");
+    expect(captured!.query).toBeUndefined();
+    expect(captured!.label).toBe("domain: 25 — Attitudes and Emotions");
+  });
+
+  it("links a saved domain search back to a domain URL", () => {
+    render(
+      <SearchPanel
+        {...baseProps}
+        savedSearches={[
+          { id: "d1", label: "domain: 25 — Attitudes and Emotions", mode: "domain", query: null,
+            book: null, chapter: null, matchMode: null, domain: "025", subdomain: null, ln: null }
+        ]}
+      />
+    );
+    const link = screen.getByRole("link", { name: /domain: 25/i });
+    expect(link.getAttribute("href")).toContain("mode=domain");
+    expect(link.getAttribute("href")).toContain("domain=025");
+    expect(link.getAttribute("href")).not.toContain("q=");
   });
 });

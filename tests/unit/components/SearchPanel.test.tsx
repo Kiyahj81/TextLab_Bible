@@ -421,6 +421,41 @@ describe("SearchPanel domain save", () => {
     expect(captured!.label).toBe("domain: 25 — Attitudes and Emotions");
   });
 
+  it("truncates an over-long subdomain label to the API's 100-char cap", async () => {
+    let captured: Record<string, unknown> | null = null;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(async (_url: string, init: { body: string }) => {
+        captured = JSON.parse(init.body);
+        return {
+          ok: true,
+          json: async () => ({
+            savedSearch: { id: "d2", label: "x", mode: "domain", query: null, book: null, chapter: null, matchMode: null, domain: null, subdomain: "010001", ln: null }
+          })
+        };
+      })
+    );
+    const longLabel = "Groups and Members of Groups of Persons Regarded as Related by Blood but without Special Reference to Successive Generations";
+    render(
+      <SearchPanel
+        {...baseProps}
+        mode="domain"
+        subdomain="010001"
+        hasSearch={true}
+        searchLabel="Subdomain"
+        domainOptions={{
+          domains: [{ code: "010", number: 10, label: "Kinship Terms" }],
+          subdomainsByDomain: { "010": [{ code: "010001", label: longLabel }] }
+        }}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: /save search/i }));
+    await screen.findByText("Search saved.");
+    expect(captured).not.toBeNull();
+    expect((captured!.label as string).length).toBeLessThanOrEqual(100);
+    expect(captured!.label).toContain("domain: Groups and Members");
+  });
+
   it("links a saved domain search back to a domain URL", () => {
     render(
       <SearchPanel

@@ -42,14 +42,20 @@ function domainSaveLabel(
   domainOptions: DomainOptions,
   filter: { domain: string; subdomain: string; ln: string }
 ): string {
-  if (filter.ln) return `domain: LN ${filter.ln}`;
-  if (filter.subdomain) {
+  let raw: string;
+  if (filter.ln) {
+    raw = `domain: LN ${filter.ln}`;
+  } else if (filter.subdomain) {
     const parent = filter.subdomain.slice(0, 3);
     const sub = domainOptions.subdomainsByDomain[parent]?.find((s) => s.code === filter.subdomain);
-    return sub ? `domain: ${sub.label}` : `domain: ${filter.subdomain}`;
+    raw = sub ? `domain: ${sub.label}` : `domain: ${filter.subdomain}`;
+  } else {
+    const d = domainOptions.domains.find((entry) => entry.code === filter.domain);
+    raw = d ? `domain: ${d.number} — ${d.label}` : `domain: ${filter.domain}`;
   }
-  const d = domainOptions.domains.find((entry) => entry.code === filter.domain);
-  return d ? `domain: ${d.number} — ${d.label}` : `domain: ${filter.domain}`;
+  // The saved-searches API caps labels at 100 chars; a few Louw-Nida subdomain
+  // labels exceed that and would 400 the save.
+  return raw.length > 100 ? `${raw.slice(0, 99)}…` : raw;
 }
 
 function buildExampleSearches(domainOptions: DomainOptions): { label: string; href: string }[] {

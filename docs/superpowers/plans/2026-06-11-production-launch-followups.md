@@ -158,8 +158,8 @@ git commit -m "Close out the Vercel-to-Neon mis-wiring in the security register"
 ### Task 5: Verify, push, open PR 1, stop
 
 - [ ] **Step 1:** Run `npm run verify` — expected exit 0 (docs-only changes; build must still pass).
-- [ ] **Step 2:** Push: `git push -u origin docs/production-launch-followups`
-- [ ] **Step 3:** Open the PR (title: "Docs hygiene: LF migrations, resolved Neon topology, launch-arc spec"). Body summarizes the four commits and links the spec.
+- [ ] **Step 2:** Push: `git push -u origin chore/docs-hygiene`
+- [ ] **Step 3:** Open the PR (title: "Docs hygiene: LF migration SQL and resolved Neon topology"). Body summarizes the four commits and links the spec (already on `main`).
 - [ ] **Step 4:** **Stop. Report to the maintainer and wait for review/merge.**
 
 ---

@@ -80,3 +80,41 @@ describe("searchMorphology Robinson normalization", () => {
     expect(prismaMock.token.count.mock.calls[0][0].where.morphCode).toEqual(expected);
   });
 });
+
+describe("searchLemma withEnglish", () => {
+  it("attaches englishText from a WEB verse row when withEnglish is true", async () => {
+    prismaMock.token.count.mockResolvedValue(1);
+    prismaMock.token.findMany.mockResolvedValue([
+      { id: "t1", surface: "λόγος", lemma: "λόγος", morphCode: "N-NSM",
+        chapter: 1, verse: 1, book: { id: "b1", osisId: "John" }, corpus: { abbreviation: "SBLGNT" } }
+    ]);
+    prismaMock.verse.findMany.mockResolvedValue([
+      { bookId: "b1", chapter: 1, verse: 1, text: "Ἐν ἀρχῇ ἦν ὁ λόγος", corpus: { abbreviation: "SBLGNT" } },
+      { bookId: "b1", chapter: 1, verse: 1, text: "In the beginning was the Word", corpus: { abbreviation: "WEB" } }
+    ]);
+
+    const result = await searchLemma({ lemma: "λόγος", withEnglish: true });
+
+    expect(prismaMock.verse.findMany).toHaveBeenCalledTimes(1);
+    expect(result.results[0].englishText).toBe("In the beginning was the Word");
+  });
+
+  it("does not issue an extra WEB query and omits englishText when withEnglish is absent", async () => {
+    prismaMock.token.count.mockResolvedValue(1);
+    prismaMock.token.findMany.mockResolvedValue([
+      { id: "t1", surface: "λόγος", lemma: "λόγος", morphCode: "N-NSM",
+        chapter: 1, verse: 1, book: { id: "b1", osisId: "John" }, corpus: { abbreviation: "SBLGNT" } }
+    ]);
+    prismaMock.verse.findMany.mockResolvedValue([
+      { bookId: "b1", chapter: 1, verse: 1, text: "Ἐν ἀρχῇ ἦν ὁ λόγος", corpus: { abbreviation: "SBLGNT" } }
+    ]);
+
+    const result = await searchLemma({ lemma: "λόγος" });
+
+    expect(prismaMock.verse.findMany).toHaveBeenCalledTimes(1);
+    const corporaArg = prismaMock.verse.findMany.mock.calls[0][0].where.corpus.abbreviation;
+    // When withEnglish is absent the query must NOT include WEB in the corpus filter
+    expect(corporaArg).not.toMatchObject({ in: expect.arrayContaining(["WEB"]) });
+    expect("englishText" in result.results[0]).toBe(false);
+  });
+});

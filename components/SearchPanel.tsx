@@ -10,6 +10,8 @@ import { bookName, readerHref } from "@/lib/references";
 import { useAutoDismissMap, useAutoDismissString } from "@/lib/useAutoDismissStatus";
 import { normalizeSearchMode } from "@/lib/searchMode";
 
+const SHOW_ENGLISH_KEY = "textlab:search:show-english";
+
 const MODES = [
   { value: "keyword", label: "Keyword" },
   { value: "lemma", label: "Lemma" },
@@ -59,6 +61,7 @@ export type SearchPanelResult =
       reference: string;
       text: string;
       onSpine?: boolean;
+      englishText?: string;
     }
   | {
       kind: "token";
@@ -68,6 +71,7 @@ export type SearchPanelResult =
       lemma: string;
       morphCode: string;
       verseText: string;
+      englishText?: string;
     };
 
 export type SavedSearchRow = {
@@ -136,6 +140,9 @@ export function SearchPanel({
   const [pending, setPending] = useState<Record<string, boolean>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const [itemStatus, setItemStatus] = useState<Record<string, string>>({});
+  const [showEnglish, setShowEnglish] = useState<boolean>(
+    () => typeof window !== "undefined" && window.localStorage.getItem(SHOW_ENGLISH_KEY) === "1"
+  );
 
   useAutoDismissString(saveStatus, setSaveStatus);
   useAutoDismissMap(itemStatus, setItemStatus);
@@ -430,6 +437,19 @@ export function SearchPanel({
               ? `${count} result${count === 1 ? "" : "s"} for ${searchLabel}${pageCount ? `, page ${page} of ${pageCount}` : ""}`
               : "Search the corpus by keyword, lemma, morphology, or semantic domain."}
           </p>
+          {hasSearch ? (
+            <label className="mt-2 inline-flex cursor-pointer items-center gap-2 text-sm text-slate-600">
+              <input
+                type="checkbox"
+                checked={showEnglish}
+                onChange={(event) => {
+                  setShowEnglish(event.target.checked);
+                  window.localStorage.setItem(SHOW_ENGLISH_KEY, event.target.checked ? "1" : "0");
+                }}
+              />
+              Show English (WEB)
+            </label>
+          ) : null}
           {query ? (
             <div className="mt-3 flex flex-wrap items-center gap-3">
               <button
@@ -486,14 +506,24 @@ export function SearchPanel({
                     {result.surface}
                     <div className="mt-1 text-sm text-slate-600">lemma: {result.lemma}</div>
                   </div>
-                  <p className="greek-text leading-7 text-slate-800">
-                    <HighlightedText text={result.verseText} match={result.surface} />
-                  </p>
+                  <div>
+                    <p className="greek-text leading-7 text-slate-800">
+                      <HighlightedText text={result.verseText} match={result.surface} />
+                    </p>
+                    {showEnglish && result.englishText ? (
+                      <p className="mt-1 text-sm leading-6 text-slate-600">{result.englishText}</p>
+                    ) : null}
+                  </div>
                 </div>
               ) : (
-                <p className="mt-2 leading-7 text-slate-800">
-                  <HighlightedText text={result.text} match={query} />
-                </p>
+                <div>
+                  <p className="mt-2 leading-7 text-slate-800">
+                    <HighlightedText text={result.text} match={query} />
+                  </p>
+                  {showEnglish && result.englishText ? (
+                    <p className="mt-1 text-sm leading-6 text-slate-600">{result.englishText}</p>
+                  ) : null}
+                </div>
               )}
             </article>
           ))}

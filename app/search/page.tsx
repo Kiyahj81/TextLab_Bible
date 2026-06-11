@@ -68,7 +68,8 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
         book: book || undefined,
         chapter: parsedChapter,
         page: p,
-        pageSize
+        pageSize,
+        withEnglish: true
       })
     );
     count = search.count;
@@ -80,7 +81,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
   } else if (query.trim()) {
     if (mode === "lemma") {
       const { search, page: clampedPage } = await fetchClamped((p) =>
-        searchLemma({ lemma: query, book: book || undefined, chapter: parsedChapter, page: p, pageSize })
+        searchLemma({ lemma: query, book: book || undefined, chapter: parsedChapter, page: p, pageSize, withEnglish: true })
       );
       count = search.count;
       pageCount = search.pagination.pageCount;
@@ -94,7 +95,8 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
           book: book || undefined,
           chapter: parsedChapter,
           page: p,
-          pageSize
+          pageSize,
+          withEnglish: true
         })
       );
       count = search.count;
@@ -103,7 +105,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
       page = clampedPage;
     } else {
       const { search, page: clampedPage } = await fetchClamped((p) =>
-        searchKeyword({ query, book: book || undefined, chapter: parsedChapter, page: p, pageSize })
+        searchKeyword({ query, book: book || undefined, chapter: parsedChapter, page: p, pageSize, withEnglish: true })
       );
       count = search.pagination.total;
       pageCount = search.pagination.pageCount;

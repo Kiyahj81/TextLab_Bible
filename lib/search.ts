@@ -429,6 +429,7 @@ export async function searchKeyword(input: {
   book?: string;
   chapter?: number;
   orderBy?: "canonical" | "rank";
+  withEnglish?: boolean;
 } & PaginationInput) {
   const book = normalizeBook(input.book);
   const query = input.query.trim();
@@ -492,6 +493,25 @@ export async function searchKeyword(input: {
     ? await filterToSblSpine(rows.map((row) => ({ book: row.osisId, chapter: row.chapter, verse: row.verse })))
     : new Set<string>();
 
+  // When withEnglish is true, batch-fetch WEB verse text for the SBLGNT rows only
+  // (WEB rows are already English — skip them). One extra query; absent when flag is off.
+  const webEnglishMap = new Map<string, string>();
+  if (input.withEnglish) {
+    const sblgntRows = rows.filter((r) => r.corpus === "SBLGNT");
+    if (sblgntRows.length > 0) {
+      const webVerses = await prisma.verse.findMany({
+        where: {
+          corpus: { abbreviation: "WEB" },
+          OR: sblgntRows.map((r) => ({ book: { osisId: r.osisId }, chapter: r.chapter, verse: r.verse }))
+        },
+        select: { chapter: true, verse: true, text: true, book: { select: { osisId: true } } }
+      });
+      for (const v of webVerses) {
+        webEnglishMap.set(spineKey(v.book.osisId, v.chapter, v.verse), v.text);
+      }
+    }
+  }
+
   return {
     query,
     pagination: paginationResult(pagination, total),
@@ -499,7 +519,10 @@ export async function searchKeyword(input: {
       corpus: row.corpus,
       reference: formatReference(row.osisId, row.chapter, row.verse),
       text: row.text,
-      onSpine: spine.has(spineKey(row.osisId, row.chapter, row.verse))
+      onSpine: spine.has(spineKey(row.osisId, row.chapter, row.verse)),
+      ...(input.withEnglish && row.corpus === "SBLGNT"
+        ? { englishText: webEnglishMap.get(spineKey(row.osisId, row.chapter, row.verse)) }
+        : {})
     }))
   };
 }
@@ -509,6 +532,7 @@ export async function searchLemma(input: {
   corpus?: "SBLGNT";
   book?: string;
   chapter?: number;
+  withEnglish?: boolean;
 } & PaginationInput) {
   const lemma = input.lemma.trim();
   const book = normalizeBook(input.book);
@@ -539,7 +563,7 @@ export async function searchLemma(input: {
     })
   ]);
 
-  const results = await hydrateTokens(tokens);
+  const results = await hydrateTokens(tokens, input.withEnglish);
 
   return {
     lemma,
@@ -555,6 +579,7 @@ export async function searchMorphology(input: {
   corpus?: "SBLGNT";
   book?: string;
   chapter?: number;
+  withEnglish?: boolean;
 } & PaginationInput) {
   const morphCode = normalizeMorphCodeQuery(input.morphCode.trim());
   const book = normalizeBook(input.book);
@@ -585,7 +610,7 @@ export async function searchMorphology(input: {
     })
   ]);
 
-  const results = await hydrateTokens(tokens);
+  const results = await hydrateTokens(tokens, input.withEnglish);
 
   return {
     morphCode,
@@ -708,6 +733,7 @@ export async function searchDomain(
     corpus?: "SBLGNT";
     book?: string;
     chapter?: number;
+    withEnglish?: boolean;
   } & PaginationInput
 ) {
   const filter = resolveDomainFilter(input);
@@ -750,7 +776,7 @@ export async function searchDomain(
     })
   ]);
 
-  const results = await hydrateTokens(tokens);
+  const results = await hydrateTokens(tokens, input.withEnglish);
 
   return { filter, count: total, pagination: paginationResult(pagination, total), results };
 }
@@ -812,15 +838,18 @@ type HydratedToken = {
   corpus: { abbreviation: string };
 };
 
-async function hydrateTokens(tokens: HydratedToken[]) {
+async function hydrateTokens(tokens: HydratedToken[], withEnglish = false) {
   if (tokens.length === 0) return [];
 
   const bookIds = Array.from(new Set(tokens.map((t) => t.book.id)));
   const corpora = Array.from(new Set(tokens.map((t) => t.corpus.abbreviation)));
+  // When withEnglish is true, include WEB in the corpus list so the existing
+  // verse.findMany fetches both Greek and English rows in one query.
+  const corporaToFetch = withEnglish && !corpora.includes("WEB") ? [...corpora, "WEB"] : corpora;
 
   const verses = await prisma.verse.findMany({
     where: {
-      corpus: { abbreviation: { in: corpora } },
+      corpus: { abbreviation: { in: corporaToFetch } },
       bookId: { in: bookIds },
       OR: tokens.map((t) => ({ bookId: t.book.id, chapter: t.chapter, verse: t.verse }))
     },
@@ -842,6 +871,9 @@ async function hydrateTokens(tokens: HydratedToken[]) {
     surface: token.surface,
     lemma: token.lemma ?? "",
     morphCode: token.morphCode ?? "",
-    verseText: verseText.get(key(token.book.id, token.chapter, token.verse, token.corpus.abbreviation)) ?? ""
+    verseText: verseText.get(key(token.book.id, token.chapter, token.verse, token.corpus.abbreviation)) ?? "",
+    ...(withEnglish
+      ? { englishText: verseText.get(key(token.book.id, token.chapter, token.verse, "WEB")) }
+      : {})
   }));
 }

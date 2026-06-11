@@ -350,3 +350,41 @@ describe("SearchPanel status live regions", () => {
     expect(screen.getAllByRole("status").some((el) => el.textContent === "Search saved.")).toBe(true);
   });
 });
+
+describe("SearchPanel English toggle", () => {
+  afterEach(() => {
+    window.localStorage.clear();
+  });
+
+  it("shows WEB English under Greek results when toggled on", () => {
+    render(
+      <SearchPanel
+        {...baseProps}
+        hasSearch={true}
+        searchLabel='lemma "λόγος"'
+        count={1}
+        pageCount={1}
+        results={[{ ...tokenResult, englishText: "In the beginning was the Word" }]}
+      />
+    );
+    expect(screen.queryByText("In the beginning was the Word")).toBeNull();
+    fireEvent.click(screen.getByRole("checkbox", { name: /show english/i }));
+    expect(screen.getByText("In the beginning was the Word")).toBeTruthy();
+    expect(window.localStorage.getItem("textlab:search:show-english")).toBe("1");
+  });
+
+  it("honors a persisted preference on mount", () => {
+    window.localStorage.setItem("textlab:search:show-english", "1");
+    render(
+      <SearchPanel
+        {...baseProps}
+        hasSearch={true}
+        searchLabel='lemma "λόγος"'
+        count={1}
+        pageCount={1}
+        results={[{ ...tokenResult, englishText: "In the beginning was the Word" }]}
+      />
+    );
+    expect(screen.getByText("In the beginning was the Word")).toBeTruthy();
+  });
+});

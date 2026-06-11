@@ -38,6 +38,26 @@ const MODE_HINTS: Record<string, { placeholder: string; hint: string }> = {
   }
 };
 
+function domainSaveLabel(
+  domainOptions: DomainOptions,
+  filter: { domain: string; subdomain: string; ln: string }
+): string {
+  let raw: string;
+  if (filter.ln) {
+    raw = `domain: LN ${filter.ln}`;
+  } else if (filter.subdomain) {
+    const parent = filter.subdomain.slice(0, 3);
+    const sub = domainOptions.subdomainsByDomain[parent]?.find((s) => s.code === filter.subdomain);
+    raw = sub ? `domain: ${sub.label}` : `domain: ${filter.subdomain}`;
+  } else {
+    const d = domainOptions.domains.find((entry) => entry.code === filter.domain);
+    raw = d ? `domain: ${d.number} — ${d.label}` : `domain: ${filter.domain}`;
+  }
+  // The saved-searches API caps labels at 100 chars; a few Louw-Nida subdomain
+  // labels exceed that and would 400 the save.
+  return raw.length > 100 ? `${raw.slice(0, 99)}…` : raw;
+}
+
 function buildExampleSearches(domainOptions: DomainOptions): { label: string; href: string }[] {
   const examples = [
     { label: "Lemma: λόγος", href: `/search?mode=lemma&q=${encodeURIComponent("λόγος")}` },
@@ -78,10 +98,13 @@ export type SavedSearchRow = {
   id: string;
   label: string;
   mode: string;
-  query: string;
+  query: string | null;
   book: string | null;
   chapter: number | null;
   matchMode: string | null;
+  domain?: string | null;
+  subdomain?: string | null;
+  ln?: string | null;
 };
 
 export type SearchBookOption = {
@@ -170,10 +193,10 @@ export function SearchPanel({
   }
 
   async function saveSearch() {
-    if (!query.trim()) return;
-    if (saving) return;
     const executedMode = normalizeSearchMode(mode);
-    if (executedMode === "domain") return;
+    const isDomain = executedMode === "domain";
+    if (isDomain ? !(domain || subdomain || ln) : !query.trim()) return;
+    if (saving) return;
 
     setSaving(true);
     setSaveStatus("Saving...");
@@ -181,15 +204,27 @@ export function SearchPanel({
       const response = await fetch("/api/saved-searches", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          mode: executedMode,
-          query,
-          // Omit empty optional fields — the server schema rejects empty
-          // strings on coerced-number / enum fields (chapter, matchMode).
-          ...(book ? { book } : {}),
-          ...(chapter ? { chapter: Number(chapter) } : {}),
-          ...(executedMode === "morphology" && matchMode ? { matchMode } : {})
-        })
+        body: JSON.stringify(
+          isDomain
+            ? {
+                mode: executedMode,
+                label: domainSaveLabel(domainOptions, { domain, subdomain, ln }),
+                ...(domain ? { domain } : {}),
+                ...(subdomain ? { subdomain } : {}),
+                ...(ln ? { ln } : {}),
+                ...(book ? { book } : {}),
+                ...(chapter ? { chapter: Number(chapter) } : {})
+              }
+            : {
+                mode: executedMode,
+                query,
+                // Omit empty optional fields — the server schema rejects empty
+                // strings on coerced-number / enum fields (chapter, matchMode).
+                ...(book ? { book } : {}),
+                ...(chapter ? { chapter: Number(chapter) } : {}),
+                ...(executedMode === "morphology" && matchMode ? { matchMode } : {})
+              }
+        )
       });
 
       if (!response.ok) {
@@ -454,7 +489,7 @@ export function SearchPanel({
               Show English (WEB)
             </label>
           ) : null}
-          {query ? (
+          {query || (hasSearch && mode === "domain" && (domain || subdomain || ln)) ? (
             <div className="mt-3 flex flex-wrap items-center gap-3">
               <button
                 type="button"
@@ -466,8 +501,6 @@ export function SearchPanel({
                 Save search
               </button>
             </div>
-          ) : hasSearch && mode === "domain" ? (
-            <p className="mt-3 text-sm text-slate-500">Domain searches can&apos;t be saved yet.</p>
           ) : null}
           <span role="status" aria-live="polite" className="text-sm text-slate-600">
             {saveStatus ?? ""}
@@ -604,10 +637,13 @@ export function SearchPanel({
                 <Link
                   href={searchHref({
                     mode: item.mode,
-                    query: item.query,
+                    query: item.query ?? "",
                     book: item.book ?? "",
                     chapter: item.chapter ? String(item.chapter) : "",
                     matchMode: item.matchMode ?? "exact",
+                    domain: item.domain ?? "",
+                    subdomain: item.subdomain ?? "",
+                    ln: item.ln ?? "",
                     page: 1,
                     pageSize
                   })}

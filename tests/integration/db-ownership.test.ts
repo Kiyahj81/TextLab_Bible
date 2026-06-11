@@ -106,6 +106,17 @@ describe.skipIf(!enabled)("DB ownership and FK behavior", () => {
     expect(bobView).toHaveLength(0);
   });
 
+  it("stores and scopes a domain saved search with null query", async () => {
+    const row = await prisma!.savedSearch.create({
+      data: { userId: alice.id, label: "domain: LN 33.55", mode: "domain", query: null, ln: "33.55" }
+    });
+    const fetched = await prisma!.savedSearch.findFirst({ where: { id: row.id, userId: alice.id } });
+    expect(fetched?.ln).toBe("33.55");
+    expect(fetched?.query).toBeNull();
+    const crossUser = await prisma!.savedSearch.findFirst({ where: { id: row.id, userId: bob.id } });
+    expect(crossUser).toBeNull();
+  });
+
   it("GeneratedStudyNotes: user A cannot see user B's generated notes", async () => {
     await prisma!.generatedStudyNote.create({
       data: { userId: alice.id, prompt: "p", answer: "a", markdown: "m" }

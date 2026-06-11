@@ -117,4 +117,48 @@ describe("POST /api/saved-searches", () => {
     expect(res.status).toBe(401);
     expect(prismaMock.savedSearch.create).not.toHaveBeenCalled();
   });
+
+  it("accepts a domain save with an ln reference and no query", async () => {
+    const res = await POST(jsonRequest({ mode: "domain", ln: "33.55" }));
+    expect(res.status).toBe(201);
+    const args = prismaMock.savedSearch.create.mock.calls[0][0];
+    expect(args.data.mode).toBe("domain");
+    expect(args.data.ln).toBe("33.55");
+    expect(args.data.query).toBeNull();
+  });
+
+  it("accepts a domain save with a domain code and auto-labels from the filter", async () => {
+    const res = await POST(jsonRequest({ mode: "domain", domain: "025" }));
+    expect(res.status).toBe(201);
+    const args = prismaMock.savedSearch.create.mock.calls[0][0];
+    expect(args.data.label).toBe("domain: 025");
+  });
+
+  it("prefers a client-supplied label for domain saves", async () => {
+    await POST(jsonRequest({ mode: "domain", domain: "025", label: "domain: 25 — Attitudes and Emotions" }));
+    const args = prismaMock.savedSearch.create.mock.calls[0][0];
+    expect(args.data.label).toBe("domain: 25 — Attitudes and Emotions");
+  });
+
+  it("rejects a domain save with no domain, subdomain, or ln", async () => {
+    const res = await POST(jsonRequest({ mode: "domain" }));
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects a domain save that carries a query", async () => {
+    const res = await POST(jsonRequest({ mode: "domain", ln: "33.55", query: "light" }));
+    expect(res.status).toBe(400);
+  });
+
+  it("still rejects a query-mode save without a query", async () => {
+    const res = await POST(jsonRequest({ mode: "lemma" }));
+    expect(res.status).toBe(400);
+  });
+
+  it("ignores domain fields on query-mode saves", async () => {
+    const res = await POST(jsonRequest({ mode: "lemma", query: "λόγος", domain: "025" }));
+    expect(res.status).toBe(201);
+    const args = prismaMock.savedSearch.create.mock.calls[0][0];
+    expect(args.data.domain).toBeNull();
+  });
 });

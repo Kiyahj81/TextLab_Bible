@@ -138,11 +138,14 @@ model SavedSearch {
   userId    String
   label     String
   mode      String
-  query     String
+  query     String?
   corpus    String?
   book      String?
   chapter   Int?
   matchMode String?
+  domain    String?
+  subdomain String?
+  ln        String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

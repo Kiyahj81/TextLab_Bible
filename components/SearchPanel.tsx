@@ -78,7 +78,7 @@ export type SavedSearchRow = {
   id: string;
   label: string;
   mode: string;
-  query: string;
+  query: string | null;
   book: string | null;
   chapter: number | null;
   matchMode: string | null;
@@ -604,7 +604,7 @@ export function SearchPanel({
                 <Link
                   href={searchHref({
                     mode: item.mode,
-                    query: item.query,
+                    query: item.query ?? "",
                     book: item.book ?? "",
                     chapter: item.chapter ? String(item.chapter) : "",
                     matchMode: item.matchMode ?? "exact",

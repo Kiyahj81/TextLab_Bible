@@ -267,6 +267,28 @@ describe("SearchPanel save search payload", () => {
     expect(captured).not.toBeNull();
     expect(captured!.mode).toBe("keyword");
   });
+
+  it("normalizes an unknown executed mode to keyword in the save payload", async () => {
+    let captured: Record<string, unknown> | null = null;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(async (_url: string, init: { body: string }) => {
+        captured = JSON.parse(init.body);
+        return {
+          ok: true,
+          json: async () => ({
+            savedSearch: { id: "n2", label: "keyword: light", mode: "keyword", query: "light", book: null, chapter: null, matchMode: null }
+          })
+        };
+      })
+    );
+    render(<SearchPanel {...baseProps} mode="garbage" query="light" hasSearch={true} searchLabel='keyword "light"' />);
+    fireEvent.click(screen.getByRole("button", { name: /save search/i }));
+    await screen.findByText("Search saved.");
+    expect(captured).not.toBeNull();
+    expect(captured!.mode).toBe("keyword");
+    expect(captured!.matchMode).toBeUndefined();
+  });
 });
 
 describe("SearchPanel disabled pagination", () => {
@@ -294,6 +316,18 @@ describe("SearchPanel rename input", () => {
   });
 });
 
+describe("SearchPanel page size auto-apply", () => {
+  it("submits the form when a new page size is selected", () => {
+    const submitSpy = vi
+      .spyOn(HTMLFormElement.prototype, "requestSubmit")
+      .mockImplementation(() => {});
+    render(<SearchPanel {...baseProps} query="light" hasSearch={true} searchLabel='keyword "light"' />);
+    fireEvent.change(screen.getByRole("combobox", { name: "Page size" }), { target: { value: "50" } });
+    expect(submitSpy).toHaveBeenCalledTimes(1);
+    submitSpy.mockRestore();
+  });
+});
+
 describe("SearchPanel status live regions", () => {
   it("pre-renders the save-status live region even without a query", () => {
     render(<SearchPanel {...baseProps} />);
@@ -314,5 +348,43 @@ describe("SearchPanel status live regions", () => {
     fireEvent.click(screen.getByRole("button", { name: /save search/i }));
     await screen.findByText("Search saved.");
     expect(screen.getAllByRole("status").some((el) => el.textContent === "Search saved.")).toBe(true);
+  });
+});
+
+describe("SearchPanel English toggle", () => {
+  afterEach(() => {
+    window.localStorage.clear();
+  });
+
+  it("shows WEB English under Greek results when toggled on", () => {
+    render(
+      <SearchPanel
+        {...baseProps}
+        hasSearch={true}
+        searchLabel='lemma "λόγος"'
+        count={1}
+        pageCount={1}
+        results={[{ ...tokenResult, englishText: "In the beginning was the Word" }]}
+      />
+    );
+    expect(screen.queryByText("In the beginning was the Word")).toBeNull();
+    fireEvent.click(screen.getByRole("checkbox", { name: /show english/i }));
+    expect(screen.getByText("In the beginning was the Word")).toBeTruthy();
+    expect(window.localStorage.getItem("textlab:search:show-english")).toBe("1");
+  });
+
+  it("honors a persisted preference on mount", () => {
+    window.localStorage.setItem("textlab:search:show-english", "1");
+    render(
+      <SearchPanel
+        {...baseProps}
+        hasSearch={true}
+        searchLabel='lemma "λόγος"'
+        count={1}
+        pageCount={1}
+        results={[{ ...tokenResult, englishText: "In the beginning was the Word" }]}
+      />
+    );
+    expect(screen.getByText("In the beginning was the Word")).toBeTruthy();
   });
 });

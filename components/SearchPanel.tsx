@@ -2,12 +2,15 @@
 
 import Link from "next/link";
 import { BookmarkPlus, Pencil, Search, Trash2, X } from "lucide-react";
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { splitWithMatches } from "@/lib/search-highlight";
 import { decodeMorphCode } from "@/lib/morphology";
 import type { DomainOptions } from "@/lib/search";
 import { bookName, readerHref } from "@/lib/references";
 import { useAutoDismissMap, useAutoDismissString } from "@/lib/useAutoDismissStatus";
+import { normalizeSearchMode } from "@/lib/searchMode";
+
+const SHOW_ENGLISH_KEY = "textlab:search:show-english";
 
 const MODES = [
   { value: "keyword", label: "Keyword" },
@@ -58,6 +61,7 @@ export type SearchPanelResult =
       reference: string;
       text: string;
       onSpine?: boolean;
+      englishText?: string;
     }
   | {
       kind: "token";
@@ -67,6 +71,7 @@ export type SearchPanelResult =
       lemma: string;
       morphCode: string;
       verseText: string;
+      englishText?: string;
     };
 
 export type SavedSearchRow = {
@@ -123,7 +128,7 @@ export function SearchPanel({
   hasSearch: boolean;
   searchLabel: string;
 }) {
-  const [activeMode, setActiveMode] = useState(MODES.some((m) => m.value === mode) ? mode : "keyword");
+  const [activeMode, setActiveMode] = useState<string>(normalizeSearchMode(mode));
   const [queryValue, setQueryValue] = useState(query);
   const [selectedBook, setSelectedBook] = useState(book);
   const [selectedDomain, setSelectedDomain] = useState(domain);
@@ -135,6 +140,13 @@ export function SearchPanel({
   const [pending, setPending] = useState<Record<string, boolean>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const [itemStatus, setItemStatus] = useState<Record<string, string>>({});
+  const [showEnglish, setShowEnglish] = useState(false);
+
+  useEffect(() => {
+    if (window.localStorage.getItem(SHOW_ENGLISH_KEY) === "1") {
+      setShowEnglish(true);
+    }
+  }, []);
 
   useAutoDismissString(saveStatus, setSaveStatus);
   useAutoDismissMap(itemStatus, setItemStatus);
@@ -160,6 +172,8 @@ export function SearchPanel({
   async function saveSearch() {
     if (!query.trim()) return;
     if (saving) return;
+    const executedMode = normalizeSearchMode(mode);
+    if (executedMode === "domain") return;
 
     setSaving(true);
     setSaveStatus("Saving...");
@@ -168,13 +182,13 @@ export function SearchPanel({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          mode,
+          mode: executedMode,
           query,
           // Omit empty optional fields — the server schema rejects empty
           // strings on coerced-number / enum fields (chapter, matchMode).
           ...(book ? { book } : {}),
           ...(chapter ? { chapter: Number(chapter) } : {}),
-          ...(matchMode ? { matchMode } : {})
+          ...(executedMode === "morphology" && matchMode ? { matchMode } : {})
         })
       });
 
@@ -249,7 +263,7 @@ export function SearchPanel({
   return (
     <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_220px]">
       <div className="space-y-6">
-      <form className="space-y-3 rounded-md border border-stone-300 bg-white p-4 shadow-sm xl:sticky xl:top-6 xl:z-10" action="/search">
+      <form className="space-y-3 rounded-md border border-stone-300 bg-white p-4 shadow-sm xl:sticky xl:top-0 xl:z-10" action="/search">
         <fieldset>
           <legend className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mode</legend>
           <div className="mt-1 inline-flex flex-wrap rounded-md border border-stone-300 bg-stone-100 p-0.5">
@@ -393,6 +407,7 @@ export function SearchPanel({
             <select
               name="pageSize"
               defaultValue={String(pageSize)}
+              onChange={(event) => event.currentTarget.form?.requestSubmit()}
               className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm"
             >
               {pageSizeOptions.map((size) => (
@@ -426,6 +441,19 @@ export function SearchPanel({
               ? `${count} result${count === 1 ? "" : "s"} for ${searchLabel}${pageCount ? `, page ${page} of ${pageCount}` : ""}`
               : "Search the corpus by keyword, lemma, morphology, or semantic domain."}
           </p>
+          {hasSearch ? (
+            <label className="mt-2 inline-flex cursor-pointer items-center gap-2 text-sm text-slate-600">
+              <input
+                type="checkbox"
+                checked={showEnglish}
+                onChange={(event) => {
+                  setShowEnglish(event.target.checked);
+                  window.localStorage.setItem(SHOW_ENGLISH_KEY, event.target.checked ? "1" : "0");
+                }}
+              />
+              Show English (WEB)
+            </label>
+          ) : null}
           {query ? (
             <div className="mt-3 flex flex-wrap items-center gap-3">
               <button
@@ -482,14 +510,24 @@ export function SearchPanel({
                     {result.surface}
                     <div className="mt-1 text-sm text-slate-600">lemma: {result.lemma}</div>
                   </div>
-                  <p className="greek-text leading-7 text-slate-800">
-                    <HighlightedText text={result.verseText} match={result.surface} />
-                  </p>
+                  <div>
+                    <p className="greek-text leading-7 text-slate-800">
+                      <HighlightedText text={result.verseText} match={result.surface} />
+                    </p>
+                    {showEnglish && result.englishText ? (
+                      <p className="mt-1 text-sm leading-6 text-slate-600">{result.englishText}</p>
+                    ) : null}
+                  </div>
                 </div>
               ) : (
-                <p className="mt-2 leading-7 text-slate-800">
-                  <HighlightedText text={result.text} match={query} />
-                </p>
+                <div>
+                  <p className="mt-2 leading-7 text-slate-800">
+                    <HighlightedText text={result.text} match={query} />
+                  </p>
+                  {showEnglish && result.englishText ? (
+                    <p className="mt-1 text-sm leading-6 text-slate-600">{result.englishText}</p>
+                  ) : null}
+                </div>
               )}
             </article>
           ))}

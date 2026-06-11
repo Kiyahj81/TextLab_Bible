@@ -8,6 +8,7 @@ import { bookName } from "@/lib/references";
 import { querySearchLabel, scopeSuffix } from "@/lib/searchLabel";
 import { getAvailableReaderBooks, getLouwNidaDomainOptions, searchDomain, searchKeyword, searchLemma, searchMorphology } from "@/lib/search";
 import type { DomainOptions } from "@/lib/search";
+import { normalizeSearchMode } from "@/lib/searchMode";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -16,7 +17,7 @@ export const dynamic = "force-dynamic";
 export default async function SearchPage({ searchParams }: { searchParams: SearchParams }) {
   const userId = await requirePageAuth();
   const params = await searchParams;
-  const mode = getParam(params.mode) ?? "keyword";
+  const mode = normalizeSearchMode(getParam(params.mode));
   const query = getParam(params.q) ?? "";
   const book = getParam(params.book) ?? "";
   const chapter = getParam(params.chapter) ?? "";
@@ -67,7 +68,8 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
         book: book || undefined,
         chapter: parsedChapter,
         page: p,
-        pageSize
+        pageSize,
+        withEnglish: true
       })
     );
     count = search.count;
@@ -79,7 +81,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
   } else if (query.trim()) {
     if (mode === "lemma") {
       const { search, page: clampedPage } = await fetchClamped((p) =>
-        searchLemma({ lemma: query, book: book || undefined, chapter: parsedChapter, page: p, pageSize })
+        searchLemma({ lemma: query, book: book || undefined, chapter: parsedChapter, page: p, pageSize, withEnglish: true })
       );
       count = search.count;
       pageCount = search.pagination.pageCount;
@@ -93,7 +95,8 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
           book: book || undefined,
           chapter: parsedChapter,
           page: p,
-          pageSize
+          pageSize,
+          withEnglish: true
         })
       );
       count = search.count;
@@ -102,7 +105,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
       page = clampedPage;
     } else {
       const { search, page: clampedPage } = await fetchClamped((p) =>
-        searchKeyword({ query, book: book || undefined, chapter: parsedChapter, page: p, pageSize })
+        searchKeyword({ query, book: book || undefined, chapter: parsedChapter, page: p, pageSize, withEnglish: true })
       );
       count = search.pagination.total;
       pageCount = search.pagination.pageCount;

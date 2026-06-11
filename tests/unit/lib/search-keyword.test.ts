@@ -98,6 +98,52 @@ describe("searchKeyword FTS", () => {
   });
 });
 
+describe("searchKeyword withEnglish", () => {
+  it("attaches englishText to SBLGNT hits and omits it for WEB hits when withEnglish is true", async () => {
+    prismaMock.$queryRaw
+      .mockResolvedValueOnce([{ count: BigInt(2) }])
+      .mockResolvedValueOnce([
+        { corpus: "SBLGNT", osisId: "John", chapter: 1, verse: 1, text: "Ἐν ἀρχῇ ἦν ὁ λόγος" },
+        { corpus: "WEB", osisId: "John", chapter: 1, verse: 1, text: "In the beginning was the Word" }
+      ]);
+    // filterToSblSpine call
+    prismaMock.verse.findMany.mockResolvedValueOnce([
+      { chapter: 1, verse: 1, book: { osisId: "John" } }
+    ]);
+    // WEB English lookup for SBLGNT rows only
+    prismaMock.verse.findMany.mockResolvedValueOnce([
+      { bookId: undefined, chapter: 1, verse: 1, text: "In the beginning was the Word",
+        book: { osisId: "John" }, corpus: { abbreviation: "WEB" } }
+    ]);
+
+    const out = await searchKeyword({ query: "λόγος", withEnglish: true });
+
+    // Two verse.findMany calls: one for spine, one for WEB English
+    expect(prismaMock.verse.findMany).toHaveBeenCalledTimes(2);
+    const sblgntHit = out.results.find((r) => r.corpus === "SBLGNT");
+    const webHit = out.results.find((r) => r.corpus === "WEB");
+    expect(sblgntHit?.englishText).toBe("In the beginning was the Word");
+    expect(webHit?.englishText).toBeUndefined();
+  });
+
+  it("does not issue a WEB verse lookup when withEnglish is absent", async () => {
+    prismaMock.$queryRaw
+      .mockResolvedValueOnce([{ count: BigInt(1) }])
+      .mockResolvedValueOnce([
+        { corpus: "SBLGNT", osisId: "John", chapter: 1, verse: 1, text: "Ἐν ἀρχῇ ἦν ὁ λόγος" }
+      ]);
+    prismaMock.verse.findMany.mockResolvedValueOnce([
+      { chapter: 1, verse: 1, book: { osisId: "John" } }
+    ]);
+
+    const out = await searchKeyword({ query: "λόγος" });
+
+    // Only one verse.findMany call (spine check); no WEB lookup
+    expect(prismaMock.verse.findMany).toHaveBeenCalledTimes(1);
+    expect("englishText" in out.results[0]).toBe(false);
+  });
+});
+
 // Prisma.sql tagged templates pass a { strings, values } object (or an array of
 // SQL fragments). Flatten whatever the mock received into a lowercased string so
 // the assertions above can look for SQL keywords regardless of fragment shape.

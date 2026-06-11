@@ -8,6 +8,7 @@ import { decodeMorphCode } from "@/lib/morphology";
 import type { DomainOptions } from "@/lib/search";
 import { bookName, readerHref } from "@/lib/references";
 import { useAutoDismissMap, useAutoDismissString } from "@/lib/useAutoDismissStatus";
+import { normalizeSearchMode } from "@/lib/searchMode";
 
 const MODES = [
   { value: "keyword", label: "Keyword" },
@@ -123,7 +124,7 @@ export function SearchPanel({
   hasSearch: boolean;
   searchLabel: string;
 }) {
-  const [activeMode, setActiveMode] = useState(MODES.some((m) => m.value === mode) ? mode : "keyword");
+  const [activeMode, setActiveMode] = useState<string>(normalizeSearchMode(mode));
   const [queryValue, setQueryValue] = useState(query);
   const [selectedBook, setSelectedBook] = useState(book);
   const [selectedDomain, setSelectedDomain] = useState(domain);
@@ -160,6 +161,8 @@ export function SearchPanel({
   async function saveSearch() {
     if (!query.trim()) return;
     if (saving) return;
+    const executedMode = normalizeSearchMode(mode);
+    if (executedMode === "domain") return;
 
     setSaving(true);
     setSaveStatus("Saving...");
@@ -168,13 +171,13 @@ export function SearchPanel({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          mode,
+          mode: executedMode,
           query,
           // Omit empty optional fields — the server schema rejects empty
           // strings on coerced-number / enum fields (chapter, matchMode).
           ...(book ? { book } : {}),
           ...(chapter ? { chapter: Number(chapter) } : {}),
-          ...(matchMode ? { matchMode } : {})
+          ...(executedMode === "morphology" && matchMode ? { matchMode } : {})
         })
       });
 

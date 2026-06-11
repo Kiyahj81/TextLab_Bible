@@ -267,6 +267,28 @@ describe("SearchPanel save search payload", () => {
     expect(captured).not.toBeNull();
     expect(captured!.mode).toBe("keyword");
   });
+
+  it("normalizes an unknown executed mode to keyword in the save payload", async () => {
+    let captured: Record<string, unknown> | null = null;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(async (_url: string, init: { body: string }) => {
+        captured = JSON.parse(init.body);
+        return {
+          ok: true,
+          json: async () => ({
+            savedSearch: { id: "n2", label: "keyword: light", mode: "keyword", query: "light", book: null, chapter: null, matchMode: null }
+          })
+        };
+      })
+    );
+    render(<SearchPanel {...baseProps} mode="garbage" query="light" hasSearch={true} searchLabel='keyword "light"' />);
+    fireEvent.click(screen.getByRole("button", { name: /save search/i }));
+    await screen.findByText("Search saved.");
+    expect(captured).not.toBeNull();
+    expect(captured!.mode).toBe("keyword");
+    expect(captured!.matchMode).toBeUndefined();
+  });
 });
 
 describe("SearchPanel disabled pagination", () => {

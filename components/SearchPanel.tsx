@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { BookmarkPlus, Pencil, Search, Trash2, X } from "lucide-react";
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { splitWithMatches } from "@/lib/search-highlight";
 import { decodeMorphCode } from "@/lib/morphology";
 import type { DomainOptions } from "@/lib/search";
@@ -140,9 +140,13 @@ export function SearchPanel({
   const [pending, setPending] = useState<Record<string, boolean>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const [itemStatus, setItemStatus] = useState<Record<string, string>>({});
-  const [showEnglish, setShowEnglish] = useState<boolean>(
-    () => typeof window !== "undefined" && window.localStorage.getItem(SHOW_ENGLISH_KEY) === "1"
-  );
+  const [showEnglish, setShowEnglish] = useState(false);
+
+  useEffect(() => {
+    if (window.localStorage.getItem(SHOW_ENGLISH_KEY) === "1") {
+      setShowEnglish(true);
+    }
+  }, []);
 
   useAutoDismissString(saveStatus, setSaveStatus);
   useAutoDismissMap(itemStatus, setItemStatus);

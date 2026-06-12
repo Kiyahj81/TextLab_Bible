@@ -17,7 +17,7 @@ export const GLOBAL_GATES = {
 //     precision is structurally low (golden is a curated subset of all lemma
 //     occurrences) — gate recall, report precision.
 //   - conceptual: vector-dependent; deterministic recall is low BY DESIGN —
-//     report-only here, evaluated in the nightly hybrid report.
+//     report-only here, evaluated in the weekly hybrid report.
 //   - domain: report-only until the domain golden sets are validated and scoped
 //     against the seeded Louw-Nida data (see calibration follow-ups).
 export type TypeGate = { recall?: number; precision?: number };

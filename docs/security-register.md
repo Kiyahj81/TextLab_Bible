@@ -117,9 +117,9 @@ sprint and at every Next.js minor upgrade. Cross-check each open row.
 | Field | Value |
 | --- | --- |
 | Severity | Low (secret-management / data-egress consideration) |
-| Change | Two GitHub Actions workflows (`.github/workflows/eval-gate.yml`, `nightly-eval-report.yml`) consume repo secrets: `EVAL_DATABASE_URL` + `EVAL_DIRECT_URL` (both workflows), and `OPENAI_API_KEY` + `AI_GATEWAY_API_KEY` (nightly report only). |
+| Change | Two GitHub Actions workflows (`.github/workflows/eval-gate.yml`, `weekly-eval-report.yml`) consume repo secrets: `EVAL_DATABASE_URL` + `EVAL_DIRECT_URL` (both workflows), and `OPENAI_API_KEY` + `AI_GATEWAY_API_KEY` (weekly report only). |
 | Trust boundary | No new processors. The DB is the existing **seeded Neon test branch** (never production); OpenAI and the Vercel AI Gateway/Voyage are already trusted sub-processors (see the Phase 4a/4b rows). The eval reuses the same keys, no new vendor. |
-| Data sensitivity | The gate is deterministic and DB-only — no egress. The nightly report sends the fixed golden-set prompts + WEB verse text (public domain) to OpenAI/the Gateway — same data class already covered by the synthesis and rerank rows. |
+| Data sensitivity | The gate is deterministic and DB-only — no egress. The weekly report sends the fixed golden-set prompts + WEB verse text (public domain) to OpenAI/the Gateway — same data class already covered by the synthesis and rerank rows. |
 | Status | Accepted — same trust boundary as synthesis/rerank |
 | Mitigation | Secrets are injected via the job `env:` block over an empty `.env.test`, so no secret material is written to the runner disk. Both workflows declare least-privilege `permissions: contents: read` (no commit/PR scope). The `EVAL_*` DB secrets are named distinctly to prevent pointing CI at production; the gate is read-only (no DB writes). GitHub masks secret values in logs. |
 | Owner | Maintainer (kiyahj81) |
@@ -153,7 +153,7 @@ sprint and at every Next.js minor upgrade. Cross-check each open row.
   was added in Node 22.15 / 24; older Node rejects it in `NODE_OPTIONS`
   with `node: --use-system-ca is not allowed in NODE_OPTIONS` (exit 9).
   Because the flag now lives in shared scripts that CI also runs, the
-  CI Node had to support it: the eval-gate and nightly-report workflows
+  CI Node had to support it: the eval-gate and weekly-report workflows
   were bumped from Node 20 → 24 (matching local dev), and `engines.node`
   + `.nvmrc` pin the floor so the drift can't recur. Caught by Codex as
   a P1 on PR #15 — the original Node-20 gate run failed at `npm ci`

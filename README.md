@@ -44,7 +44,7 @@ The root route redirects to `/read`.
 | Assistant orchestration | `lib/ai/assistant.ts`, `lib/ai/signals.ts`, `lib/ai/retrievalPlanner.ts`, `lib/ai/synthesis.ts`, `lib/ai/grounding.ts` | Deterministic-first assistant pipeline and grounding checks. |
 | Semantic retrieval | `lib/search/semantic.ts`, `lib/search/rerank.ts`, `scripts/embed-verses.ts` | pgvector embeddings, hybrid RRF retrieval, and optional Voyage rerank through Vercel AI Gateway. |
 | Persistence | `prisma/schema.prisma`, `prisma/migrations/*` | PostgreSQL schema, handwritten FTS/vector migrations, Auth.js adapter tables, notes, saved searches, assistant history, import runs. |
-| Evaluation | `eval/*`, `scripts/eval-gate.ts`, `scripts/eval-report.ts`, `.github/workflows/*` | Deterministic gate and nightly hybrid faithfulness report. |
+| Evaluation | `eval/*`, `scripts/eval-gate.ts`, `scripts/eval-report.ts`, `.github/workflows/*` | Deterministic gate and weekly hybrid faithfulness report. |
 
 Core stack:
 
@@ -166,7 +166,7 @@ Most npm scripts set `NODE_OPTIONS=--use-system-ca` so Node trusts the Windows c
 | `TEXTLAB_ASSISTANT_DISABLE_LIVE` | Optional | Set to `1` to force local fallback even when an OpenAI key is present. |
 | `AI_GATEWAY_API_KEY` | Optional | Enables Voyage rerank and the eval report judge through Vercel AI Gateway. |
 | `RERANK_MODEL`, `RERANK_TIMEOUT_MS` | Optional | Rerank model and timeout overrides. |
-| `EVAL_JUDGE_MODEL`, `EVAL_JUDGE_TIMEOUT_MS` | Optional | Nightly eval judge model and per-attempt timeout (the judge retries transient provider errors, up to 3 attempts). |
+| `EVAL_JUDGE_MODEL`, `EVAL_JUDGE_TIMEOUT_MS` | Optional | Weekly eval judge model and per-attempt timeout (the judge retries transient provider errors, up to 3 attempts). |
 
 Integration, acceptance, and eval scripts load `.env.test`; configure it from `.env.test.example` against a throwaway Neon branch. These commands write and delete test data.
 
@@ -214,7 +214,7 @@ Milestone 3 Phase 6 added a two-tier quality harness over `eval/dataset/golden-s
 GitHub Actions automation is present and configured:
 
 - `.github/workflows/eval-gate.yml` runs on pull requests and pushes to `main`.
-- `.github/workflows/nightly-eval-report.yml` runs on a nightly schedule and via `workflow_dispatch`.
+- `.github/workflows/weekly-eval-report.yml` runs on a weekly schedule (Fridays) and via `workflow_dispatch`.
 
 To enable those workflows in a fork or fresh deployment, configure the required eval database/API secrets and make `Eval Gate / gate` a required status check for protected branches.
 

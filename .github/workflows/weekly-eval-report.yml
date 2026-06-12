@@ -1,6 +1,6 @@
-name: Nightly Eval Report
+name: Weekly Eval Report
 
-# Runs the non-blocking hybrid evaluation report (eval:report) every night.
+# Runs the non-blocking hybrid evaluation report (eval:report) once a week.
 # Unconditional by design: it replays the FIXED golden set (eval/dataset/golden-set.json)
 # through the full pipeline and LLM-judges faithfulness, so it is a synthetic
 # regression probe — it must run even on days with no repo/user activity, because
@@ -9,17 +9,17 @@ name: Nightly Eval Report
 
 on:
   schedule:
-    # 07:00 UTC daily (~2-3am US). GitHub cron is always UTC; adjust to taste.
-    # Note: scheduled runs on free runners can be delayed under load and only
-    # run from the default branch's copy of this file.
-    - cron: "0 7 * * *"
+    # 07:00 UTC every Friday (~2-3am US Fri). GitHub cron is always UTC; adjust
+    # to taste. Note: scheduled runs on free runners can be delayed under load
+    # and only run from the default branch's copy of this file.
+    - cron: "0 7 * * 5"
   workflow_dispatch: {} # allow on-demand runs from the Actions tab
 
 permissions:
   contents: read # least privilege: the report neither commits nor needs write scope
 
 concurrency:
-  group: nightly-eval-report
+  group: weekly-eval-report
   cancel-in-progress: false # let an in-flight report finish rather than cancel it
 
 jobs:
@@ -29,7 +29,7 @@ jobs:
     # ~20 questions finish, and each judge can take ~4.6min (3 x 90s + backoff)
     # under sustained provider failure — ~100min total before retrieval/synthesis.
     # Typical runs finish in a few minutes; a generous ceiling is harmless here
-    # (read-only job, concurrency-grouped, next run is 24h away).
+    # (read-only job, concurrency-grouped, next run is a week away).
     timeout-minutes: 120
     env:
       # `prisma.config.ts` (and the schema) require these via env() at config
@@ -61,13 +61,13 @@ jobs:
       # DATABASE_URL/DIRECT_URL come from the job `env:` (the seeded Neon
       # EVAL/TEST branch — never production). Only the model-API keys are added
       # here, since they are not needed at install time.
-      - name: Run nightly eval report
+      - name: Run weekly eval report
         env:
           # Synthesis + query embeddings:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           # Voyage rerank + faithfulness judge (Vercel AI Gateway):
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
-          # Per-attempt judge budget (default 30s). The nightly report is not
+          # Per-attempt judge budget (default 30s). The weekly report is not
           # latency-sensitive, and tight budgets were aborting judge calls
           # mid-retry ("Delay was aborted" errors in the June 9/10 reports).
           EVAL_JUDGE_TIMEOUT_MS: "90000"

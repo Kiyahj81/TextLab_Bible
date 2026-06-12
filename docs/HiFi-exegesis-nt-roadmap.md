@@ -46,7 +46,7 @@ as source of truth, original-language tokens, retrieval-first assistant, user-co
 escalation, enforced grounding verification, lexical FTS, Phase 4a vector/hybrid retrieval, and
 Phase 5 Louw-Nida semantic-domain enrichment (schema, reference table, popover display, `/search`
 domain mode, and explicit-only assistant domain routing). Phase 6 adds a two-tier evaluation harness:
-a deterministic, type-aware PR gate and a nightly hybrid faithfulness report. The remaining
+a deterministic, type-aware PR gate and a weekly (changed from nightly 2026-06-12) hybrid faithfulness report. The remaining
 high-fidelity gaps are narrower: a fuller agentic tool loop, broader query/routing refinements, and
 the larger data-expansion work (OT Hebrew/Aramaic, Strong's, speakers, and explicit token-to-English
 alignment).
@@ -101,7 +101,7 @@ alignment).
 | Structured citations linked to `verse_id`/`token_id` | ✅ citations/tool trace are persisted; token IDs are carried where available | Mostly closed |
 | Post-retrieval fuzzy-match verification | ✅ `verifyGrounding` resolves cited references and fuzzy-matches Greek quotes against SBLGNT | Closed |
 | Silence Protocol (refuse < threshold) | ✅ answers are withheld when SBLGNT quote verification fails or a cited reference is not found | Closed |
-| RAGAS-style faithfulness / context-precision eval | ✅ **Phase 6 done** — `eval:gate` enforces deterministic type-aware recall/precision + citation resolvability + lemma coverage; `eval:report` runs the hybrid pipeline and LLM-judge faithfulness report | Closed for v1; CI/nightly automation and calibration follow-ups remain |
+| RAGAS-style faithfulness / context-precision eval | ✅ **Phase 6 done** — `eval:gate` enforces deterministic type-aware recall/precision + citation resolvability + lemma coverage; `eval:report` runs the hybrid pipeline and LLM-judge faithfulness report | Closed for v1; CI/weekly automation and calibration follow-ups remain |
 
 ### E. Already-strong areas the doc doesn't emphasize (current project is *ahead* here)
 
@@ -124,7 +124,7 @@ alignment).
 | Strong's numbers (need source + schema) | Medium | ~3–5 days |
 | Speaker quotations (Clear-Bible ingest) | Medium | ~3–5 days |
 | Hebrew + Aramaic OT corpus (OSHB/WLC + alignment) | Far | ~2–4 weeks |
-| RAGAS-style eval harness | Closed | done in Phase 6; CI/nightly automation remains a deployment follow-up |
+| RAGAS-style eval harness | Closed | done in Phase 6; CI/weekly automation remains a deployment follow-up |
 
 **Net:** the orchestration/grounding/lexical/vector retrieval core is now in place for the NT. The
 Milestone 3 mechanism work is complete for the scoped NT-Greek subset. The larger data-completeness
@@ -253,12 +253,12 @@ gate** (`npm run eval:gate`): deterministic, DB-only, no API key — a **type-aw
 recall+precision on exact-verse/cross-chapter, recall on lemma-survey, and two global hard gates
 (citation resolvability 100%, required lemma coverage 100%); conceptual + domain are report-only.
 Context recall is measured over the full retrieved evidence (not just the ≤10 citation sample).
-**Non-blocking nightly hybrid report** (`npm run eval:report`): runs the full pipeline (pgvector + RRF
+**Non-blocking weekly hybrid report** (`npm run eval:report`): runs the full pipeline (pgvector + RRF
 + Voyage rerank + synthesis) once per question and adds an LLM-as-judge faithfulness score routed
 through the Vercel AI Gateway (`EVAL_JUDGE_MODEL`, default `anthropic/claude-sonnet-4.6`); dual-key
 (`OPENAI_API_KEY` for embeddings+synthesis, `AI_GATEWAY_API_KEY` for rerank+judge), with explicit
 per-question synthesis/judge status. Original target (RAGAS faithfulness >0.90 + context precision)
-is realized as the nightly faithfulness score plus the gate's deterministic precision/recall + citation
+is realized as the weekly faithfulness score plus the gate's deterministic precision/recall + citation
 resolvability.
 
 **Deferred past Milestone 3:** OT Hebrew/Aramaic, Strong's numbers, speaker quotations, explicit

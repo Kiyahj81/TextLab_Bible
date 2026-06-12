@@ -1,6 +1,6 @@
 # TextLab Bible — Project State
 
-*Snapshot: 2026-06-11 (Milestone 3 complete — Phase 4a Vector + Hybrid Retrieval, Phase 4b Voyage rerank-2.5 via Vercel AI Gateway, Phase 5a semantic-domain data + popover display, Phase 5b `/search` domain mode + assistant domain routing, and Phase 6 two-tier eval harness: deterministic type-aware PR gate + weekly hybrid faithfulness report — followed by the `/search` UI improvement arc (PRs 19–21): high-impact reader-linked results + segmented modes, medium pagination/label/morphology-tooltip refinements, and accessibility + visual polish; most recently, domain (Louw-Nida) searches became saveable like the other three modes)*
+*Snapshot: 2026-06-12 (Milestone 3 complete — Phase 4a Vector + Hybrid Retrieval, Phase 4b Voyage rerank-2.5 via Vercel AI Gateway, Phase 5a semantic-domain data + popover display, Phase 5b `/search` domain mode + assistant domain routing, and Phase 6 two-tier eval harness: deterministic type-aware PR gate + weekly hybrid faithfulness report — followed by the `/search` UI improvement arc (PRs 19–21): high-impact reader-linked results + segmented modes, medium pagination/label/morphology-tooltip refinements, and accessibility + visual polish; most recently, domain (Louw-Nida) searches became saveable like the other three modes)*
 
 ## Where the project stands
 

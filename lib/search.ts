@@ -76,9 +76,10 @@ type SemanticRow = { osisId: string; chapter: number; verse: number; text: strin
 
 // Hybrid semantic search: vector KNN over the embedded WEB index fused with a
 // keyword FTS pass, then filtered to the SBLGNT spine. `query` is embedded (full
-// natural-language prompt); `keywords` drives the FTS half (distilled topic words —
-// bible_simple keeps stopwords, so the full prompt would AND to nothing). Returns
-// [] when no OpenAI client (embedQuery null).
+// natural-language prompt); `keywords` drives the FTS half (distilled topic words,
+// not the full prompt, whose many content words would AND to nothing). The FTS half
+// uses the bible_english config (English stemming, consistent with searchKeyword).
+// Returns [] when no OpenAI client (embedQuery null).
 // Architecture-doc top-30 → top-5: cap the reranker input to 30 candidates.
 // onSpine can exceed 30 (up to 30 vector + 30 FTS rows fused), so cap explicitly.
 // Set `rerank: false` to skip the Voyage rerank stage and return the RRF-ordered slice
@@ -146,15 +147,15 @@ export async function searchSemanticDetailed(input: SemanticSearchInput): Promis
   const keywords = input.keywords?.trim() ?? "";
   let ftsRows: SemanticRow[] = [];
   if (keywords) {
-    const tsquery = Prisma.sql`websearch_to_tsquery('bible_simple', ${keywords})`;
+    const tsquery = Prisma.sql`websearch_to_tsquery('bible_english', ${keywords})`;
     ftsRows = await prisma.$queryRaw<SemanticRow[]>(Prisma.sql`
       SELECT b."osisId" AS "osisId", v."chapter" AS chapter, v."verse" AS verse, v."text" AS text
       FROM "Verse" v
       JOIN "Book" b ON b."id" = v."bookId"
       JOIN "Corpus" c ON c."id" = v."corpusId"
       WHERE c."abbreviation" = ${SEMANTIC_INDEX_CORPUS} ${bookFilter} ${chapterFilter}
-        AND v."textSearch" @@ ${tsquery}
-      ORDER BY ts_rank(v."textSearch", ${tsquery}) DESC
+        AND v."textSearchEn" @@ ${tsquery}
+      ORDER BY ts_rank(v."textSearchEn", ${tsquery}) DESC
       LIMIT ${POOL}
     `);
   }

@@ -105,6 +105,22 @@ describe("searchSemantic", () => {
     expect(out.map((r) => r.reference)).toEqual(["Eph 2:16"]);
   });
 
+  it("uses bible_english/textSearchEn for the WEB keyword FTS leg", async () => {
+    getOpenAiMock.mockReturnValue(fakeClient([0.1, 0.2, 0.3]));
+    prismaMock.$queryRaw
+      .mockResolvedValueOnce([{ osisId: "John", chapter: 1, verse: 1, text: "In the beginning" }]) // vector
+      .mockResolvedValueOnce([{ osisId: "Eph", chapter: 2, verse: 16, text: "reconcile" }]); // FTS
+    prismaMock.verse.findMany.mockResolvedValueOnce([]); // filterToSblSpine
+    rerankCandidatesMock.mockResolvedValueOnce(null);
+
+    await searchSemantic({ query: "reconciliation", keywords: "reconciliation" });
+
+    const ftsSql = JSON.stringify(prismaMock.$queryRaw.mock.calls[1]).toLowerCase();
+    expect(ftsSql).toContain("bible_english");
+    expect(ftsSql).toContain("textsearchen");
+    expect(ftsSql).not.toContain("bible_simple");
+  });
+
   it("filters vector KNN rows to the current embedding model", async () => {
     getOpenAiMock.mockReturnValue(fakeClient([0.1, 0.2, 0.3]));
     prismaMock.$queryRaw.mockResolvedValueOnce([]);

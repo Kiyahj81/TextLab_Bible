@@ -7,6 +7,7 @@ import { EMBEDDING_MODEL, SEMANTIC_INDEX_CORPUS, formatVectorLiteral } from "@/l
 import { rerankCandidates } from "@/lib/search/rerank";
 import { resolveTokenDomains } from "@/lib/louwNida";
 import { normalizeMorphCodeQuery } from "@/lib/morphology";
+import { parseHeadlineSegments, HEADLINE_OPTIONS } from "@/lib/search-highlight";
 
 export {
   EMBEDDING_MODEL,
@@ -439,10 +440,19 @@ export async function searchKeyword(input: {
     return { query, results: [], pagination: { ...pagination, total: 0, pageCount: 0 } };
   }
 
+  // Each row matches under its own language config: English (WEB) rows are
+  // stemmed via bible_english; Greek rows keep whole-lexeme bible_simple.
   // websearch_to_tsquery never throws on arbitrary user/assistant input (stray
-  // punctuation, quotes, -exclusion all tolerated). All values are bound as
+  // punctuation, quotes, -exclusion all tolerated); all values bound as
   // parameters — no string interpolation into SQL.
-  const tsquery = Prisma.sql`websearch_to_tsquery('bible_simple', ${query})`;
+  const enQuery = Prisma.sql`websearch_to_tsquery('bible_english', ${query})`;
+  const grQuery = Prisma.sql`websearch_to_tsquery('bible_simple', ${query})`;
+
+  const matchSql = Prisma.sql`(
+    (c."language" = 'English' AND v."textSearchEn" @@ ${enQuery})
+    OR
+    (c."language" <> 'English' AND v."textSearch" @@ ${grQuery})
+  )`;
 
   // Corpus filter mirrors the prior Prisma behavior: explicit corpus, else any
   // corpus except NET.
@@ -450,18 +460,29 @@ export async function searchKeyword(input: {
     ? Prisma.sql`c."abbreviation" = ${input.corpus}`
     : Prisma.sql`c."abbreviation" <> 'NET'`;
 
-  const filters: Prisma.Sql[] = [Prisma.sql`v."textSearch" @@ ${tsquery}`, corpusFilter];
+  const filters: Prisma.Sql[] = [matchSql, corpusFilter];
   if (book) filters.push(Prisma.sql`b."osisId" = ${book}`);
   if (input.chapter !== undefined) filters.push(Prisma.sql`v."chapter" = ${input.chapter}`);
   const whereSql = Prisma.sql`WHERE ${Prisma.join(filters, " AND ")}`;
 
-  // In rank mode the tsquery is embedded twice (the @@ filter and ts_rank), so
-  // Postgres evaluates websearch_to_tsquery once per use — negligible at NT-corpus
-  // scale. If profiling ever shows overhead, compute the tsquery once in a CTE.
+  // Rank by whichever column/config matched the row. In rank mode the per-config
+  // tsquery is embedded again (the @@ filter and ts_rank), so Postgres evaluates
+  // websearch_to_tsquery once per use — negligible at NT-corpus scale. If profiling
+  // ever shows overhead, compute the tsqueries once in a CTE.
+  const rankSql = Prisma.sql`(CASE WHEN c."language" = 'English'
+    THEN ts_rank(v."textSearchEn", ${enQuery})
+    ELSE ts_rank(v."textSearch", ${grQuery}) END)`;
   const orderSql =
     input.orderBy === "rank"
-      ? Prisma.sql`ORDER BY ts_rank(v."textSearch", ${tsquery}) DESC, b."order" ASC, v."chapter" ASC, v."verse" ASC`
+      ? Prisma.sql`ORDER BY ${rankSql} DESC, b."order" ASC, v."chapter" ASC, v."verse" ASC`
       : Prisma.sql`ORDER BY b."order" ASC, v."chapter" ASC, v."verse" ASC`;
+
+  // Per-row stem-aware highlight markup, same config that matched the row.
+  // HighlightAll=TRUE returns the whole verse (not a snippet); sentinels are
+  // parsed back into HighlightSegment[] by parseHeadlineSegments.
+  const headlineSql = Prisma.sql`CASE WHEN c."language" = 'English'
+    THEN ts_headline('bible_english', v."text", ${enQuery}, ${HEADLINE_OPTIONS})
+    ELSE ts_headline('bible_simple', v."text", ${grQuery}, ${HEADLINE_OPTIONS}) END`;
 
   const offset = (pagination.page - 1) * pagination.pageSize;
 
@@ -474,10 +495,11 @@ export async function searchKeyword(input: {
       ${whereSql}
     `),
     prisma.$queryRaw<
-      { corpus: string; osisId: string; chapter: number; verse: number; text: string }[]
+      { corpus: string; osisId: string; chapter: number; verse: number; text: string; headline: string }[]
     >(Prisma.sql`
       SELECT c."abbreviation" AS corpus, b."osisId" AS "osisId",
-             v."chapter" AS chapter, v."verse" AS verse, v."text" AS text
+             v."chapter" AS chapter, v."verse" AS verse, v."text" AS text,
+             ${headlineSql} AS headline
       FROM "Verse" v
       JOIN "Corpus" c ON c."id" = v."corpusId"
       JOIN "Book" b ON b."id" = v."bookId"
@@ -520,6 +542,7 @@ export async function searchKeyword(input: {
       reference: formatReference(row.osisId, row.chapter, row.verse),
       text: row.text,
       onSpine: spine.has(spineKey(row.osisId, row.chapter, row.verse)),
+      highlightSegments: parseHeadlineSegments(row.headline),
       ...(input.withEnglish && row.corpus === "SBLGNT"
         ? { englishText: webEnglishMap.get(spineKey(row.osisId, row.chapter, row.verse)) }
         : {})

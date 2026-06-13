@@ -24,13 +24,14 @@ describe("searchKeyword FTS", () => {
   });
 
   it("issues a count query and a rows query for a real query", async () => {
+    const S = String.fromCharCode(0xe000);
+    const E = String.fromCharCode(0xe001);
     prismaMock.$queryRaw
       .mockResolvedValueOnce([{ count: BigInt(2) }])
       .mockResolvedValueOnce([
-        { corpus: "SBLGNT", osisId: "John", chapter: 1, verse: 1, text: "Ἐν ἀρχῇ ἦν ὁ λόγος" },
-        { corpus: "SBLGNT", osisId: "John", chapter: 1, verse: 14, text: "Καὶ ὁ λόγος σὰρξ ἐγένετο" }
+        { corpus: "SBLGNT", osisId: "John", chapter: 1, verse: 1, text: "Ἐν ἀρχῇ ἦν ὁ λόγος", headline: `Ἐν ἀρχῇ ἦν ὁ ${S}λόγος${E}` },
+        { corpus: "SBLGNT", osisId: "John", chapter: 1, verse: 14, text: "Καὶ ὁ λόγος σὰρξ ἐγένετο", headline: `Καὶ ὁ ${S}λόγος${E} σὰρξ ἐγένετο` }
       ]);
-    // filterToSblSpine: both verses exist on the SBLGNT spine
     prismaMock.verse.findMany.mockResolvedValueOnce([
       { chapter: 1, verse: 1, book: { osisId: "John" } },
       { chapter: 1, verse: 14, book: { osisId: "John" } }
@@ -41,8 +42,17 @@ describe("searchKeyword FTS", () => {
     expect(prismaMock.$queryRaw).toHaveBeenCalledTimes(2);
     expect(out.pagination.total).toBe(2);
     expect(out.results).toEqual([
-      { corpus: "SBLGNT", reference: "John 1:1", text: "Ἐν ἀρχῇ ἦν ὁ λόγος", onSpine: true },
-      { corpus: "SBLGNT", reference: "John 1:14", text: "Καὶ ὁ λόγος σὰρξ ἐγένετο", onSpine: true }
+      { corpus: "SBLGNT", reference: "John 1:1", text: "Ἐν ἀρχῇ ἦν ὁ λόγος", onSpine: true,
+        highlightSegments: [
+          { kind: "text", value: "Ἐν ἀρχῇ ἦν ὁ " },
+          { kind: "match", value: "λόγος" }
+        ] },
+      { corpus: "SBLGNT", reference: "John 1:14", text: "Καὶ ὁ λόγος σὰρξ ἐγένετο", onSpine: true,
+        highlightSegments: [
+          { kind: "text", value: "Καὶ ὁ " },
+          { kind: "match", value: "λόγος" },
+          { kind: "text", value: " σὰρξ ἐγένετο" }
+        ] }
     ]);
   });
 
@@ -83,8 +93,8 @@ describe("searchKeyword FTS", () => {
     prismaMock.$queryRaw
       .mockResolvedValueOnce([{ count: BigInt(2) }])
       .mockResolvedValueOnce([
-        { corpus: "WEB", osisId: "Acts", chapter: 8, verse: 36, text: "See, here is water..." },
-        { corpus: "WEB", osisId: "Acts", chapter: 8, verse: 37, text: "Philip said..." }
+        { corpus: "WEB", osisId: "Acts", chapter: 8, verse: 36, text: "See, here is water...", headline: "See, here is water..." },
+        { corpus: "WEB", osisId: "Acts", chapter: 8, verse: 37, text: "Philip said...", headline: "Philip said..." }
       ]);
     // Spine query only returns Acts 8:36 (Acts 8:37 is WEB-only)
     prismaMock.verse.findMany.mockResolvedValueOnce([
@@ -96,6 +106,56 @@ describe("searchKeyword FTS", () => {
     expect(out.results[0]).toMatchObject({ reference: "Acts 8:36", onSpine: true });
     expect(out.results[1]).toMatchObject({ reference: "Acts 8:37", onSpine: false });
   });
+
+  it("uses one language-routed predicate carrying both configs (no-corpus default)", async () => {
+    prismaMock.$queryRaw
+      .mockResolvedValueOnce([{ count: BigInt(0) }])
+      .mockResolvedValueOnce([]);
+    await searchKeyword({ query: "love" });
+    const sql = sqlTextFrom(prismaMock.$queryRaw.mock.calls[0]);
+    expect(sql).toContain("bible_english");
+    expect(sql).toContain("textsearchen");
+    expect(sql).toContain("bible_simple");
+    expect(sql).toContain("language");
+  });
+
+  it("narrows by abbreviation when an explicit corpus is given", async () => {
+    prismaMock.$queryRaw
+      .mockResolvedValueOnce([{ count: BigInt(0) }])
+      .mockResolvedValueOnce([]);
+    await searchKeyword({ query: "love", corpus: "WEB" });
+    const sql = sqlTextFrom(prismaMock.$queryRaw.mock.calls[0]);
+    expect(sql).toContain("abbreviation");
+    expect(sql).toContain("web");
+    expect(sql).toContain("bible_english");
+  });
+
+  it("parses the per-row headline into highlightSegments", async () => {
+    const S = String.fromCharCode(0xe000);
+    const E = String.fromCharCode(0xe001);
+    prismaMock.$queryRaw
+      .mockResolvedValueOnce([{ count: BigInt(1) }])
+      .mockResolvedValueOnce([
+        {
+          corpus: "WEB",
+          osisId: "John",
+          chapter: 3,
+          verse: 16,
+          text: "For God so loved the world",
+          headline: `For God so ${S}loved${E} the world`
+        }
+      ]);
+    prismaMock.verse.findMany.mockResolvedValueOnce([
+      { chapter: 3, verse: 16, book: { osisId: "John" } }
+    ]);
+
+    const out = await searchKeyword({ query: "love", corpus: "WEB" });
+    expect(out.results[0].highlightSegments).toEqual([
+      { kind: "text", value: "For God so " },
+      { kind: "match", value: "loved" },
+      { kind: "text", value: " the world" }
+    ]);
+  });
 });
 
 describe("searchKeyword withEnglish", () => {
@@ -103,8 +163,8 @@ describe("searchKeyword withEnglish", () => {
     prismaMock.$queryRaw
       .mockResolvedValueOnce([{ count: BigInt(2) }])
       .mockResolvedValueOnce([
-        { corpus: "SBLGNT", osisId: "John", chapter: 1, verse: 1, text: "Ἐν ἀρχῇ ἦν ὁ λόγος" },
-        { corpus: "WEB", osisId: "John", chapter: 1, verse: 1, text: "In the beginning was the Word" }
+        { corpus: "SBLGNT", osisId: "John", chapter: 1, verse: 1, text: "Ἐν ἀρχῇ ἦν ὁ λόγος", headline: "Ἐν ἀρχῇ ἦν ὁ λόγος" },
+        { corpus: "WEB", osisId: "John", chapter: 1, verse: 1, text: "In the beginning was the Word", headline: "In the beginning was the Word" }
       ]);
     // filterToSblSpine call
     prismaMock.verse.findMany.mockResolvedValueOnce([
@@ -130,7 +190,7 @@ describe("searchKeyword withEnglish", () => {
     prismaMock.$queryRaw
       .mockResolvedValueOnce([{ count: BigInt(1) }])
       .mockResolvedValueOnce([
-        { corpus: "SBLGNT", osisId: "John", chapter: 1, verse: 1, text: "Ἐν ἀρχῇ ἦν ὁ λόγος" }
+        { corpus: "SBLGNT", osisId: "John", chapter: 1, verse: 1, text: "Ἐν ἀρχῇ ἦν ὁ λόγος", headline: "Ἐν ἀρχῇ ἦν ὁ λόγος" }
       ]);
     prismaMock.verse.findMany.mockResolvedValueOnce([
       { chapter: 1, verse: 1, book: { osisId: "John" } }

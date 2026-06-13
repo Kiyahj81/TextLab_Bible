@@ -61,6 +61,10 @@ model Verse {
   /// Never read through the typed client — matching uses $queryRaw. Declared so
   /// Prisma drift detection accounts for the column.
   textSearch Unsupported("tsvector")?
+  /// English-stemmed FTS vector (generated column, bible_english config).
+  /// Never read through the typed client — keyword matching uses $queryRaw.
+  /// Declared so Prisma drift detection accounts for the column.
+  textSearchEn Unsupported("tsvector")?
 
   corpus     Corpus         @relation(fields: [corpusId], references: [id])
   book       Book           @relation(fields: [bookId], references: [id])
@@ -71,6 +75,7 @@ model Verse {
   @@unique([corpusId, bookId, chapter, verse])
   @@index([bookId, chapter, verse])
   @@index([textSearch], type: Gin)
+  @@index([textSearchEn], type: Gin)
 }
 
 model VerseEmbedding {

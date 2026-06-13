@@ -6,8 +6,10 @@
 Milestone 3 Phase 3 (Lexical FTS). Today a `/search` keyword query for `love` matches
 only the literal lexeme `love`; it misses `loves`, `loved`, `loving`. This design adds
 Snowball stemming for English (WEB) keyword search so those inflections match, while
-`beloved` (a distinct stem) correctly does not — and Greek (SBLGNT) keyword search is
-left exactly as-is.
+`beloved` (a distinct stem) correctly does not, and makes result highlighting track the
+stemmer so matched inflections are actually marked. Greek (SBLGNT) keyword
+matching/ranking is left exactly as-is (its highlighting gains an incidental accent fix —
+component 4).
 
 ## Decisions (made with the maintainer)
 
@@ -115,16 +117,59 @@ existing parameterized `searchKeyword` raw-SQL row already in the security regis
 `websearch_to_tsquery('bible_english', …)` tolerates arbitrary/hostile input exactly like
 the `bible_simple` form, so there is no new throw surface.
 
-The change is internal to `searchKeyword`'s SQL assembly; its TypeScript signature and
-return shape are unchanged, so `/search`, the retrieval planner, and all callers are
-untouched at the interface.
+The matching/ranking change is internal to `searchKeyword`'s SQL assembly. The result
+shape gains one **additive, optional** field for highlighting (component 4); the retrieval
+planner and other callers ignore it, so they are untouched.
 
-## Data flow (unchanged except the matched column)
+### 4. Stem-aware result highlighting via `ts_headline`
 
-`searchKeyword(input)` → build per-corpus predicate(s) → `$queryRaw` count + page rows →
-`filterToSblSpine` annotates `onSpine` → optional `withEnglish` WEB batch-fetch →
-results. Only the WHERE/ORDER predicates change; pagination, spine filtering, and the
-`withEnglish` join are as-is.
+**Why this is in scope.** The result highlighter (`lib/search-highlight.ts`
+`splitWithMatches`) does a literal case-insensitive **substring** match of the raw query
+against the verse text — it does not know stemming happened. So a `love` query highlights
+`love` and the `love` inside `loved`/`loves`, but a correctly-matched `loving` verse
+(`love` is not a substring of `loving`) shows **no** highlight, and a `loved` query returns
+`love`/`loving` verses with nothing marked at all. Matching would be correct while
+highlighting silently disagrees — a "matched but nothing highlighted" look that reads as a
+bug. Letting Postgres mark the matches with the **same** config that found them keeps the
+two in lockstep.
+
+**Mechanism.** In keyword mode, the row SELECT computes a headline with the row's language
+config, using the same bound tsquery as the predicate:
+
+```sql
+ts_headline(
+  <config>, v."text", websearch_to_tsquery(<config>, q),
+  'HighlightAll=true, StartSel=<S>, StopSel=<E>'
+)
+```
+
+where `<config>` is `bible_english` for English rows and `bible_simple` for Greek rows
+(per-row `CASE` on `c."language"`, mirroring the predicate routing). `HighlightAll=true`
+returns the **whole verse** (not a truncated snippet). `<S>`/`<E>` are sentinel delimiters
+from the Unicode Private-Use Area (e.g. `U+E000`/`U+E001`) that cannot occur in WEB or
+SBLGNT text, so parsing is unambiguous. `searchKeyword` splits the headline on the
+sentinels into the existing `HighlightSegment[]` shape (`{ kind: "text" | "match", value }`)
+and returns it as an optional `highlightSegments` field on each keyword result. The headline
+text/config are bound parameters; the options string is a literal — no new injection surface.
+
+**Bonus fix.** Routing Greek keyword highlighting through `ts_headline('bible_simple', …)`
+also corrects a latent accent bug: today an unaccented Greek query (`λογος`) matches the
+accented text (`λόγος`) but `splitWithMatches` finds no literal substring and highlights
+nothing. `ts_headline` with the unaccent-aware config marks it correctly.
+
+**Client.** `SearchPanel`'s keyword result row renders `highlightSegments` directly when
+present (each `match` segment wrapped in `<mark>`), falling back to the existing
+`<HighlightedText text match={query} />` when absent. Lemma mode is unchanged — it
+highlights the exact matched token `surface` via `splitWithMatches`, which is correct and
+needs no stemming.
+
+## Data flow
+
+`searchKeyword(input)` → build per-corpus predicate(s) + per-row `ts_headline` (keyword
+mode) → `$queryRaw` count + page rows → `filterToSblSpine` annotates `onSpine` → parse each
+headline into `highlightSegments` → optional `withEnglish` WEB batch-fetch → results. The
+WHERE/ORDER predicates and the new headline column change; pagination, spine filtering, and
+the `withEnglish` join are as-is.
 
 ## Error handling
 
@@ -148,10 +193,16 @@ the meaningful coverage is the real-DB integration suite.
     (proves the Greek path is untouched).
   - The existing `lov`→0 / `love`→>0 "whole lexemes not substrings" test still passes
     (`lov` is not a stem of `love`).
+  - **Highlight coverage:** a `love` (WEB) search returns a `loving` verse whose
+    `highlightSegments` contains a `match` segment (the stemmer-found word is marked, not
+    left plain) — the case the old substring highlighter missed.
 - **`tests/unit/lib/search-keyword.test.ts`** (mocked prisma): assert the routing logic —
   WEB input selects the `bible_english`/`textSearchEn` predicate, Greek input selects
   `bible_simple`/`textSearch`, and the no-corpus default emits both language-scoped
   branches.
+- **`tests/unit/lib/search-highlight.test.ts`** (or alongside): unit-test the headline →
+  `HighlightSegment[]` sentinel parser (matched span, leading/trailing text, adjacent
+  matches, no-match passthrough). Pure string logic, no DB.
 
 ## Calibration (the real cost, not optional)
 
@@ -181,16 +232,17 @@ Stemming raises English keyword recall, and keyword is a gated eval type, so:
 ## Out of scope
 
 - Lemma, morphology, domain, and semantic search modes — unchanged.
-- The Greek (`bible_simple`) path and the SBLGNT citation spine — unchanged by construction.
+- The Greek (`bible_simple`) matching/ranking path and the SBLGNT citation spine — unchanged
+  by construction (Greek highlighting routes through `ts_headline('bible_simple', …)`, an
+  incidental improvement, not a matching change).
 - The grounding verifier and the prose-sweep follow-up — unrelated.
-- Stem highlighting in result text (the UI highlights the literal query term; making the
-  highlighter stem-aware is a separate, optional follow-up, not required for match
-  correctness).
+- Lemma-mode highlighting — already exact (matched token `surface`); unchanged.
 
 ## Process
 
 Single PR off `main` (branch `feat/english-keyword-stemming`): handwritten migration →
-schema declaration → `searchKeyword` routing (TDD) → integration + unit tests → apply
+schema declaration → `searchKeyword` predicate routing + `ts_headline` (TDD) → headline
+sentinel parser + `SearchPanel` segment rendering → integration + unit tests → apply
 migration to dev + test/eval branches → eval-gate re-validation → docs. `npm run verify`
 plus `test:integration` green before push. Open the PR and **stop for maintainer review
 and merge** (including Codex/CodeRabbit bot comments). Subagent-driven where tasks are

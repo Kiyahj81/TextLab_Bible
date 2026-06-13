@@ -14,7 +14,7 @@ Deferred beyond the current scope: OT Hebrew/Aramaic, LXX, Strong's numbers, spe
   - English word highlighting, Greek token highlighting, notes, verse navigation, chapter navigation, and last-passage restore.
 - **Search** at `/search`
   - A segmented mode control (Keyword / Lemma / Morphology / Domain) with per-mode placeholders, hint text, and clickable example searches on the empty state; the no-results state gives per-mode recovery guidance.
-  - Keyword search with PostgreSQL full-text search over `Verse.textSearch`.
+  - Keyword search with PostgreSQL full-text search. English (WEB) rows use the `bible_english` config (Snowball stemming — `love` matches `loves`, `loved`, and `loving`); Greek (SBLGNT) rows use `bible_simple` (accent-insensitive, whole-lexeme, not stemmed). Highlights track the stemmer via a per-row `ts_headline`.
   - Lemma search over token lemmas.
   - Morphology search over token morphology codes, with Robinson-ordered queries (for example `V-PAI-3S`) normalized to the stored scheme and human-readable tooltips on result codes (`V-3PAI-S` reads as "verb — present active indicative, 3rd person singular").
   - Louw-Nida domain search with domain/subdomain dropdowns and exact LN-reference lookup.

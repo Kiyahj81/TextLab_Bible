@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { BookmarkPlus, Pencil, Search, Trash2, X } from "lucide-react";
 import { Fragment, useEffect, useState } from "react";
-import { splitWithMatches } from "@/lib/search-highlight";
+import { splitWithMatches, type HighlightSegment } from "@/lib/search-highlight";
 import { decodeMorphCode } from "@/lib/morphology";
 import type { DomainOptions } from "@/lib/search";
 import { bookName, readerHref } from "@/lib/references";
@@ -82,6 +82,7 @@ export type SearchPanelResult =
       text: string;
       onSpine?: boolean;
       englishText?: string;
+      highlightSegments?: HighlightSegment[];
     }
   | {
       kind: "token";
@@ -555,7 +556,11 @@ export function SearchPanel({
               ) : (
                 <div>
                   <p className="mt-2 leading-7 text-slate-800">
-                    <HighlightedText text={result.text} match={query} />
+                    <KeywordHighlight
+                      segments={result.highlightSegments}
+                      text={result.text}
+                      query={query}
+                    />
                   </p>
                   {showEnglish && result.englishText ? (
                     <p className="mt-1 text-sm leading-6 text-slate-600">{result.englishText}</p>
@@ -720,6 +725,39 @@ function HighlightedText({ text, match }: { text: string; match: string }) {
       )}
     </>
   );
+}
+
+export function KeywordHighlight({
+  segments,
+  text,
+  query
+}: {
+  segments?: HighlightSegment[];
+  text: string;
+  query: string;
+}) {
+  // Stem-aware path: render the ts_headline segments the server produced.
+  if (segments && segments.length > 0) {
+    return (
+      <>
+        {segments.map((segment, index) =>
+          segment.kind === "match" ? (
+            <mark
+              key={index}
+              className="rounded-sm bg-amber-200/80 px-0.5 font-semibold text-slate-950"
+            >
+              {segment.value}
+            </mark>
+          ) : (
+            <Fragment key={index}>{segment.value}</Fragment>
+          )
+        )}
+      </>
+    );
+  }
+  // Fallback: literal-substring highlight of the raw query, matching the prior
+  // behavior for any keyword result that lacks segments.
+  return <HighlightedText text={text} match={query} />;
 }
 
 function searchHref({

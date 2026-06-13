@@ -49,6 +49,8 @@ expression must be **IMMUTABLE**.
 **Deferred (not cancelled):** English Snowball stemming (`loves`=`love`, plurals, tense). Revisit if
 real usage shows English keyword search needs it, or let Phase 4 handle English semantics.
 
+> **Update 2026-06-13:** English Snowball stemming landed via migration `20260613120000_english_stem_fts` — `bible_english` immutable config (unaccent + english_stem) and a second stored `tsvector` column `Verse.textSearchEn` (+ `Verse_textSearchEn_idx` GIN index). English (WEB) keyword search and the assistant's semantic keyword leg now route through `bible_english`/`textSearchEn`; Greek (SBLGNT) keeps `bible_simple`/`textSearch` unchanged. Highlighting uses a per-row `ts_headline` matched to the config that ran the query.
+
 ## Architecture & components
 
 ### 1. Schema & migration (first hand-written migration in the project)
@@ -162,7 +164,7 @@ the acceptance-corpus note), then confirm green.
   CLAUDE.md.
 
 ## Out of scope / deferred
-- English Snowball stemming (Option B) — deferred follow-up.
+- English Snowball stemming (Option B) — ✅ landed 2026-06-13 (`bible_english`/`textSearchEn`; see update note above).
 - pgvector / embeddings / RRF / cross-encoder rerank / sentence-window — Phase 4.
 - RAGAS-style faithfulness eval harness — Phase 6.
 

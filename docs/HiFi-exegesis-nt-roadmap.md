@@ -203,8 +203,12 @@ interpolation). New `orderBy?: "canonical" | "rank"` param (default canonical; r
 DESC with canonical tiebreak); retrieval planner passes `orderBy: "rank"` so evidence truncation
 keeps the strongest verses. Behaviour: accent-insensitive Greek (λογος finds λόγος), whole-lexeme
 matching not substring ("log" no longer matches inside "logos"), multi-word AND queries ("grace
-truth" finds John 1:14). English Snowball stemming intentionally DEFERRED — a single unified
-accent-folded `simple` config covers both languages. New: 4 unit tests
+truth" finds John 1:14). English Snowball stemming was deferred at Phase 3 ship; ✅ it landed
+2026-06-13 via migration `20260613120000_english_stem_fts` — `bible_english` immutable config
+(unaccent + english_stem), `Verse.textSearchEn` generated tsvector + `Verse_textSearchEn_idx` GIN
+index; English (WEB) keyword search and the assistant's semantic keyword leg now route through
+`bible_english`/`textSearchEn`; Greek (SBLGNT) keeps `bible_simple`/`textSearch` whole-lexeme;
+stem-aware `ts_headline` per row. New: 4 unit tests
 (`tests/unit/lib/search-keyword.test.ts`), 6 integration tests (`tests/integration/fts-search.test.ts`),
 evidence-diff harness (`scripts/evidence-diff.ts`). Original plan below.
 

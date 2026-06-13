@@ -67,13 +67,13 @@ sprint and at every Next.js minor upgrade. Cross-check each open row.
 | Field | Value |
 | --- | --- |
 | Severity | Low (SQL injection surface — mitigated) |
-| Change | Phase 3 Lexical FTS introduces the project's first `$queryRaw` in the search layer: `searchKeyword` in `lib/search.ts` now builds a parameterized PostgreSQL FTS query using `websearch_to_tsquery('bible_simple', …)`. |
-| Reason | The ILIKE `text: { contains }` path Prisma previously used was replaced by a raw query to enable `tsvector @@ tsquery` matching against the stored generated column. Prisma does not yet expose a first-class FTS API for generated columns. |
+| Change | Phase 3 Lexical FTS introduced the project's first `$queryRaw` in the search layer: `searchKeyword` in `lib/search.ts` builds a parameterized PostgreSQL FTS query. **Extended 2026-06-13 (English keyword stemming):** `searchKeyword` now binds *two* configs in a single language-routed predicate — `websearch_to_tsquery('bible_english', …)` against `textSearchEn` for English (WEB) rows and `websearch_to_tsquery('bible_simple', …)` against `textSearch` for Greek rows — plus a per-row `ts_headline(<config>, "text", <tsquery>, <options>)` for stem-aware highlighting. The assistant's `searchSemantic` keyword FTS leg likewise switched its raw query to `websearch_to_tsquery('bible_english', …)` / `textSearchEn` (WEB-only, no routing). |
+| Reason | The ILIKE `text: { contains }` path Prisma previously used was replaced by a raw query to enable `tsvector @@ tsquery` matching against the stored generated column. Prisma does not yet expose a first-class FTS API for generated columns. The 2026-06-13 extension adds the second (`bible_english`) config/column and `ts_headline` to stem English keyword search without disturbing the Greek path. |
 | Status | Mitigated |
-| Mitigation | All user- and assistant-supplied values (query string, corpus, book, chapter, pagination offsets) are bound as Prisma.sql tagged template parameters or via `Prisma.join` — no string interpolation of user input into the SQL string. `websearch_to_tsquery` is documented to tolerate arbitrary/hostile input (including unbalanced quotes and special operators) without throwing or producing injection risk. Code reviewed at PR merge. |
+| Mitigation | All user- and assistant-supplied values (query string, corpus, book, chapter, pagination offsets) remain bound as Prisma.sql tagged template parameters or via `Prisma.join` — no string interpolation of user input into the SQL string. The added `bible_english`/`bible_simple` config names and the `ts_headline` options string (the U+E000/U+E001 sentinels in `HEADLINE_OPTIONS`) are developer-controlled literals, not user-derived. `websearch_to_tsquery` is documented to tolerate arbitrary/hostile input (including unbalanced quotes and special operators) without throwing or producing injection risk, for both configs. Code reviewed at PR merge. |
 | Owner | Maintainer (kiyahj81) |
-| Opened | 2026-05-30 (Phase 3 Lexical FTS) |
-| Next review | Re-check if the raw query in `searchKeyword` is extended with new parameters. |
+| Opened | 2026-05-30 (Phase 3 Lexical FTS); extended 2026-06-13 (English keyword stemming) |
+| Next review | Re-check if the raw query in `searchKeyword` or the `searchSemantic` FTS leg is extended with new parameters or a new config/column. |
 
 ### Phase 4b rerank — Vercel AI Gateway / Voyage data flow (accepted)
 

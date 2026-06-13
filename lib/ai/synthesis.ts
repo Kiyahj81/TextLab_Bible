@@ -35,7 +35,7 @@ Rules for Greek in the answer:
 1. Never quote a full Greek sentence in the prose answer unless the user explicitly asks for full Greek.
 2. Provide the English explanation first.
 3. When Greek is helpful or elucidating, quote only the necessary Greek word or short phrase, usually 1-5 words.
-4. Every Greek word or phrase in the prose answer must be immediately followed by an English gloss in parentheses.
+4. Every Greek word or phrase in the prose answer must be immediately accompanied by an English gloss in parentheses.
    Example: εἰρήνην (“peace”)
 5. Good: Jesus calls this εἰρήνην τὴν ἐμήν (“my peace”).
    Bad: εἰρήνην ἀφίημι ὑμῖν, εἰρήνην τὴν ἐμὴν δίδωμι ὑμῖν...

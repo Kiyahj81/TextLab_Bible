@@ -57,4 +57,35 @@ describe.skipIf(!enabled)("FTS keyword search", () => {
     expect(page1.pagination.total).toBe(page2.pagination.total);
     expect(page1.results).not.toEqual(page2.results);
   });
+
+  it("stems English: a 'love' search includes inflections like 'loved'", async () => {
+    const love = await searchKeyword({ query: "love", corpus: "WEB", pageSize: 100 });
+    const refs = love.results.map((r) => r.reference);
+    expect(love.pagination.total).toBeGreaterThan(0);
+    // A verse whose surface form is "loved" (not the bare word "love").
+    expect(refs).toContain("John 3:16"); // "God so loved the world"
+  });
+
+  it("does not match a different stem: 'love' excludes 'beloved'-only verses", async () => {
+    const love = await searchKeyword({ query: "love", corpus: "WEB", book: "3John", pageSize: 100 });
+    const beloved = await searchKeyword({ query: "beloved", corpus: "WEB", book: "3John", pageSize: 100 });
+    const loveRefs = new Set(love.results.map((r) => r.reference));
+    // 3John 1:2 ("Beloved, I pray…") contains "beloved" but no love-stem word.
+    expect(beloved.results.some((r) => r.reference === "3John 1:2")).toBe(true);
+    expect(loveRefs.has("3John 1:2")).toBe(false);
+  });
+
+  it("highlights the stemmed inflection (segments contain a match)", async () => {
+    const love = await searchKeyword({ query: "love", corpus: "WEB", pageSize: 100 });
+    const john316 = love.results.find((r) => r.reference === "John 3:16");
+    expect(john316?.highlightSegments?.some((s) => s.kind === "match")).toBe(true);
+  });
+
+  it("leaves Greek matching unchanged (whole-lexeme λόγος)", async () => {
+    const greek = await searchKeyword({ query: "λόγος", corpus: "SBLGNT" });
+    expect(greek.pagination.total).toBeGreaterThan(0);
+    // Still whole-lexeme: a fragment does not match.
+    const fragment = await searchKeyword({ query: "λογ", corpus: "SBLGNT" });
+    expect(fragment.pagination.total).toBe(0);
+  });
 });

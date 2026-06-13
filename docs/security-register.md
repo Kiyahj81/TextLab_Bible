@@ -167,6 +167,37 @@ sprint and at every Next.js minor upgrade. Cross-check each open row.
 - The user-level `NODE_OPTIONS=--use-system-ca` env var remains set on
   the maintainer's machine as a belt-and-suspenders default and to cover
   the install step.
+- **IDE test-runner failure mode — Cursor/VS Code blanks `NODE_OPTIONS`
+  (root-caused 2026-06-13):** the live `rerankCandidates` integration test
+  (`tests/integration/semantic-search.test.ts`, gated only on
+  `AI_GATEWAY_API_KEY`) fails with the misleading message *"rerank returned
+  null — gateway/key/model misconfigured"* whenever vitest runs **without**
+  `--use-system-ca`. The reranker swallows the underlying
+  `UNABLE_TO_VERIFY_LEAF_SIGNATURE` TLS error in its `catch` (returns null),
+  so the symptom hides the real cause. It passes via `npm run test:integration`
+  (which bakes the flag in via `cross-env`) but fails from any path that
+  bypasses that script — the Vitest extension or the editor's integrated
+  terminal. Root cause is environmental, not code, and is **not** a stale
+  process-tree block (an earlier hypothesis): even after a full reboot, with
+  the user-scope value correctly present in `explorer.exe` (verified by
+  reading the process's PEB environment block: `explorer` =
+  `NODE_OPTIONS=--use-system-ca`), **Cursor itself empties `NODE_OPTIONS` for
+  every process it spawns** (the Cursor main process shows `NODE_OPTIONS=`
+  blank; its children drop it entirely). This is inherited Electron/VS Code
+  behaviour — the editor deliberately clears `NODE_OPTIONS` so loader/debug
+  flags don't leak into the many Node subprocesses it launches (extension
+  host, language servers, terminal, Claude Code). Therefore **no OS-level env
+  var (`setx`, user-scope `NODE_OPTIONS`) can reach an IDE-launched run** —
+  the flag must be **re-injected after Cursor strips it**. Working fixes:
+  (1) run via `npm run test:integration` — `cross-env` re-sets the flag for
+  that command regardless of Cursor (canonical, works today); (2) for the
+  integrated terminal, add to Cursor `settings.json`:
+  `"terminal.integrated.env.windows": { "NODE_OPTIONS": "--use-system-ca" }`
+  (verified: bare `vitest` then passes); (3) for the Vitest extension, set
+  `"vitest.nodeExecArgs": ["--use-system-ca"]`. Note: `pool: "forks"` +
+  `poolOptions.forks.execArgv: ["--use-system-ca"]` in the vitest config does
+  **not** work — vitest v4 does not honor the flag through `execArgv`;
+  `NODE_OPTIONS` in the spawning environment is the only reliable mechanism.
 - **Accepted assumption — scripts OVERWRITE `NODE_OPTIONS` (Codex P2, PR
   #15):** the `cross-env NODE_OPTIONS=--use-system-ca` prefix replaces any
   inherited `NODE_OPTIONS` rather than appending to it. Verified safe for

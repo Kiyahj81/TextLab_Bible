@@ -254,7 +254,8 @@ Start here:
 
 Historical planning and implementation notes live under:
 
-- `docs/archived/`
-- `docs/ui-review/`
+- `docs/archived/` (includes the closed `ui-review/` passes)
 - `docs/superpowers/specs/`
 - `docs/superpowers/plans/`
+
+See `docs/README.md` for a map of the documentation layout.

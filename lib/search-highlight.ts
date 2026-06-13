@@ -37,3 +37,32 @@ export function splitWithMatches(text: string, match: string): HighlightSegment[
 
   return segments;
 }
+
+// ts_headline sentinels. Private-Use-Area code points (U+E000 / U+E001) that
+// cannot appear in WEB or SBLGNT verse text, so splitting the headline back
+// into segments is unambiguous. HEADLINE_OPTIONS is passed to ts_headline; the
+// same sentinels are parsed out here. Defined via fromCharCode to keep the
+// source free of invisible literals.
+const HL_START = String.fromCharCode(0xe000);
+const HL_END = String.fromCharCode(0xe001);
+
+export const HEADLINE_OPTIONS = `HighlightAll=TRUE, StartSel=${HL_START}, StopSel=${HL_END}`;
+
+export function parseHeadlineSegments(headline: string): HighlightSegment[] {
+  if (!headline) return [];
+  const pattern = new RegExp(`${HL_START}([\\s\\S]*?)${HL_END}`, "g");
+  const segments: HighlightSegment[] = [];
+  let cursor = 0;
+  for (const hit of headline.matchAll(pattern)) {
+    const index = hit.index ?? 0;
+    if (index > cursor) {
+      segments.push({ kind: "text", value: headline.slice(cursor, index) });
+    }
+    segments.push({ kind: "match", value: hit[1] });
+    cursor = index + hit[0].length;
+  }
+  if (cursor < headline.length) {
+    segments.push({ kind: "text", value: headline.slice(cursor) });
+  }
+  return segments;
+}

@@ -126,7 +126,10 @@ describe("searchKeyword FTS", () => {
     await searchKeyword({ query: "love", corpus: "WEB" });
     const sql = sqlTextFrom(prismaMock.$queryRaw.mock.calls[0]);
     expect(sql).toContain("abbreviation");
-    expect(sql).toContain("web");
+    // Assert the *bound* corpus literal — a quoted "web" in the serialized
+    // values — not a bare `web`, which also matches `websearch_to_tsquery` and
+    // would pass even if the `c."abbreviation" = ${corpus}` filter regressed.
+    expect(sql).toContain('"web"');
     expect(sql).toContain("bible_english");
   });
 

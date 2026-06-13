@@ -281,7 +281,10 @@ here.
 
 ## Out of scope
 
-- Lemma, morphology, domain, and semantic search modes — unchanged.
+- Lemma, morphology, and domain search modes — unchanged.
+- Semantic search's **vector / RRF / rerank** behavior — unchanged. Only its keyword FTS leg's
+  config changes (`bible_simple` → `bible_english`, component 5); the vector KNN, fusion,
+  SBL-spine filter, and Voyage rerank are untouched.
 - The Greek (`bible_simple`) matching/ranking path and the SBLGNT citation spine — unchanged
   by construction (Greek highlighting routes through `ts_headline('bible_simple', …)`, an
   incidental improvement, not a matching change).

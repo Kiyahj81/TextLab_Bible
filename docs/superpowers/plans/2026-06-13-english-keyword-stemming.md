@@ -264,7 +264,9 @@ Add these to `tests/unit/lib/search-keyword.test.ts` inside the `describe("searc
     expect(sql).toContain("bible_english");
     expect(sql).toContain("textsearchen");
     expect(sql).toContain("bible_simple");
-    expect(sql).toContain('"language"');
+    // Unquoted: sqlTextFrom JSON.stringifies the call, so the identifier
+    // `c."language"` serializes as `c.\"language\"` — match the bare word.
+    expect(sql).toContain("language");
   });
 
   it("narrows by abbreviation when an explicit corpus is given", async () => {
@@ -507,6 +509,17 @@ so no language routing):
 
 (Only the config name and the two `textSearch` → `textSearchEn` references change; the vector
 leg, RRF, SBL-spine filter, and rerank are untouched.)
+
+Also update the now-stale comment above `searchSemantic` (currently ~line 79): it says
+`bible_simple keeps stopwords, so the full prompt would AND to nothing`, which is wrong once the
+leg uses `bible_english` (English stemming **drops** stopwords). Replace that clause:
+
+```typescript
+// natural-language prompt); `keywords` drives the FTS half (distilled topic words,
+// not the full prompt, whose many content words would AND to nothing). The FTS half
+// uses the bible_english config (English stemming, consistent with searchKeyword).
+// Returns [] when no OpenAI client (embedQuery null).
+```
 
 - [ ] **Step 10: Run the semantic tests + typecheck**
 

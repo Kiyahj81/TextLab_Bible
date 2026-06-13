@@ -13,9 +13,13 @@ component 4).
 
 ## Decisions (made with the maintainer)
 
-- **Scope of effect:** both surfaces. `searchKeyword` feeds the `/search` UI *and* the
-  assistant's retrieval planner, and stemming applies to both. This changes English
-  keyword recall the planner sees, so eval-gate re-calibration is in scope.
+- **Scope of effect:** every place English keyword matching happens. `searchKeyword` feeds
+  the `/search` UI *and* the assistant's deterministic retrieval planner. The assistant's
+  semantic-hybrid path (`searchSemantic`) has its **own** WEB-only FTS leg — a separate
+  inline `$queryRaw`, **not** routed through `searchKeyword` — and it is stemmed too
+  (component 5), so English keyword matching is consistent everywhere it runs. This changes
+  English keyword recall, so an eval **regression** pass is in scope (note: keyword is *not*
+  a gated eval type — see Calibration).
 - **Cross-corpus default:** per-row language routing. An unscoped keyword search still
   returns mixed SBLGNT + WEB rows; each row matches under its own language config
   (Greek via `bible_simple`, English via the new `bible_english`).
@@ -92,24 +96,32 @@ Routing keys off `Corpus.language` (confirmed values: `"Greek"`, `"English"`) �
 semantically correct discriminator, so any future English corpus routes correctly without
 code changes.
 
-- **Explicit `corpus=WEB`** (English): match `v."textSearchEn" @@
-  websearch_to_tsquery('bible_english', q)`; rank mode ranks on `textSearchEn`.
-- **Explicit Greek corpus** (`SBLGNT`): match `v."textSearch" @@
-  websearch_to_tsquery('bible_simple', q)`; rank on `textSearch`. Unchanged from today.
-- **Cross-corpus default** (no `corpus`, currently "any corpus except NET"): OR two
-  language-scoped predicates so each row matches under its own config:
+A **single** language-routed match predicate is used for **every** call — whether or not a
+corpus is given — because each row can only match under its own language branch, and the
+existing corpus filter narrows which rows are eligible:
 
-  ```sql
-  -- Corpus is already joined as `c` in searchKeyword, so language is c."language".
-  c."abbreviation" <> 'NET' AND (
-    (c."language" = 'English'  AND v."textSearchEn" @@ websearch_to_tsquery('bible_english', q))
-    OR
-    (c."language" <> 'English' AND v."textSearch"   @@ websearch_to_tsquery('bible_simple',  q))
-  )
-  ```
+```sql
+-- Corpus is already joined as `c` in searchKeyword, so language is c."language".
+(
+  (c."language" = 'English'  AND v."textSearchEn" @@ websearch_to_tsquery('bible_english', q))
+  OR
+  (c."language" <> 'English' AND v."textSearch"   @@ websearch_to_tsquery('bible_simple',  q))
+)
+```
 
-  In rank mode the `ts_rank` expression is selected per row via a `CASE` on
-  `c."language"`, picking the column/config that matched.
+combined with the unchanged corpus filter (`c."abbreviation" = <corpus>` when one is given,
+else `c."abbreviation" <> 'NET'`). This is **equivalent** to branching the predicate on the
+requested corpus, but simpler (one predicate, no `input.corpus` conditional):
+
+- `corpus=WEB` → the corpus filter keeps only English rows, which match via the
+  `bible_english`/`textSearchEn` branch; the Greek branch never matches a WEB row.
+- `corpus=SBLGNT` → only Greek rows, matched via `bible_simple`/`textSearch` (unchanged from
+  today).
+- no `corpus` → both branches apply per row across the mixed result set.
+
+The unused branch's `websearch_to_tsquery` is still parsed by Postgres on a single-corpus
+call, but at NT-corpus scale that is negligible. In rank mode the `ts_rank` expression is
+selected per row via a `CASE` on `c."language"`, picking the column/config that matched.
 
 All user/assistant input stays bound as `Prisma.sql` parameters (query string, corpus,
 book, chapter, offsets) — no string interpolation, so no new injection surface beyond the
@@ -163,6 +175,23 @@ present (each `match` segment wrapped in `<mark>`), falling back to the existing
 highlights the exact matched token `surface` via `splitWithMatches`, which is correct and
 needs no stemming.
 
+### 5. Stem the assistant's semantic FTS leg (`searchSemantic` in `lib/search.ts`)
+
+The assistant's hybrid retrieval (`searchSemantic`) fuses pgvector KNN with a keyword FTS
+leg via Reciprocal Rank Fusion. That FTS leg is a **separate inline `$queryRaw`** (it does
+not call `searchKeyword`) and today uses `websearch_to_tsquery('bible_simple', keywords)`
+against `v."textSearch"`. Because the semantic index is WEB-only
+(`SEMANTIC_INDEX_CORPUS = "WEB"`), this leg is **always English**, so it is switched
+unconditionally to `bible_english`/`textSearchEn` — both the `@@` predicate and the
+`ts_rank` ordering. No language routing is needed (the corpus is fixed). This keeps the
+assistant's two English keyword legs (deterministic `searchKeyword` and semantic FTS)
+consistently stemmed; leaving it on `bible_simple` would mean conceptual prompts retrieve
+unstemmed while keyword prompts retrieve stemmed.
+
+This is the only change to `searchSemantic`; the vector leg, RRF, SBL-spine filter, and
+rerank are untouched. The conceptual eval type (which exercises this path) is **report-only**
+(weekly hybrid report), so this does not touch the deterministic gate.
+
 ## Data flow
 
 `searchKeyword(input)` → build per-corpus predicate(s) + per-row `ts_headline` (keyword
@@ -196,25 +225,46 @@ the meaningful coverage is the real-DB integration suite.
   - **Highlight coverage:** a `love` (WEB) search returns a `loving` verse whose
     `highlightSegments` contains a `match` segment (the stemmer-found word is marked, not
     left plain) — the case the old substring highlighter missed.
-- **`tests/unit/lib/search-keyword.test.ts`** (mocked prisma): assert the routing logic —
-  WEB input selects the `bible_english`/`textSearchEn` predicate, Greek input selects
-  `bible_simple`/`textSearch`, and the no-corpus default emits both language-scoped
-  branches.
+- **`tests/unit/lib/search-keyword.test.ts`** (mocked prisma): assert the assembled SQL
+  carries the unified predicate (`bible_english`, `textSearchEn`, `bible_simple`, and
+  `"language"` all present) and that an explicit `corpus` narrows via the abbreviation filter;
+  assert the per-row `headline` is parsed into `highlightSegments`.
+- **`tests/unit/lib/search-semantic.test.ts`** (extend): assert the FTS leg's SQL uses
+  `bible_english`/`textSearchEn` (not `bible_simple`/`textSearch`), preserving the existing
+  no-key / disabled behavior.
 - **`tests/unit/lib/search-highlight.test.ts`** (or alongside): unit-test the headline →
   `HighlightSegment[]` sentinel parser (matched span, leading/trailing text, adjacent
   matches, no-match passthrough). Pure string logic, no DB.
 
-## Calibration (the real cost, not optional)
+## Calibration and verification
 
-Stemming raises English keyword recall, and keyword is a gated eval type, so:
+**There is no keyword eval gate.** The eval golden set is typed by `exact-verse`,
+`lemma-survey`, `conceptual`, `domain`, `cross-chapter` (`eval/dataset/schema.ts`) — there is
+**no** `keyword` query type, and `eval/thresholds.ts` has no keyword gate. So `eval:gate`
+cannot, and is not expected to, "prove" stemming. Proof of the stemming behavior comes from
+the **integration tests** (below), which assert it directly against the real corpus.
 
-1. **Eval gate.** Re-run `npm run eval:gate`. Per the project's eval philosophy, do **not**
-   lower thresholds to pass — re-validate / re-scope the golden set if keyword items shift.
-   Expect recall to rise; watch precision on keyword-typed golden questions.
-2. **Acceptance test.** `scripts/acceptance-test.js` pins a **lemma** count
-   (`40 results for lemma "λόγος" in John`), which stemming does not affect. Confirm during
-   implementation that no keyword count is pinned; if one is added later, size it to the
+What `eval:gate` does here is guard against **regressions**:
+
+1. **Eval gate as a regression guard.** Re-run `npm run eval:gate`. Stemming changes English
+   keyword recall, which can perturb any **gated** item whose retrieval plan includes a
+   keyword call — most plausibly precision on `exact-verse`/`cross-chapter` (gated at 1.0) or
+   the two global hard gates (citation resolvability, lemma coverage, both 100%). If a gated
+   item regresses, fix the **golden set / measurement**, not the thresholds (project eval
+   philosophy): extend the expected set when stemming surfaces additional *correct* verses, or
+   tighten the query/scope when it surfaces *off-target* ones. The `conceptual` type (which
+   exercises the now-stemmed semantic FTS leg) is **report-only**, so it is observed in the
+   weekly hybrid report, not the gate.
+2. **Integration tests are the proof.** See Testing — `love`→`loved`/`loving`, `beloved`
+   excluded, highlight coverage, Greek invariant.
+3. **Acceptance test.** `scripts/acceptance-test.js` pins a **lemma** count
+   (`40 results for lemma "λόγος" in John`), which stemming does not affect, and asserts no
+   keyword count. Confirm it still passes; if a keyword count is added later, size it to the
    post-stemming total.
+
+A dedicated `keyword` eval query type (with curated goldens and calibrated thresholds) is a
+reasonable **future** enhancement, but it is its own eval-expansion task and is out of scope
+here.
 
 ## Documentation
 
@@ -241,9 +291,9 @@ Stemming raises English keyword recall, and keyword is a gated eval type, so:
 ## Process
 
 Single PR off `main` (branch `feat/english-keyword-stemming`): handwritten migration →
-schema declaration → `searchKeyword` predicate routing + `ts_headline` (TDD) → headline
-sentinel parser + `SearchPanel` segment rendering → integration + unit tests → apply
-migration to dev + test/eval branches → eval-gate re-validation → docs. `npm run verify`
-plus `test:integration` green before push. Open the PR and **stop for maintainer review
-and merge** (including Codex/CodeRabbit bot comments). Subagent-driven where tasks are
-independent.
+schema declaration → headline sentinel parser → `searchKeyword` predicate routing +
+`ts_headline` and `searchSemantic` FTS-leg stemming (TDD) → `SearchPanel` segment rendering
+→ apply migration to dev + test/eval branches → integration + unit tests → eval regression
+pass → docs. `npm run verify` plus `test:integration` green before push. Open the PR and
+**stop for maintainer review and merge** (including Codex/CodeRabbit bot comments).
+Subagent-driven where tasks are independent.

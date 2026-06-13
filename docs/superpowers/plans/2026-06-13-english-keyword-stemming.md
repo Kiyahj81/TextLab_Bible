@@ -4,7 +4,7 @@
 
 **Goal:** English (WEB) keyword search stems — `love` matches `loves/loved/loving`, not `beloved` — with result highlighting that tracks the stemmer, while SBLGNT Greek keyword matching stays exact whole-lexeme.
 
-**Architecture:** A new immutable `bible_english` text-search config (unaccent + Snowball `english_stem`) feeds a second STORED generated tsvector column `Verse.textSearchEn`. `searchKeyword` routes per row by `Corpus.language` — English rows match/rank/highlight via `bible_english`/`textSearchEn`, Greek rows via the existing `bible_simple`/`textSearch`. Highlighting comes from `ts_headline` (same config that matched), parsed from sentinel markup into the existing `HighlightSegment[]` shape and rendered in `SearchPanel`.
+**Architecture:** A new immutable `bible_english` text-search config (unaccent + Snowball `english_stem`) feeds a second STORED generated tsvector column `Verse.textSearchEn`. `searchKeyword` uses one unified language-routed predicate (per row, by `Corpus.language`) — English rows match/rank/highlight via `bible_english`/`textSearchEn`, Greek rows via the existing `bible_simple`/`textSearch`. The assistant's `searchSemantic` keyword FTS leg (WEB-only) is switched to `bible_english`/`textSearchEn` too, so every English keyword path stems. Highlighting comes from `ts_headline` (same config that matched), parsed from sentinel markup into the existing `HighlightSegment[]` shape and rendered in `SearchPanel`.
 
 **Tech Stack:** Postgres FTS (`tsvector`, `to_tsvector`, `websearch_to_tsquery`, `ts_headline`, `english_stem`, `unaccent`), Prisma 6 raw SQL, Next 15 / React 19, Vitest 4 (+ jsdom/RTL), Neon branches.
 
@@ -23,13 +23,29 @@
 
 **Files:**
 - Create: `prisma/migrations/20260613120000_english_stem_fts/migration.sql`
+- Modify: `package.json` (scripts)
 
 - [ ] **Step 1: Confirm you are on the feature branch**
 
 Run: `git branch --show-current`
 Expected: `feat/english-keyword-stemming`. If not: `git checkout feat/english-keyword-stemming`.
 
-- [ ] **Step 2: Create the migration SQL**
+- [ ] **Step 2: Add CA-wrapped npm scripts for the commands this plan uses**
+
+This repo wraps every Node/Prisma command with `NODE_OPTIONS=--use-system-ca` via `cross-env`
+(a bare `cross-env …` won't resolve on PATH). `prisma:generate` already exists; add two more
+to `package.json` `scripts`, alongside `db:migrate:deploy` (line ~22):
+
+```json
+    "prisma:migrate:status": "cross-env NODE_OPTIONS=--use-system-ca prisma migrate status",
+    "db:migrate:deploy:test": "cross-env NODE_OPTIONS=--use-system-ca node --env-file=.env.test node_modules/prisma/build/index.js migrate deploy",
+```
+
+`db:migrate:deploy:test` mirrors how `test:integration` invokes its tool under `.env.test`
+(`node --env-file=.env.test node_modules/<tool>`), pointing `prisma migrate deploy` at the
+test/eval Neon branch.
+
+- [ ] **Step 3: Create the migration SQL**
 
 ```sql
 -- English Snowball stemming for keyword search (WEB only).
@@ -56,17 +72,17 @@ ALTER TABLE "Verse"
 CREATE INDEX "Verse_textSearchEn_idx" ON "Verse" USING GIN ("textSearchEn");
 ```
 
-- [ ] **Step 3: Apply to the dev/prod Neon branch (ep-tiny-queen via `.env`)**
+- [ ] **Step 4: Apply to the dev/prod Neon branch (ep-tiny-queen via `.env`)**
 
 Run: `npm run db:migrate:deploy`
 Expected: Prisma reports `1 migration applied` (`20260613120000_english_stem_fts`) and `All migrations have been successfully applied.` (If TLS error: the shell needs `NODE_OPTIONS=--use-system-ca`; the script bakes it in, but `npm install` must have run in an armed shell.)
 
-- [ ] **Step 4: Verify status is clean**
+- [ ] **Step 5: Verify status is clean**
 
-Run: `npx prisma migrate status`
+Run: `npm run prisma:migrate:status`
 Expected: lists `20260613120000_english_stem_fts` among applied; ends `Database schema is up to date!`
 
-- [ ] **Step 5: Smoke-check the config in SQL (optional but fast)**
+- [ ] **Step 6: Smoke-check the config in SQL (optional but fast)**
 
 Run (psql or any SQL console against the dev branch):
 ```sql
@@ -74,11 +90,11 @@ SELECT to_tsvector('bible_english', 'loved loving loves beloved');
 ```
 Expected: `loved`/`loving`/`loves` collapse to one `love` lexeme, while `beloved` has its own distinct stem — confirming stemming + separation.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add prisma/migrations/20260613120000_english_stem_fts/migration.sql
-git commit -m "Add bible_english FTS config and textSearchEn generated column"
+git add package.json prisma/migrations/20260613120000_english_stem_fts/migration.sql
+git commit -m "Add bible_english FTS config, textSearchEn column, and CA-wrapped migrate scripts"
 ```
 
 ### Task 2: Declare `textSearchEn` in the Prisma schema
@@ -105,8 +121,8 @@ And after the existing `@@index([textSearch], type: Gin)` (line 73) add:
 
 - [ ] **Step 2: Regenerate the client and confirm no drift**
 
-Run: `npx prisma generate`
-Then: `npx prisma migrate status`
+Run: `npm run prisma:generate`
+Then: `npm run prisma:migrate:status`
 Expected: generate succeeds; status still `Database schema is up to date!` (the schema now matches the migrated DB).
 
 - [ ] **Step 3: Commit**
@@ -226,27 +242,42 @@ git add lib/search-highlight.ts tests/unit/lib/search-highlight.test.ts
 git commit -m "Add ts_headline sentinel parser for stem-aware highlighting"
 ```
 
-### Task 4: Route `searchKeyword` by language + emit `ts_headline` + parse segments
+### Task 4: Route `searchKeyword` by language + `ts_headline`, and stem the semantic FTS leg
 
 **Files:**
-- Modify: `lib/search.ts` (imports near line 1-9; `searchKeyword` body, lines ~426-528)
-- Test: `tests/unit/lib/search-keyword.test.ts` (extend + update one existing assertion)
+- Modify: `lib/search.ts` (imports near line 1-9; `searchKeyword` body, lines ~426-528; `searchSemantic` FTS leg, lines ~147-158)
+- Test: `tests/unit/lib/search-keyword.test.ts` (extend + update one existing assertion); `tests/unit/lib/search-semantic.test.ts` (extend)
 
 - [ ] **Step 1: Write the new failing tests**
 
 Add these to `tests/unit/lib/search-keyword.test.ts` inside the `describe("searchKeyword FTS", …)` block:
 
 ```typescript
-  it("routes English rows to bible_english/textSearchEn and Greek to bible_simple", async () => {
+  it("uses one language-routed predicate carrying both configs (no-corpus default)", async () => {
     prismaMock.$queryRaw
       .mockResolvedValueOnce([{ count: BigInt(0) }])
       .mockResolvedValueOnce([]);
     await searchKeyword({ query: "love" });
     const sql = sqlTextFrom(prismaMock.$queryRaw.mock.calls[0]);
+    // Unified predicate: both branches present regardless of corpus; the row's
+    // language picks which one can match.
     expect(sql).toContain("bible_english");
     expect(sql).toContain("textsearchen");
     expect(sql).toContain("bible_simple");
     expect(sql).toContain('"language"');
+  });
+
+  it("narrows by abbreviation when an explicit corpus is given", async () => {
+    prismaMock.$queryRaw
+      .mockResolvedValueOnce([{ count: BigInt(0) }])
+      .mockResolvedValueOnce([]);
+    await searchKeyword({ query: "love", corpus: "WEB" });
+    const sql = sqlTextFrom(prismaMock.$queryRaw.mock.calls[0]);
+    // The corpus filter narrows rows; the unified predicate still carries both
+    // branches (the WEB rows only match the bible_english branch).
+    expect(sql).toContain("abbreviation");
+    expect(sql).toContain("web");
+    expect(sql).toContain("bible_english");
   });
 
   it("parses the per-row headline into highlightSegments", async () => {
@@ -410,13 +441,83 @@ In the `results: rows.map((row) => ({ … }))` block (current lines ~518-526), a
 - [ ] **Step 6: Run unit tests + typecheck**
 
 Run: `npx vitest run tests/unit/lib/search-keyword.test.ts` then `npx tsc --noEmit --pretty false`
-Expected: PASS (all keyword tests, including the two new ones) / exit 0.
+Expected: PASS (all keyword tests, including the new routing, explicit-corpus, and headline-parse tests) / exit 0.
 
 - [ ] **Step 7: Commit**
 
 ```bash
 git add lib/search.ts tests/unit/lib/search-keyword.test.ts
 git commit -m "Route keyword search by language with ts_headline highlighting"
+```
+
+- [ ] **Step 8: Write the failing test for the semantic FTS leg**
+
+The assistant's `searchSemantic` has its own keyword FTS leg (a separate inline `$queryRaw`,
+not routed through `searchKeyword`). It is WEB-only (`SEMANTIC_INDEX_CORPUS = "WEB"`), so it
+must use `bible_english`/`textSearchEn` for consistency. The suite already has a test
+"also runs the FTS half when keywords are supplied" where the FTS query is the **2nd**
+`$queryRaw` call (vector is 1st). Mirror that test's mock setup and add, inside
+`describe("searchSemantic", …)` in `tests/unit/lib/search-semantic.test.ts`:
+
+```typescript
+  it("uses bible_english/textSearchEn for the WEB keyword FTS leg", async () => {
+    getOpenAiMock.mockReturnValue(fakeClient([0.1, 0.2, 0.3]));
+    prismaMock.$queryRaw
+      .mockResolvedValueOnce([{ osisId: "John", chapter: 1, verse: 1, text: "In the beginning" }]) // vector
+      .mockResolvedValueOnce([{ osisId: "Eph", chapter: 2, verse: 16, text: "reconcile" }]); // FTS
+    prismaMock.verse.findMany.mockResolvedValueOnce([]); // filterToSblSpine
+    rerankCandidatesMock.mockResolvedValueOnce(null);
+
+    await searchSemantic({ query: "reconciliation", keywords: "reconciliation" });
+
+    // The FTS leg is the 2nd $queryRaw call; flatten its SQL fragments to a string.
+    const ftsSql = JSON.stringify(prismaMock.$queryRaw.mock.calls[1]).toLowerCase();
+    expect(ftsSql).toContain("bible_english");
+    expect(ftsSql).toContain("textsearchen");
+    expect(ftsSql).not.toContain("bible_simple");
+  });
+```
+
+> Reuse the suite's existing `fakeClient` helper and mock shapes (copy them from the
+> "also runs the FTS half when keywords are supplied" test). The assertion targets the FTS
+> leg's SQL (`calls[1]`), not the vector leg.
+
+Run: `npx vitest run tests/unit/lib/search-semantic.test.ts`
+Expected: FAIL — the leg still emits `bible_simple`/`textSearch`.
+
+- [ ] **Step 9: Stem the semantic FTS leg in `lib/search.ts`**
+
+In `searchSemantic` (the `if (keywords) { … }` block, ~lines 147-158), change the FTS leg from
+`bible_simple`/`textSearch` to `bible_english`/`textSearchEn` (the leg is unconditionally WEB,
+so no language routing):
+
+```typescript
+    const tsquery = Prisma.sql`websearch_to_tsquery('bible_english', ${keywords})`;
+    ftsRows = await prisma.$queryRaw<SemanticRow[]>(Prisma.sql`
+      SELECT b."osisId" AS "osisId", v."chapter" AS chapter, v."verse" AS verse, v."text" AS text
+      FROM "Verse" v
+      JOIN "Book" b ON b."id" = v."bookId"
+      JOIN "Corpus" c ON c."id" = v."corpusId"
+      WHERE c."abbreviation" = ${SEMANTIC_INDEX_CORPUS} ${bookFilter} ${chapterFilter}
+        AND v."textSearchEn" @@ ${tsquery}
+      ORDER BY ts_rank(v."textSearchEn", ${tsquery}) DESC
+      LIMIT ${POOL}
+    `);
+```
+
+(Only the config name and the two `textSearch` → `textSearchEn` references change; the vector
+leg, RRF, SBL-spine filter, and rerank are untouched.)
+
+- [ ] **Step 10: Run the semantic tests + typecheck**
+
+Run: `npx vitest run tests/unit/lib/search-semantic.test.ts` then `npx tsc --noEmit --pretty false`
+Expected: PASS (including the new assertion and the existing no-key/disabled/fusion tests) / exit 0.
+
+- [ ] **Step 11: Commit**
+
+```bash
+git add lib/search.ts tests/unit/lib/search-semantic.test.ts
+git commit -m "Stem the assistant semantic FTS leg (bible_english) for consistency"
 ```
 
 ### Task 5: Render `highlightSegments` in `SearchPanel`
@@ -567,13 +668,10 @@ git commit -m "Render stem-aware highlight segments in keyword results"
 
 - [ ] **Step 1: Apply the migration to the test/eval Neon branch (ep-restless-union via `.env.test`)**
 
-Run:
-```bash
-cross-env NODE_OPTIONS=--use-system-ca node --env-file=.env.test node_modules/prisma/build/index.js migrate deploy
-```
+Run: `npm run db:migrate:deploy:test` (the CA-wrapped script added in Task 1 Step 2)
 Expected: `20260613120000_english_stem_fts` applied; `All migrations have been successfully applied.` This branch backs both `test:integration` and the local/CI eval gate, so the column must exist here before either runs.
 
-(If the `node_modules/prisma/build/index.js` path differs in your Prisma version, run `npx prisma migrate deploy` in a shell whose `DATABASE_URL`/`DIRECT_URL` are set to the `.env.test` values.)
+(If the `node_modules/prisma/build/index.js` entry path differs in your Prisma version, adjust the `db:migrate:deploy:test` script to your Prisma CLI entry, or run `prisma migrate deploy` in a shell whose `DATABASE_URL`/`DIRECT_URL` are set to the `.env.test` values.)
 
 - [ ] **Step 2: Confirm the reference fixtures against the seed (do this before writing assertions)**
 
@@ -628,21 +726,36 @@ git add tests/integration/fts-search.test.ts
 git commit -m "Add integration coverage for English stemming and Greek invariance"
 ```
 
-### Task 7: Eval-gate re-validation + acceptance check
+### Task 7: Eval-gate regression pass + acceptance check
 
 **Files:**
-- Possibly modify: `eval/dataset/golden-set.json` (only if a keyword golden item legitimately shifts)
+- Possibly modify: `eval/dataset/golden-set.json` (only if a *gated* item legitimately shifts)
+
+> **There is no keyword eval gate.** `eval/dataset/schema.ts` types items as `exact-verse`,
+> `lemma-survey`, `conceptual`, `domain`, `cross-chapter` — no `keyword` type — and
+> `eval/thresholds.ts` has no keyword gate. The direct proof of stemming is the integration
+> suite (Task 6). Here `eval:gate` runs only as a **regression guard**: stemming can perturb a
+> gated item whose retrieval plan happens to include a keyword call. Do **not** add a keyword
+> query type in this PR (separate eval-expansion task).
 
 - [ ] **Step 1: Run the deterministic eval gate**
 
 Run: `npm run eval:gate`
-Expected: ideally still `gate passes` with keyword recall/precision at target. Stemming raises English keyword recall, which should help or hold recall.
+Expected: `gate passes`. The gated types are exact-verse/cross-chapter (recall+precision = 1.0)
+and lemma-survey (recall = 1.0), plus the two global hard gates (citation resolvability,
+lemma coverage = 100%). `conceptual` (which now exercises the stemmed semantic FTS leg) is
+report-only, so it does not fail the gate.
 
-- [ ] **Step 2: If a keyword-typed golden item regresses, fix the measurement — not the threshold**
+- [ ] **Step 2: If a GATED item regresses, fix the measurement — not the threshold**
 
-If the gate flags a keyword item:
-- Inspect that item in `eval/dataset/golden-set.json`. Stemming now retrieves additional **correct** inflected verses (recall up — extend the item's expected evidence set to include them) or additional **off-target** verses (precision down — tighten the query or rescope the expected set).
-- **Do NOT lower thresholds** in `eval/thresholds.ts` to make it pass (project eval philosophy). Adjust the golden set / query so the metric stays meaningful, and note the change in the PR description.
+If the gate flags a gated item (most plausibly a precision dip on exact-verse/cross-chapter
+from a keyword call in its plan):
+- Inspect that item in `eval/dataset/golden-set.json`. If stemming surfaced additional
+  **correct** verses, extend the item's expected `goldenReferences`; if it surfaced
+  **off-target** verses, tighten the query or rescope the expected set.
+- **Do NOT lower thresholds** in `eval/thresholds.ts` to make it pass (project eval
+  philosophy). Adjust the golden set / measurement so the metric stays meaningful, and note
+  the change in the PR description.
 - Re-run `npm run eval:gate` until green.
 
 - [ ] **Step 3: Confirm the acceptance suite is unaffected**
@@ -695,7 +808,7 @@ git commit -m "Document English keyword stemming as shipped"
 - [ ] **Step 1:** Run `npm run verify` — exit 0 (lint + tsc + build + coverage gate).
 - [ ] **Step 2:** Run `npm run test:integration` — exit 0 (already green from Task 6; re-confirm).
 - [ ] **Step 3:** Push: `git push -u origin feat/english-keyword-stemming`
-- [ ] **Step 4:** Open the PR (title: "English Snowball stemming for keyword search"). Body: summarize the migration, language-routed `searchKeyword`, `ts_headline` highlighting, tests, and any golden-set rescope; note the migration is already applied to both Neon branches.
+- [ ] **Step 4:** Open the PR (title: "English Snowball stemming for keyword search"). Body: summarize the migration, the unified language-routed `searchKeyword` predicate, the stemmed `searchSemantic` FTS leg, `ts_headline` highlighting, tests, and any gated golden-set rescope; note the migration is already applied to both Neon branches and that keyword is not a gated eval type (integration tests are the proof).
 - [ ] **Step 5:** **Stop. Report to the maintainer and wait for review/merge** (including Codex/CodeRabbit bot comments). The `Eval Gate / gate` check must pass on the PR.
 
 ---
@@ -703,5 +816,6 @@ git commit -m "Document English keyword stemming as shipped"
 ## Notes for the implementer
 
 - **Migration is shared infra.** ep-tiny-queen backs both local dev and production; ep-restless-union backs integration tests and the eval gate. Tasks 1 and 6 apply the migration to both, so production gets `textSearchEn` before any code referencing it deploys. Never run `prisma migrate dev` here.
-- **The assistant planner uses `searchKeyword` too** (`orderBy: "rank"`). It consumes `reference`/`text`/`formattedEvidence` and ignores `highlightSegments`, so no planner change is needed — but its English keyword recall now stems, which is exactly why Task 7's eval re-validation exists.
+- **Two assistant English keyword paths, both stemmed.** The deterministic planner calls `searchKeyword` (`orderBy: "rank"`) — it consumes `reference`/`text`/`formattedEvidence` and ignores `highlightSegments`, so no planner change is needed (Task 4). The hybrid path calls `searchSemantic`, whose **separate** WEB-only FTS leg is stemmed in Task 4 Steps 8–11. Leaving only one of these stemmed would make keyword vs conceptual prompts retrieve inconsistently.
+- **Keyword is not a gated eval type.** `eval:gate` is a regression guard, not proof of stemming; the integration tests (Task 6) are the proof. See Task 7. A dedicated keyword eval type is a separate future task.
 - **Greek highlighting improves incidentally:** routing Greek keyword highlight through `ts_headline('bible_simple', …)` fixes the latent accent case where an unaccented query previously highlighted nothing. No separate task — it falls out of Task 4.

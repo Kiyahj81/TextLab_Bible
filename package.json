@@ -20,6 +20,8 @@
     "db:push": "node -e \"console.error('db:push is disabled for this project; use npm run db:migrate:deploy so handwritten SQL migrations run.'); process.exit(1)\"",
     "db:migrate": "cross-env NODE_OPTIONS=--use-system-ca prisma migrate dev --name init",
     "db:migrate:deploy": "cross-env NODE_OPTIONS=--use-system-ca prisma migrate deploy",
+    "prisma:migrate:status": "cross-env NODE_OPTIONS=--use-system-ca prisma migrate status",
+    "db:migrate:deploy:test": "cross-env NODE_OPTIONS=--use-system-ca node --env-file=.env.test node_modules/prisma/build/index.js migrate deploy",
     "db:seed": "cross-env NODE_OPTIONS=--use-system-ca prisma db seed",
     "prisma:generate": "cross-env NODE_OPTIONS=--use-system-ca prisma generate",
     "import:open-bible": "cross-env NODE_OPTIONS=--use-system-ca tsx --env-file=.env scripts/import-open-bible.ts",

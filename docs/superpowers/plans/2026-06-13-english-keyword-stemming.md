@@ -688,7 +688,7 @@ Expected: `20260613120000_english_stem_fts` applied; `All migrations have been s
 
 - [ ] **Step 2: Confirm the reference fixtures against the seed (do this before writing assertions)**
 
-The assertions below name specific verses. Confirm them against the seeded corpus first — run a throwaway query (e.g. in a Node REPL or a temporary test) of `searchKeyword({ query: "love", corpus: "WEB", pageSize: 100 })` and `searchKeyword({ query: "beloved", corpus: "WEB", pageSize: 100 })`, and pick: (a) a verse whose surface form is `loved`/`loving` (not the bare word `love`) that appears in the `love` results, and (b) a verse containing `beloved` but no love-stem word. The examples used below (`John 3:16` for (a), `3 John 1:2` for (b)) are expected to be present; substitute real ones if not. The assertion shapes stay identical.
+The assertions below name specific verses. Confirm them against the seeded corpus first — run a throwaway query (e.g. in a Node REPL or a temporary test) of `searchKeyword({ query: "love", corpus: "WEB", pageSize: 100 })` and `searchKeyword({ query: "beloved", corpus: "WEB", pageSize: 100 })`, and pick: (a) a verse whose surface form is `loved`/`loving` (not the bare word `love`) that appears in the `love` results, and (b) a verse containing `beloved` but no love-stem word. The examples used below (`John 3:16` for (a), `3John 1:2` for (b)) are expected to be present; substitute real ones if not. Reference strings use `formatReference`'s OSIS form (`3John 1:2`, not `3 John 1:2`). For the beloved-only exclusion guard, scope both queries to that book so pagination cannot hide the reference. The assertion shapes stay identical.
 
 - [ ] **Step 3: Write the integration cases**
 
@@ -704,12 +704,12 @@ Add to `tests/integration/fts-search.test.ts` inside the `describe.skipIf(!enabl
   });
 
   it("does not match a different stem: 'love' excludes 'beloved'-only verses", async () => {
-    const love = await searchKeyword({ query: "love", corpus: "WEB", pageSize: 100 });
-    const beloved = await searchKeyword({ query: "beloved", corpus: "WEB", pageSize: 100 });
+    const love = await searchKeyword({ query: "love", corpus: "WEB", book: "3John", pageSize: 100 });
+    const beloved = await searchKeyword({ query: "beloved", corpus: "WEB", book: "3John", pageSize: 100 });
     const loveRefs = new Set(love.results.map((r) => r.reference));
-    // 3 John 1:2 ("Beloved, I pray…") contains "beloved" but no love-stem word.
-    expect(beloved.results.some((r) => r.reference === "3 John 1:2")).toBe(true);
-    expect(loveRefs.has("3 John 1:2")).toBe(false);
+    // 3John 1:2 ("Beloved, I pray…") contains "beloved" but no love-stem word.
+    expect(beloved.results.some((r) => r.reference === "3John 1:2")).toBe(true);
+    expect(loveRefs.has("3John 1:2")).toBe(false);
   });
 
   it("highlights the stemmed inflection (segments contain a match)", async () => {

@@ -72,8 +72,10 @@ sprint and at every Next.js minor upgrade. Cross-check each open row.
 | Status | Mitigated |
 | Mitigation | All user- and assistant-supplied values (query string, corpus, book, chapter, pagination offsets) remain bound as Prisma.sql tagged template parameters or via `Prisma.join` — no string interpolation of user input into the SQL string. The added `bible_english`/`bible_simple` config names and the `ts_headline` options string (the U+E000/U+E001 sentinels in `HEADLINE_OPTIONS`) are developer-controlled literals, not user-derived. `websearch_to_tsquery` is documented to tolerate arbitrary/hostile input (including unbalanced quotes and special operators) without throwing or producing injection risk, for both configs. Code reviewed at PR merge. |
 | Owner | Maintainer (kiyahj81) |
-| Opened | 2026-05-30 (Phase 3 Lexical FTS); extended 2026-06-13 (English keyword stemming) |
+| Opened | 2026-05-30 (Phase 3 Lexical FTS); extended 2026-06-13 (English keyword stemming); extended 2026-06-13 (kept-stopword follow-up) |
 | Next review | Re-check if the raw query in `searchKeyword` or the `searchSemantic` FTS leg is extended with new parameters or a new config/column. |
+
+**Kept-stopword follow-up (2026-06-13):** Migration `20260613130000_english_stem_no_stopwords` replaced the `english_stem` dictionary in `bible_english` with a custom Snowball dictionary `english_stem_nostop` (no stopword list) and rebuilt `Verse.textSearchEn` + its GIN index. The `bible_english` config still maps through `unaccent` + `english_stem_nostop` and remains **IMMUTABLE**; all user-supplied values are still bound as `Prisma.sql` parameters. No new extension, no new egress path, and no new injection surface — `websearch_to_tsquery('bible_english', …)` tolerates arbitrary input for the custom dictionary exactly as it did for the built-in `english_stem`.
 
 ### Phase 4b rerank — Vercel AI Gateway / Voyage data flow (accepted)
 

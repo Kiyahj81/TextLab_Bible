@@ -139,6 +139,15 @@ describe("detectTopicWords", () => {
   it("keeps core biblical entities as retrievable topic words", () => {
     expect(detectTopicWords("verses about Jesus and God in Jerusalem")).toEqual(["jesus", "god", "jerusalem"]);
   });
+
+  it("keeps just/give/form/forms now that they are off the stop list", () => {
+    // Removed from STOP_WORDS so the Assistant can surface verses about God being
+    // just, the topic of giving, and Christ being "formed" in us.
+    expect(detectTopicWords("verses about God being just")).toContain("just");
+    expect(detectTopicWords("give")).toEqual(["give"]);
+    expect(detectTopicWords("form")).toEqual(["form"]);
+    expect(detectTopicWords("forms")).toEqual(["forms"]);
+  });
 });
 
 describe("ENGLISH_TO_GREEK_LEMMA", () => {
@@ -295,7 +304,10 @@ describe("extractSignals", () => {
   it("removes explicit morphology codes before topic-word extraction", () => {
     const signals = extractSignals("find V-PAI-3S forms in 1 Peter");
     expect(signals.morphCodes).toEqual([{ code: "V-PAI-3S", mode: "exact" }]);
-    expect(signals.topicWords).toEqual([]);
+    // The morph code is stripped, so it never leaks into topic words. "forms" is no
+    // longer a stop word (see detectTopicWords test below), so it remains as a topic
+    // word here — only the parsed V-PAI-3S code is removed before extraction.
+    expect(signals.topicWords).toEqual(["forms"]);
   });
 
   it("preserves quoted English phrases as phrase terms for FTS", () => {

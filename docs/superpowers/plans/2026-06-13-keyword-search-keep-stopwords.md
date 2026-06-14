@@ -62,8 +62,9 @@ ALTER TEXT SEARCH CONFIGURATION bible_english
 
 -- 3. Rebuild Verse.textSearchEn. Changing the config does NOT recompute a STORED
 --    generated column, so drop and re-add it: the re-add recomputes every row with
---    the new mapping. The whole file runs in one transaction (all-DDL), so readers
---    never see a missing column. ~16k rows; sub-second ACCESS EXCLUSIVE lock.
+--    the new mapping. This applied migration was not wrapped in an explicit
+--    transaction; see the security-register accepted-risk entry for the brief
+--    missing-column window and the forward convention for future rebuilds.
 DROP INDEX IF EXISTS "Verse_textSearchEn_idx";
 ALTER TABLE "Verse" DROP COLUMN "textSearchEn";
 ALTER TABLE "Verse"
@@ -276,7 +277,7 @@ git commit -m "Document kept-stopword keyword search and STOP_WORDS adjustment"
 
 ## Notes for the implementer
 
-- **Both changes belong together.** The migration lets the FTS config match `just`; the `STOP_WORDS` edit lets the Assistant's extraction *pass* `just`/`give`/`form`/`forms` through to that match. One without the other is half a feature.
+- **Both changes belong together.** The migration lets the FTS config match `just`; the `STOP_WORDS` edit lets the Assistant's extraction *pass* `just` through to that match while `give`/`form`/`forms` stay filtered. One without the other is half a feature.
 - **Migration is shared infra.** ep-tiny-queen backs dev + prod; ep-restless-union backs integration + eval. Tasks 1 and 2 apply to both. Never `prisma migrate dev`.
-- **The column rebuild is a drop/re-add inside one transaction** — atomic, no missing-column window, sub-second at NT scale. Do not try to "recompute in place"; a STORED generated column only recomputes on row write, and Postgres can't re-add a GENERATED expression to an existing column.
+- **The column rebuild is a drop/re-add of an in-use generated column**, and this applied migration was not atomic because it had no explicit `BEGIN;`/`COMMIT;`; the one-time accepted risk is recorded in the security register. Future in-use column rebuilds must use an explicit transaction. Do not try to "recompute in place"; a STORED generated column only recomputes on row write, and Postgres can't re-add a GENERATED expression to an existing column.
 - **Keyword is not a gated eval type.** `eval:gate` here is a regression guard; the integration tests (Task 2) are the proof for the search side, and the signals unit test (Task 3) is the proof for the Assistant side.

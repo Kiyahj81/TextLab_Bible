@@ -220,6 +220,18 @@ sprint and at every Next.js minor upgrade. Cross-check each open row.
   handwritten SQL migrations for `bible_simple`, generated `tsvector`,
   `pgvector`, HNSW, and embedding `textHash`; use
   `npm run db:migrate:deploy` to apply the checked-in migrations.
+- **Convention — wrap any drop/re-add of an *in-use* column in an explicit
+  transaction.** Rebuilding a STORED generated column (e.g. `Verse.textSearchEn`
+  in `20260613130000_english_stem_no_stopwords`) requires `DROP COLUMN` + re-`ADD
+  COLUMN`, because changing the underlying text-search config does not recompute a
+  stored column. Prisma does not document a guaranteed wrapping transaction per
+  migration file, so a future drop/re-add on a column that live search queries
+  (`textSearch`/`textSearchEn`) should bracket the statements in explicit
+  `BEGIN;` … `COMMIT;` so concurrent reads block on the lock rather than hit a
+  momentarily-missing column. (The `…no_stopwords` migration already applied
+  cleanly to both Neon branches; it is not re-editable now — changing an applied
+  migration's bytes trips Prisma's checksum-drift guard — so this convention is for
+  future migrations of the same shape.)
 
 ## Closed
 

@@ -140,18 +140,20 @@ describe("detectTopicWords", () => {
     expect(detectTopicWords("verses about Jesus and God in Jerusalem")).toEqual(["jesus", "god", "jerusalem"]);
   });
 
-  it("keeps just/form/forms off the stop list but still filters the request verb 'give'", () => {
-    // just/form/forms removed from STOP_WORDS so the Assistant can surface verses about
-    // God being just and Christ being "formed" in us.
+  it("removes only 'just' from STOP_WORDS; give/form/forms stay filtered", () => {
+    // `just` is the one word made searchable: there is no inflected substitute for the
+    // adjective, so the bare word must surface verses about God being *just*.
     expect(detectTopicWords("verses about God being just")).toContain("just");
-    expect(detectTopicWords("form")).toEqual(["form"]);
-    expect(detectTopicWords("forms")).toEqual(["forms"]);
-    // `give` stays a stop word: it is almost always the request verb ("give me ..."),
-    // so emitting it as a topic word injects unrelated giving verses into ordinary
-    // requests. The topic of giving stays reachable via the inflected forms
-    // (`giving`/`gives`), which were never stop words and stem to `give` in FTS.
+    // `give`/`form`/`forms` stay stop words. `give` is the request verb ("give me ...");
+    // `form`/`forms` collide with morphology prompts ("verb forms", "aorist forms"). As
+    // topic words they would inject unrelated keyword/semantic searches. Their real topics
+    // stay reachable via inflected forms that were never stop words: giving/gives, formed.
+    expect(detectTopicWords("give")).toEqual([]);
+    expect(detectTopicWords("form")).toEqual([]);
+    expect(detectTopicWords("forms")).toEqual([]);
     expect(detectTopicWords("give me verses about love")).toEqual(["love"]);
     expect(detectTopicWords("verses about giving")).toContain("giving");
+    expect(detectTopicWords("Christ formed in us")).toContain("formed");
   });
 });
 
@@ -309,10 +311,10 @@ describe("extractSignals", () => {
   it("removes explicit morphology codes before topic-word extraction", () => {
     const signals = extractSignals("find V-PAI-3S forms in 1 Peter");
     expect(signals.morphCodes).toEqual([{ code: "V-PAI-3S", mode: "exact" }]);
-    // The morph code is stripped, so it never leaks into topic words. "forms" is no
-    // longer a stop word (see detectTopicWords test below), so it remains as a topic
-    // word here — only the parsed V-PAI-3S code is removed before extraction.
-    expect(signals.topicWords).toEqual(["forms"]);
+    // The morph code is stripped before extraction, and "forms" is a stop word (it
+    // collides with grammar/morphology prompts), so no topic word leaks out — a
+    // morphology request does not spawn a stray keyword/semantic search.
+    expect(signals.topicWords).toEqual([]);
   });
 
   it("preserves quoted English phrases as phrase terms for FTS", () => {

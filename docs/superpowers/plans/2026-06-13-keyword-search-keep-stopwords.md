@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-> **⚠️ Post-review correction (2026-06-13):** In the end **only `just` was removed from `STOP_WORDS`.** `give`, `form`, and `forms` were removed during implementation (Task 3) but **re-added / kept filtered after PR review** — `give` is the request verb ("give me …"), and `form`/`forms` collide with morphology prompts ("verb forms"), so as topic words they inject unrelated keyword/semantic searches. Their topics remain reachable via inflected forms that were never stop words (`giving`/`gives`, `formed`). **Wherever this plan says remove `just`/`give`/`form`/`forms`, read it as remove `just` only** — do not re-remove `give`/`form`/`forms`.
+> **Note (2026-06-13, post-review):** This plan originally proposed removing four words (`just`/`give`/`form`/`forms`) from `STOP_WORDS`. After PR review the decision narrowed to **`just` only** — `give` is the request verb ("give me …") and `form`/`forms` collide with morphology prompts ("verb forms"), so as topic words they injected unrelated keyword/semantic searches; their topics stay reachable via the inflected `giving`/`gives`/`formed`, which were never stop words. **The body below has been reconciled to that final decision (remove `just` only).**
 
-**Goal:** Make `/search` keyword mode match *any* word the user types — including words the standard English stopword list drops (`just`, `no`, `own`, `all`, `before`…) — while keeping Snowball stemming, and let the Assistant surface `just`/`give`/`form` topics by removing those four words from its app-level `STOP_WORDS`.
+**Goal:** Make `/search` keyword mode match *any* word the user types — including words the standard English stopword list drops (`just`, `no`, `own`, `all`, `before`…) — while keeping Snowball stemming, and let the Assistant surface the adjective *just* ("God is just") by removing **only `just`** from its app-level `STOP_WORDS` (request/grammar framing words like `give`/`form`/`forms` stay filtered).
 
-**Architecture:** Two complementary changes shipped together. (1) Swap the Postgres `bible_english` config's built-in `english_stem` dictionary (which bundles the english stopword list) for a custom Snowball dictionary `english_stem_nostop` (same stemming, **no** stopword dropping), then rebuild the `Verse.textSearchEn` generated column so stored vectors keep every word. The search box becomes WYSIWYG; stopword filtering now lives **only** where it belongs — the Assistant's `lib/ai/signals.ts` `STOP_WORDS` (used by `detectTopicWords` → `keywords` before the FTS query). (2) Remove `just`/`give`/`form`/`forms` from that `STOP_WORDS` set so the Assistant's topic extraction passes them through (already edited in the working tree). The two changes are synergistic: the Assistant can only retrieve "just" verses if both its keyword survives extraction *and* the FTS config matches the word.
+**Architecture:** Two complementary changes shipped together. (1) Swap the Postgres `bible_english` config's built-in `english_stem` dictionary (which bundles the english stopword list) for a custom Snowball dictionary `english_stem_nostop` (same stemming, **no** stopword dropping), then rebuild the `Verse.textSearchEn` generated column so stored vectors keep every word. The search box becomes WYSIWYG; stopword filtering now lives **only** where it belongs — the Assistant's `lib/ai/signals.ts` `STOP_WORDS` (used by `detectTopicWords` → `keywords` before the FTS query). (2) Remove **only `just`** from that `STOP_WORDS` set so the Assistant's topic extraction passes it through — `just` has no inflected substitute for the adjective. `give`/`form`/`forms` stay filtered (request-verb / morphology-prompt collisions); their topics reach retrieval via the inflected `giving`/`gives`/`formed`. The two changes are synergistic: the Assistant can only retrieve "just" verses if both its keyword survives extraction *and* the FTS config matches the word.
 
 **Tech Stack:** Postgres FTS (`tsvector`, custom `TEXT SEARCH DICTIONARY` snowball, generated columns, GIN), Prisma 6 raw SQL + `migrate deploy`, Vitest 4, Neon branches.
 
@@ -147,36 +147,52 @@ git add tests/integration/fts-search.test.ts
 git commit -m "Add integration coverage for searchable former-stopwords"
 ```
 
-### Task 3: Assistant `STOP_WORDS` — keep `just`/`give`/`form`/`forms`
+### Task 3: Assistant `STOP_WORDS` — remove only `just`
 
 **Files:**
-- Modify: `lib/ai/signals.ts` (the `STOP_WORDS` set — **edit already present in the working tree, uncommitted**)
+- Modify: `lib/ai/signals.ts` (the `STOP_WORDS` set)
 - Modify: `tests/unit/lib/ai/signals.test.ts`
 
-- [ ] **Step 1: Verify the working-tree edit is exactly the intended four-word removal**
+- [ ] **Step 1: Remove only `just` from `STOP_WORDS`**
 
-Run: `git diff lib/ai/signals.ts`
-Expected: the only change is removing `"give"`, `"just"`, `"form"`, `"forms"` from the `STOP_WORDS` `Set` (no other tokens added/removed, no logic change). If the diff shows anything else, STOP and report — do not "fix" it silently.
+In `lib/ai/signals.ts`, remove the `"just"` literal from the `STOP_WORDS` `Set` (no other tokens, no logic change). **Leave `give`, `form`, and `forms` in the set** — `give` is the request verb and `form`/`forms` collide with morphology prompts, so emitting them as topic words injects unrelated keyword/semantic searches; their topics stay reachable via the inflected `giving`/`gives`/`formed`.
 
 - [ ] **Step 2: Write the failing test**
 
 Add to `tests/unit/lib/ai/signals.test.ts` inside the `describe("detectTopicWords", …)` block:
 
 ```typescript
-  it("keeps just/give/form/forms now that they are off the stop list", () => {
-    // Removed from STOP_WORDS so the Assistant can surface verses about God being
-    // just, the topic of giving, and Christ being "formed" in us.
+  it("removes only 'just' from STOP_WORDS; give/form/forms stay filtered", () => {
+    // `just` is the one word made searchable: no inflected substitute for the adjective.
     expect(detectTopicWords("verses about God being just")).toContain("just");
-    expect(detectTopicWords("give")).toEqual(["give"]);
-    expect(detectTopicWords("form")).toEqual(["form"]);
-    expect(detectTopicWords("forms")).toEqual(["forms"]);
+    // give = request verb; form/forms collide with morphology prompts. All stay filtered;
+    // their real topics stay reachable via inflected forms (giving/gives, formed).
+    expect(detectTopicWords("give")).toEqual([]);
+    expect(detectTopicWords("form")).toEqual([]);
+    expect(detectTopicWords("forms")).toEqual([]);
+    expect(detectTopicWords("give me verses about love")).toEqual(["love"]);
+    expect(detectTopicWords("verses about giving")).toContain("giving");
+    expect(detectTopicWords("Christ formed in us")).toContain("formed");
+  });
+```
+
+Also add a planner-level guard in `tests/unit/lib/ai/retrievalPlanner.test.ts` that drives the **real** `extractSignals` (not injected `topicWords: []`) so a morphology prompt cannot spawn a stray keyword/semantic call:
+
+```typescript
+  it("runs the REAL signal extraction for a morphology prompt without injecting keyword/semantic noise", async () => {
+    await runRetrievalPlan(extractSignals("find V-PAI-3S forms in 1 Peter"));
+    expect(searchMorphology).toHaveBeenCalledWith(
+      expect.objectContaining({ morphCode: "V-PAI-3S", matchMode: "exact", book: "1Pet" })
+    );
+    expect(searchKeyword).not.toHaveBeenCalled();
+    expect(searchSemanticDetailed).not.toHaveBeenCalled();
   });
 ```
 
 - [ ] **Step 3: Run the new test + the whole signals suite**
 
-Run: `npx vitest run tests/unit/lib/ai/signals.test.ts`
-Expected: the new test PASSES (the edit is already in place), and **all** pre-existing signals tests still pass. If any pre-existing test now fails because it assumed one of these four words was a stopword, that test encoded the old behavior — update its expectation to match the intended new behavior and note the change in your report. (The `ENGLISH_TO_GREEK_LEMMA` "every key reachable" test at ~line 166 only checks reachability, so removing stopwords cannot break it.)
+Run: `npx vitest run tests/unit/lib/ai/signals.test.ts tests/unit/lib/ai/retrievalPlanner.test.ts`
+Expected: the new tests PASS and **all** pre-existing tests still pass. Removing only `just` does not break any pre-existing test (no test assumed `just` was a stopword, and `forms` stays filtered so the morphology test still sees `topicWords: []`).
 
 - [ ] **Step 4: Typecheck**
 
@@ -187,7 +203,7 @@ Expected: exit 0.
 
 ```bash
 git add lib/ai/signals.ts tests/unit/lib/ai/signals.test.ts
-git commit -m "Drop just/give/form/forms from Assistant STOP_WORDS so those topics surface"
+git commit -m "Remove only 'just' from Assistant STOP_WORDS (keep give/form/forms filtered)"
 ```
 
 ### Task 4: Eval-gate regression + acceptance
@@ -253,7 +269,7 @@ git commit -m "Document kept-stopword keyword search and STOP_WORDS adjustment"
 - [ ] **Step 1:** Run `npm run verify` — exit 0 (lint + tsc + build + coverage gate).
 - [ ] **Step 2:** Confirm the FTS keyword integration cases pass (from Task 2; the unrelated live-gateway rerank failure, if present, is pre-existing and environmental — note it, don't block on it).
 - [ ] **Step 3:** Push: `git push -u origin feat/keyword-search-keep-stopwords`
-- [ ] **Step 4:** Open the PR (title: "Keyword search matches any word (keep stopwords) + Assistant STOP_WORDS tweak"). Body: summarize the `english_stem_nostop` migration + column rebuild, the `STOP_WORDS` four-word removal and why (just/give/form/forms), tests, eval/acceptance results, that the migration is already applied to both Neon branches, and that stopword filtering now lives only in the Assistant layer.
+- [ ] **Step 4:** Open the PR (title: "Keyword search matches any word (keep stopwords) + Assistant STOP_WORDS tweak"). Body: summarize the `english_stem_nostop` migration + column rebuild, the `STOP_WORDS` change (remove only `just`; keep `give`/`form`/`forms` filtered) and why, tests, eval/acceptance results, that the migration is already applied to both Neon branches, and that stopword filtering now lives only in the Assistant layer.
 - [ ] **Step 5:** **Stop. Report to the maintainer and wait for review/merge** (including Codex/CodeRabbit). The `Eval Gate / gate` check must pass on the PR.
 
 ---

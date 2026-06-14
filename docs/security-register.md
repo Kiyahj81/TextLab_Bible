@@ -128,6 +128,20 @@ sprint and at every Next.js minor upgrade. Cross-check each open row.
 | Opened | 2026-06-08 (Phase 6 CI workflows) |
 | Next review | Re-check if a workflow gains write scope, a new secret, or is pointed at a non-test database. |
 
+### Non-atomic in-use column rebuild — migration `20260613130000_english_stem_no_stopwords`
+
+| Field | Value |
+| --- | --- |
+| Severity | Low (deploy-time availability — brief, one-time) |
+| Change | The migration rebuilds the **in-use** STORED generated column `Verse.textSearchEn` via `DROP COLUMN` + re-`ADD COLUMN` (so existing rows recompute under the new `english_stem_nostop` mapping; changing the text-search config does not recompute a stored column). The file's comment claims it "runs in one transaction," but there is **no** explicit `BEGIN;`/`COMMIT;`. |
+| Correction | That comment is **wrong**. Prisma Migrate does **not** wrap PostgreSQL migrations in a transaction by default — atomicity is opt-in via explicit `BEGIN;`/`COMMIT;` (kept off so statements like `CREATE INDEX CONCURRENTLY` remain possible). Sources: [Prisma limitations](https://www.prisma.io/docs/orm/prisma-migrate/understanding-prisma-migrate/limitations-and-known-issues), [prisma/prisma#8080](https://github.com/prisma/prisma/issues/8080), [discussion #3774](https://github.com/prisma/prisma/discussions/3774). So the drop/re-add was **not** atomic. |
+| Risk | App code queries `textSearchEn` in both the keyword and semantic paths (`lib/search.ts`). Applied to a live database under traffic, a concurrent query in the sub-second window between `DROP COLUMN` and re-`ADD COLUMN` could fail with `column "textSearchEn" does not exist`. |
+| Status | **Accepted — one-time, already applied** |
+| Mitigation | The migration already applied cleanly to both Neon branches (dev/prod `ep-tiny-queen` + test/eval `ep-restless-union`) with no observed search errors; the window has passed and the column is present and correct. The migration file **cannot** be corrected in place — editing an applied migration's bytes trips Prisma's checksum-drift guard — so the misleading in-file comment is superseded by this entry. |
+| Convention (forward) | Any **future** drop/re-add of an in-use column that live search queries (`textSearch` / `textSearchEn` / embedding columns) **must** bracket the statements in explicit `BEGIN;` … `COMMIT;`, so concurrent reads block on the `ACCESS EXCLUSIVE` lock rather than hit a momentarily-missing column. |
+| Owner | Maintainer (kiyahj81) |
+| Opened | 2026-06-14 (kept-stopword PR review — Codex P2) |
+
 ## Tooling notes
 
 - `npm audit` requires network access to the npm registry. If the
@@ -220,18 +234,12 @@ sprint and at every Next.js minor upgrade. Cross-check each open row.
   handwritten SQL migrations for `bible_simple`, generated `tsvector`,
   `pgvector`, HNSW, and embedding `textHash`; use
   `npm run db:migrate:deploy` to apply the checked-in migrations.
-- **Convention — wrap any drop/re-add of an *in-use* column in an explicit
-  transaction.** Rebuilding a STORED generated column (e.g. `Verse.textSearchEn`
-  in `20260613130000_english_stem_no_stopwords`) requires `DROP COLUMN` + re-`ADD
-  COLUMN`, because changing the underlying text-search config does not recompute a
-  stored column. Prisma does not document a guaranteed wrapping transaction per
-  migration file, so a future drop/re-add on a column that live search queries
-  (`textSearch`/`textSearchEn`) should bracket the statements in explicit
-  `BEGIN;` … `COMMIT;` so concurrent reads block on the lock rather than hit a
-  momentarily-missing column. (The `…no_stopwords` migration already applied
-  cleanly to both Neon branches; it is not re-editable now — changing an applied
-  migration's bytes trips Prisma's checksum-drift guard — so this convention is for
-  future migrations of the same shape.)
+- **In-use column rebuilds must be transaction-wrapped.** Prisma does not wrap
+  PostgreSQL migrations in a transaction by default, so any future `DROP COLUMN` +
+  re-`ADD COLUMN` on a column live search queries (`textSearch` / `textSearchEn` /
+  embeddings) must bracket the statements in explicit `BEGIN;` … `COMMIT;`. See the
+  accepted-risk advisory **"Non-atomic in-use column rebuild"** in the Open section
+  for the rationale and the one-time exception (migration `…english_stem_no_stopwords`).
 
 ## Closed
 

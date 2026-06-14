@@ -72,8 +72,10 @@ sprint and at every Next.js minor upgrade. Cross-check each open row.
 | Status | Mitigated |
 | Mitigation | All user- and assistant-supplied values (query string, corpus, book, chapter, pagination offsets) remain bound as Prisma.sql tagged template parameters or via `Prisma.join` — no string interpolation of user input into the SQL string. The added `bible_english`/`bible_simple` config names and the `ts_headline` options string (the U+E000/U+E001 sentinels in `HEADLINE_OPTIONS`) are developer-controlled literals, not user-derived. `websearch_to_tsquery` is documented to tolerate arbitrary/hostile input (including unbalanced quotes and special operators) without throwing or producing injection risk, for both configs. Code reviewed at PR merge. |
 | Owner | Maintainer (kiyahj81) |
-| Opened | 2026-05-30 (Phase 3 Lexical FTS); extended 2026-06-13 (English keyword stemming) |
+| Opened | 2026-05-30 (Phase 3 Lexical FTS); extended 2026-06-13 (English keyword stemming); extended 2026-06-13 (kept-stopword follow-up) |
 | Next review | Re-check if the raw query in `searchKeyword` or the `searchSemantic` FTS leg is extended with new parameters or a new config/column. |
+
+**Kept-stopword follow-up (2026-06-13):** Migration `20260613130000_english_stem_no_stopwords` replaced the `english_stem` dictionary in `bible_english` with a custom Snowball dictionary `english_stem_nostop` (no stopword list) and rebuilt `Verse.textSearchEn` + its GIN index. The `bible_english` config still maps through `unaccent` + `english_stem_nostop` and remains **IMMUTABLE**; all user-supplied values are still bound as `Prisma.sql` parameters. No new extension, no new egress path, and no new injection surface — `websearch_to_tsquery('bible_english', …)` tolerates arbitrary input for the custom dictionary exactly as it did for the built-in `english_stem`.
 
 ### Phase 4b rerank — Vercel AI Gateway / Voyage data flow (accepted)
 
@@ -125,6 +127,20 @@ sprint and at every Next.js minor upgrade. Cross-check each open row.
 | Owner | Maintainer (kiyahj81) |
 | Opened | 2026-06-08 (Phase 6 CI workflows) |
 | Next review | Re-check if a workflow gains write scope, a new secret, or is pointed at a non-test database. |
+
+### Non-atomic in-use column rebuild — migration `20260613130000_english_stem_no_stopwords`
+
+| Field | Value |
+| --- | --- |
+| Severity | Low (deploy-time availability — brief, one-time) |
+| Change | The migration rebuilds the **in-use** STORED generated column `Verse.textSearchEn` via `DROP COLUMN` + re-`ADD COLUMN` (so existing rows recompute under the new `english_stem_nostop` mapping; changing the text-search config does not recompute a stored column). The file's comment claims it "runs in one transaction," but there is **no** explicit `BEGIN;`/`COMMIT;`. |
+| Correction | That comment is **wrong**. Prisma Migrate does **not** wrap PostgreSQL migrations in a transaction by default — atomicity is opt-in via explicit `BEGIN;`/`COMMIT;` (kept off so statements like `CREATE INDEX CONCURRENTLY` remain possible). Sources: [Prisma limitations](https://www.prisma.io/docs/orm/prisma-migrate/understanding-prisma-migrate/limitations-and-known-issues), [prisma/prisma#8080](https://github.com/prisma/prisma/issues/8080), [discussion #3774](https://github.com/prisma/prisma/discussions/3774). So the drop/re-add was **not** atomic. |
+| Risk | App code queries `textSearchEn` in both the keyword and semantic paths (`lib/search.ts`). Applied to a live database under traffic, a concurrent query in the sub-second window between `DROP COLUMN` and re-`ADD COLUMN` could fail with `column "textSearchEn" does not exist`. |
+| Status | **Accepted — one-time, already applied** |
+| Mitigation | The migration already applied cleanly to both Neon branches (dev/prod `ep-tiny-queen` + test/eval `ep-restless-union`) with no observed search errors; the window has passed and the column is present and correct. The migration file **cannot** be corrected in place — editing an applied migration's bytes trips Prisma's checksum-drift guard — so the misleading in-file comment is superseded by this entry. |
+| Convention (forward) | Any **future** drop/re-add of an in-use column that live search queries (`textSearch` / `textSearchEn` / embedding columns) **must** bracket the statements in explicit `BEGIN;` … `COMMIT;`, so concurrent reads block on the `ACCESS EXCLUSIVE` lock rather than hit a momentarily-missing column. |
+| Owner | Maintainer (kiyahj81) |
+| Opened | 2026-06-14 (kept-stopword PR review — Codex P2) |
 
 ## Tooling notes
 
@@ -218,6 +234,12 @@ sprint and at every Next.js minor upgrade. Cross-check each open row.
   handwritten SQL migrations for `bible_simple`, generated `tsvector`,
   `pgvector`, HNSW, and embedding `textHash`; use
   `npm run db:migrate:deploy` to apply the checked-in migrations.
+- **In-use column rebuilds must be transaction-wrapped.** Prisma does not wrap
+  PostgreSQL migrations in a transaction by default, so any future `DROP COLUMN` +
+  re-`ADD COLUMN` on a column live search queries (`textSearch` / `textSearchEn` /
+  embeddings) must bracket the statements in explicit `BEGIN;` … `COMMIT;`. See the
+  accepted-risk advisory **"Non-atomic in-use column rebuild"** in the Open section
+  for the rationale and the one-time exception (migration `…english_stem_no_stopwords`).
 
 ## Closed
 

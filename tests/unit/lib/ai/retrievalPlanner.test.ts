@@ -329,6 +329,20 @@ describe("runRetrievalPlan", () => {
     expect(searchSemanticDetailed).not.toHaveBeenCalled();
   });
 
+  it("runs the REAL signal extraction for a morphology prompt without injecting keyword/semantic noise", async () => {
+    // Guards against re-removing `forms` from STOP_WORDS: unlike the test above (which
+    // forces topicWords: []), this drives the planner through extractSignals on a real
+    // prompt. `forms` must stay filtered so a morphology request does not spawn a stray
+    // searchKeyword("forms") + semantic call alongside the morphology search.
+    await runRetrievalPlan(extractSignals("find V-PAI-3S forms in 1 Peter"));
+
+    expect(searchMorphology).toHaveBeenCalledWith(
+      expect.objectContaining({ morphCode: "V-PAI-3S", matchMode: "exact", book: "1Pet" })
+    );
+    expect(searchKeyword).not.toHaveBeenCalled();
+    expect(searchSemanticDetailed).not.toHaveBeenCalled();
+  });
+
   it("returns all word hits when the count is at or below the sample size", async () => {
     searchLemma.mockResolvedValueOnce({
       lemma: "λόγος",

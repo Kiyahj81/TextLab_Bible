@@ -178,7 +178,7 @@ const STOP_WORDS: ReadonlySet<string> = new Set([
   "passages", "verse", "verses", "word", "words", "lemma", "lemmas", "term", "terms", "summarize",
   "say", "says", "said", "talk", "talks", "role", "way", "ways", "thing", "things", "every", "each",
   "not", "no", "yes", "all", "any", "some", "more", "most", "much", "many", "few", "such", "other",
-  "very", "just", "only", "also", "too", "than", "like", "different", "senses", "sense", "bible",
+  "very", "only", "also", "too", "than", "like", "different", "senses", "sense", "bible",
   "form", "forms", "verb", "verbs", "imperative", "imperatives", "indicative", "participle", "participles",
   "subjunctive", "subjunctives", "infinitive", "infinitives", "aorist", "aorists", "tense", "tenses", "mood", "moods",
   "grammar", "grammatical", "parse", "noun", "nouns", "adjective", "adjectives", "adverb", "adverbs", "pronoun", "pronouns",

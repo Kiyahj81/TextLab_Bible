@@ -26,6 +26,8 @@ component 4).
 - **Stopwords:** stem **and** drop stopwords — the standard Postgres `english` behavior.
   A query consisting only of stopwords (`the`) yields an empty tsquery and 0 results,
   which is expected.
+
+  > **Update 2026-06-13:** This decision was **reversed** by migration `20260613130000_english_stem_no_stopwords`. The `bible_english` config now uses a custom Snowball dictionary `english_stem_nostop` (no stopword list), so every word — including `just`, `no`, `own`, `all`, `before`, etc. — is indexed and matched. A stopword-only query (`the`) now returns the whole (paginated) corpus instead of 0 results; this is acceptable for a literal keyword search box. Stopword filtering lives exclusively in the Assistant layer (`lib/ai/signals.ts` `STOP_WORDS`, applied in `detectTopicWords` before constructing retrieval plans); the FTS config no longer drops any words. Only `just` was ultimately removed from `STOP_WORDS` — there is no inflected substitute for the adjective, so the bare word must be searchable ("God is *just*"). `give`, `form`, and `forms` were removed during implementation but **kept filtered after review**: `give` is the request verb ("give me …"), and `form`/`forms` collide with morphology prompts ("verb forms", "aorist forms") — emitting any of them as a topic word injects unrelated keyword/semantic searches. Their real topics stay reachable via inflected forms that were never stop words — `giving`/`gives` and `formed`.
 - **Architecture:** Approach A — a second generated tsvector column for the English
   config, leaving the existing Greek column and the citation spine untouched. (Rejected:
   a denormalized `lang` column + CASE-branched single column — more sync burden for no
@@ -205,6 +207,8 @@ the `withEnglish` join are as-is.
 - Empty query → existing early return (`{ results: [], total: 0 }`), unchanged.
 - Stopword-only English query (`the`) → empty `bible_english` tsquery → 0 results. Expected
   and acceptable; documented in the `/search` no-results guidance copy if needed.
+
+  > **Update 2026-06-13:** With `english_stem_nostop`, a stopword-only query (`the`) no longer produces an empty tsquery. It now matches every English row and returns the whole (paginated) corpus. This is the intended behavior for a literal keyword search box.
 - Arbitrary/hostile input → `websearch_to_tsquery` never throws (both configs).
 
 ## Testing

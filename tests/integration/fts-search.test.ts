@@ -88,4 +88,18 @@ describe.skipIf(!enabled)("FTS keyword search", () => {
     const fragment = await searchKeyword({ query: "λογ", corpus: "SBLGNT" });
     expect(fragment.pagination.total).toBe(0);
   });
+
+  it("matches words the english stop list used to drop (just / no / own)", async () => {
+    // These return 0 under the stopword-dropping `english` config; with
+    // english_stem_nostop they are indexed and searchable.
+    for (const term of ["just", "no", "own"]) {
+      const out = await searchKeyword({ query: term, corpus: "WEB", pageSize: 1 });
+      expect(out.pagination.total, `expected WEB matches for "${term}"`).toBeGreaterThan(0);
+    }
+  });
+
+  it("still stems while keeping stopwords (a 'love' search includes 'loved')", async () => {
+    const love = await searchKeyword({ query: "love", corpus: "WEB", pageSize: 100 });
+    expect(love.results.map((r) => r.reference)).toContain("John 3:16");
+  });
 });

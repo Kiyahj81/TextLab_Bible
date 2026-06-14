@@ -140,13 +140,18 @@ describe("detectTopicWords", () => {
     expect(detectTopicWords("verses about Jesus and God in Jerusalem")).toEqual(["jesus", "god", "jerusalem"]);
   });
 
-  it("keeps just/give/form/forms now that they are off the stop list", () => {
-    // Removed from STOP_WORDS so the Assistant can surface verses about God being
-    // just, the topic of giving, and Christ being "formed" in us.
+  it("keeps just/form/forms off the stop list but still filters the request verb 'give'", () => {
+    // just/form/forms removed from STOP_WORDS so the Assistant can surface verses about
+    // God being just and Christ being "formed" in us.
     expect(detectTopicWords("verses about God being just")).toContain("just");
-    expect(detectTopicWords("give")).toEqual(["give"]);
     expect(detectTopicWords("form")).toEqual(["form"]);
     expect(detectTopicWords("forms")).toEqual(["forms"]);
+    // `give` stays a stop word: it is almost always the request verb ("give me ..."),
+    // so emitting it as a topic word injects unrelated giving verses into ordinary
+    // requests. The topic of giving stays reachable via the inflected forms
+    // (`giving`/`gives`), which were never stop words and stem to `give` in FTS.
+    expect(detectTopicWords("give me verses about love")).toEqual(["love"]);
+    expect(detectTopicWords("verses about giving")).toContain("giving");
   });
 });
 

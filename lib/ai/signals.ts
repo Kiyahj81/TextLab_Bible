@@ -174,7 +174,7 @@ const STOP_WORDS: ReadonlySet<string> = new Set([
   "her", "him", "their", "theirs", "you", "your", "yours", "i", "me", "my", "mine", "we", "our", "us",
   "who", "whom", "whose", "what", "when", "where", "why", "how", "which", "there", "here", "relate",
   "mean", "means", "meaning", "use", "used", "uses", "using", "describe", "show", "find", "tell", "read", "related",
-  "list", "explain", "compare", "difference", "between", "versus", "vs", "passage", "summary",
+  "give", "list", "explain", "compare", "difference", "between", "versus", "vs", "passage", "summary",
   "passages", "verse", "verses", "word", "words", "lemma", "lemmas", "term", "terms", "summarize",
   "say", "says", "said", "talk", "talks", "role", "way", "ways", "thing", "things", "every", "each",
   "not", "no", "yes", "all", "any", "some", "more", "most", "much", "many", "few", "such", "other",

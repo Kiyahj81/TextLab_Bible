@@ -142,7 +142,7 @@ The assistant route follows a clear retrieval-first contract:
 ### Database
 
 - Prisma 6 over PostgreSQL. Current maintainer/dev and test environments use Neon branches (`DATABASE_URL` pooled for runtime, `DIRECT_URL` direct for migrations); local PostgreSQL remains possible if the same migrations are applied.
-- 12 migrations on disk:
+- 14 migrations on disk:
   - `0_init` — baseline reflecting pre-rename schema
   - `20260521162527_assistant_message_metadata` — `AiMessage.citations → metadata`
   - `20260522193249_token_lemma_index` — composite `(corpusId, bookId, partOfSpeech, lemma)` for `getTopLemmas`

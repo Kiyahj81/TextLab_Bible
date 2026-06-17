@@ -2,7 +2,7 @@
 
 import { NotebookPen } from "lucide-react";
 import type { SubmitEvent } from "react";
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { EnglishWordPopover } from "@/components/EnglishWordPopover";
 import { MorphologyPopover, ReaderToken } from "@/components/MorphologyPopover";
 import { ReaderModeToggle } from "@/components/ReaderModeToggle";
@@ -63,6 +63,7 @@ export function BibleReader({
   const [readerMode, setReaderMode] = useState<ReaderMode>(initialMode);
   const [tokenColorOverride, setTokenColorOverride] = useState<Record<string, string | null>>({});
   const [englishColorOverride, setEnglishColorOverride] = useState<Record<string, string | null>>({});
+  const highlightSeqRef = useRef<Record<string, number>>({});
 
   useAutoDismissMap(status, setStatus);
 
@@ -118,8 +119,11 @@ export function BibleReader({
   }
 
   async function highlightToken(verse: ReaderVerse, token: ReaderToken, color: string | null) {
-    const prev = token.id in tokenColorOverride ? tokenColorOverride[token.id] : token.highlightColor;
-    setTokenColorOverride((current) => ({ ...current, [token.id]: color }));
+    const key = token.id;
+    const prev = key in tokenColorOverride ? tokenColorOverride[key] : token.highlightColor;
+    const seq = (highlightSeqRef.current[key] ?? 0) + 1;
+    highlightSeqRef.current[key] = seq;
+    setTokenColorOverride((current) => ({ ...current, [key]: color }));
     try {
       const response =
         color === null
@@ -133,13 +137,15 @@ export function BibleReader({
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ tokenId: token.id, color })
             });
-      if (!response.ok) {
-        setTokenColorOverride((current) => ({ ...current, [token.id]: prev }));
+      if (!response.ok && highlightSeqRef.current[key] === seq) {
+        setTokenColorOverride((current) => ({ ...current, [key]: prev }));
         setVerseStatus(verse.id, "Could not save highlight.");
       }
     } catch {
-      setTokenColorOverride((current) => ({ ...current, [token.id]: prev }));
-      setVerseStatus(verse.id, "Network error. Try again.");
+      if (highlightSeqRef.current[key] === seq) {
+        setTokenColorOverride((current) => ({ ...current, [key]: prev }));
+        setVerseStatus(verse.id, "Network error. Try again.");
+      }
     }
   }
 
@@ -150,6 +156,8 @@ export function BibleReader({
       key in englishColorOverride
         ? englishColorOverride[key]
         : verse.englishHighlights.find((h) => h.wordIndex === wordIndex)?.color ?? null;
+    const seq = (highlightSeqRef.current[key] ?? 0) + 1;
+    highlightSeqRef.current[key] = seq;
     setEnglishColorOverride((current) => ({ ...current, [key]: color }));
     try {
       const response =
@@ -164,13 +172,15 @@ export function BibleReader({
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ verseId: verse.englishVerseId, englishWordIndex: wordIndex, color })
             });
-      if (!response.ok) {
+      if (!response.ok && highlightSeqRef.current[key] === seq) {
         setEnglishColorOverride((current) => ({ ...current, [key]: prev }));
         setVerseStatus(verse.id, "Could not save highlight.");
       }
     } catch {
-      setEnglishColorOverride((current) => ({ ...current, [key]: prev }));
-      setVerseStatus(verse.id, "Network error. Try again.");
+      if (highlightSeqRef.current[key] === seq) {
+        setEnglishColorOverride((current) => ({ ...current, [key]: prev }));
+        setVerseStatus(verse.id, "Network error. Try again.");
+      }
     }
   }
 

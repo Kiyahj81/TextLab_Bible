@@ -64,6 +64,7 @@ export function BibleReader({
   const [tokenColorOverride, setTokenColorOverride] = useState<Record<string, string | null>>({});
   const [englishColorOverride, setEnglishColorOverride] = useState<Record<string, string | null>>({});
   const highlightSeqRef = useRef<Record<string, number>>({});
+  const highlightAbortRef = useRef<Record<string, AbortController>>({});
 
   useAutoDismissMap(status, setStatus);
 
@@ -123,6 +124,9 @@ export function BibleReader({
     const prev = key in tokenColorOverride ? tokenColorOverride[key] : token.highlightColor;
     const seq = (highlightSeqRef.current[key] ?? 0) + 1;
     highlightSeqRef.current[key] = seq;
+    highlightAbortRef.current[key]?.abort();
+    const controller = new AbortController();
+    highlightAbortRef.current[key] = controller;
     setTokenColorOverride((current) => ({ ...current, [key]: color }));
     try {
       const response =
@@ -130,18 +134,21 @@ export function BibleReader({
           ? await fetch("/api/highlights", {
               method: "DELETE",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ tokenId: token.id })
+              body: JSON.stringify({ tokenId: token.id }),
+              signal: controller.signal
             })
           : await fetch("/api/highlights", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ tokenId: token.id, color })
+              body: JSON.stringify({ tokenId: token.id, color }),
+              signal: controller.signal
             });
       if (!response.ok && highlightSeqRef.current[key] === seq) {
         setTokenColorOverride((current) => ({ ...current, [key]: prev }));
         setVerseStatus(verse.id, "Could not save highlight.");
       }
-    } catch {
+    } catch (error) {
+      if ((error as { name?: string })?.name === "AbortError") return;
       if (highlightSeqRef.current[key] === seq) {
         setTokenColorOverride((current) => ({ ...current, [key]: prev }));
         setVerseStatus(verse.id, "Network error. Try again.");
@@ -158,6 +165,9 @@ export function BibleReader({
         : verse.englishHighlights.find((h) => h.wordIndex === wordIndex)?.color ?? null;
     const seq = (highlightSeqRef.current[key] ?? 0) + 1;
     highlightSeqRef.current[key] = seq;
+    highlightAbortRef.current[key]?.abort();
+    const controller = new AbortController();
+    highlightAbortRef.current[key] = controller;
     setEnglishColorOverride((current) => ({ ...current, [key]: color }));
     try {
       const response =
@@ -165,18 +175,21 @@ export function BibleReader({
           ? await fetch("/api/highlights", {
               method: "DELETE",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ verseId: verse.englishVerseId, englishWordIndex: wordIndex })
+              body: JSON.stringify({ verseId: verse.englishVerseId, englishWordIndex: wordIndex }),
+              signal: controller.signal
             })
           : await fetch("/api/highlights", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ verseId: verse.englishVerseId, englishWordIndex: wordIndex, color })
+              body: JSON.stringify({ verseId: verse.englishVerseId, englishWordIndex: wordIndex, color }),
+              signal: controller.signal
             });
       if (!response.ok && highlightSeqRef.current[key] === seq) {
         setEnglishColorOverride((current) => ({ ...current, [key]: prev }));
         setVerseStatus(verse.id, "Could not save highlight.");
       }
-    } catch {
+    } catch (error) {
+      if ((error as { name?: string })?.name === "AbortError") return;
       if (highlightSeqRef.current[key] === seq) {
         setEnglishColorOverride((current) => ({ ...current, [key]: prev }));
         setVerseStatus(verse.id, "Network error. Try again.");

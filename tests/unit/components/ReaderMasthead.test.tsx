@@ -1,4 +1,4 @@
-// tests/unit/components/ReadMasthead.test.tsx
+// tests/unit/components/ReaderMasthead.test.tsx
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import { render } from "@testing-library/react";

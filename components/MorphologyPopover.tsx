@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { NotebookPen, Search } from "lucide-react";
-import { useRouter } from "next/navigation";
 import type { SubmitEvent } from "react";
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { TokenDomainSense } from "@/lib/louwNida";
@@ -34,15 +33,16 @@ export function MorphologyPopover({
   reference,
   body,
   onBodyChange,
+  onHighlight,
   onClose
 }: {
   token: ReaderToken;
   reference: string;
   body: string;
   onBodyChange: (next: string) => void;
+  onHighlight: (color: string | null) => void;
   onClose: () => void;
 }) {
-  const router = useRouter();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -107,37 +107,6 @@ export function MorphologyPopover({
         setStatus("Note saved.");
       } else {
         setStatus("Could not save note.");
-      }
-    } catch {
-      setStatus("Network error. Try again.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function highlightToken(color: string | null) {
-    if (saving) return;
-
-    setSaving(true);
-    try {
-      const response =
-        color === null
-          ? await fetch("/api/highlights", {
-              method: "DELETE",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ tokenId: token.id })
-            })
-          : await fetch("/api/highlights", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ tokenId: token.id, color })
-            });
-
-      if (response.ok) {
-        setStatus(color === null ? "Highlight removed." : "Highlight saved.");
-        router.refresh();
-      } else {
-        setStatus(color === null ? "Could not remove highlight." : "Could not save highlight.");
       }
     } catch {
       setStatus("Network error. Try again.");
@@ -217,7 +186,7 @@ export function MorphologyPopover({
           <Search size={16} />
           Search lemma
         </Link>
-        <HighlightMenu label="Highlight" onPick={highlightToken} disabled={saving} />
+        <HighlightMenu label="Highlight" onPick={onHighlight} />
       </div>
 
       <form onSubmit={addNote} className="mt-4 space-y-2">

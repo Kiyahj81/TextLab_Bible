@@ -8,6 +8,7 @@ import { MorphologyPopover, ReaderToken } from "@/components/MorphologyPopover";
 import { ReaderModeToggle } from "@/components/ReaderModeToggle";
 import { writePrefCookie, READER_MODE_COOKIE, type ReaderMode } from "@/lib/readerPrefs";
 import { useAutoDismissMap } from "@/lib/useAutoDismissStatus";
+import { FOCUS_RING, FOCUS_RING_INPUT } from "@/lib/ui/focus";
 
 type EnglishHighlight = { wordIndex: number; color: string };
 
@@ -266,7 +267,7 @@ export function BibleReader({
                                 setSelectedTokenId(selectedTokenId === token.id ? null : token.id);
                               }}
                               style={tokenColor ? { backgroundColor: tokenColor } : undefined}
-                              className="mx-0.5 rounded px-1 py-0.5 transition-colors hover:bg-accent-50"
+                              className={`mx-0.5 rounded px-1 py-0.5 transition-colors hover:bg-accent-50 ${FOCUS_RING}`}
                             >
                               {token.surface}
                             </button>
@@ -307,7 +308,7 @@ export function BibleReader({
               type="button"
               onClick={() => setOpenNote((c) => ({ ...c, [verse.id]: !c[verse.id] }))}
               aria-expanded={!!openNote[verse.id]}
-              className="flex items-center gap-2 text-sm font-medium text-slate-700 hover:text-accent-800"
+              className={`flex items-center gap-2 text-sm font-medium text-slate-700 hover:text-accent-800 ${FOCUS_RING}`}
             >
               <NotebookPen size={16} />
               Note on {verse.reference}
@@ -319,14 +320,14 @@ export function BibleReader({
                   onChange={(event) =>
                     setNoteBodies((current) => ({ ...current, [verse.id]: event.target.value }))
                   }
-                  className="min-h-20 w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-accent-600"
+                  className={`min-h-20 w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-accent-600 ${FOCUS_RING_INPUT}`}
                   placeholder="Write a note"
                 />
                 <div className="flex justify-end">
                   <button
                     type="submit"
                     disabled={savingNote[verse.id] || !(noteBodies[verse.id] ?? "").trim()}
-                    className="rounded-md bg-accent-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    className={`rounded-md bg-accent-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-700 disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS_RING}`}
                   >
                     Save note
                   </button>
@@ -394,7 +395,7 @@ function EnglishVerseText({
               type="button"
               onClick={() => onSelect(open ? null : key)}
               style={color ? { backgroundColor: color } : undefined}
-              className="rounded px-0.5 transition-colors hover:bg-accent-50"
+              className={`rounded px-1 py-0.5 transition-colors hover:bg-accent-50 ${FOCUS_RING}`}
             >
               {token.value}
             </button>

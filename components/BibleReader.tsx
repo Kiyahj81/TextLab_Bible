@@ -118,7 +118,7 @@ export function BibleReader({
   }
 
   async function highlightToken(verse: ReaderVerse, token: ReaderToken, color: string | null) {
-    const prev = tokenColorOverride[token.id] ?? token.highlightColor;
+    const prev = token.id in tokenColorOverride ? tokenColorOverride[token.id] : token.highlightColor;
     setTokenColorOverride((current) => ({ ...current, [token.id]: color }));
     try {
       const response =

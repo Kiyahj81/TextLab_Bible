@@ -226,17 +226,19 @@ export function BibleReader({
         <article
           key={verse.id}
           id={`verse-${verse.verse}`}
+          aria-label={verse.reference}
           className={`scroll-mt-24 border-l-2 border-accent-200 pl-6 ${
-            targetVerse === verse.verse ? "rounded-sm ring-2 ring-amber-300 ring-offset-4 ring-offset-[var(--background)]" : ""
+            targetVerse === verse.verse ? "rounded-sm ring-2 ring-accent-400 ring-offset-4 ring-offset-[var(--background)]" : ""
           }`}
         >
-          <h2 className="oldstyle-nums mb-3 font-display text-base font-semibold text-slate-700">{verse.reference}</h2>
-
           <div className={`grid gap-4 ${showBothColumns ? "md:grid-cols-2" : ""}`}>
             {showGreek ? (
               <div>
                 <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">SBLGNT</div>
                 <div className="greek-text text-[1.45rem] leading-10 text-slate-950">
+                  <span className="oldstyle-nums mr-2 align-super text-sm font-semibold text-slate-500" aria-hidden>
+                    {verse.verse}
+                  </span>
                   {verse.tokens.length > 0
                     ? verse.tokens.map((token) => {
                         const tokenColor =
@@ -345,11 +347,21 @@ function EnglishVerseText({
   }, [verse.englishHighlights]);
 
   if (!verse.englishVerseId) {
-    return <div className="text-base leading-7 text-slate-800">{verse.englishText}</div>;
+    return (
+      <div className="text-xl leading-10 text-slate-950">
+        <span className="oldstyle-nums mr-2 align-super text-sm font-semibold text-slate-500" aria-hidden>
+          {verse.verse}
+        </span>
+        {verse.englishText}
+      </div>
+    );
   }
 
   return (
-    <div className="text-base leading-7 text-slate-800">
+    <div className="text-xl leading-10 text-slate-950">
+      <span className="oldstyle-nums mr-2 align-super text-sm font-semibold text-slate-500" aria-hidden>
+        {verse.verse}
+      </span>
       {tokens.map((token, index) => {
         if (token.kind === "space") {
           return <Fragment key={`s-${index}`}>{token.value}</Fragment>;

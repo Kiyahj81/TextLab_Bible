@@ -44,15 +44,12 @@ describe("BibleReader optimistic highlight", () => {
 
 describe("BibleReader out-of-order highlight race guard", () => {
   it("Greek: older failing request does NOT roll back a newer successful highlight", async () => {
-    // Request A: stays pending (deferred promise)
-    // Request B (and onwards): resolves ok immediately
+    // With serialization: A fires, then B waits for A to settle before firing.
+    // We resolve A with failure; B then fires and succeeds.
+    // The seq guard on A's failure (seq=1) must not roll back B's success (seq=2).
     let resolveFirst!: (v: { ok: boolean }) => void;
-    let firstRequest!: Promise<{ ok: boolean }>;
     const fetchMock = vi.fn()
-      .mockImplementationOnce(() => {
-        firstRequest = new Promise<{ ok: boolean }>((r) => { resolveFirst = r; });
-        return firstRequest;
-      }) // A: pending
+      .mockImplementationOnce(() => new Promise<{ ok: boolean }>((r) => { resolveFirst = r; })) // A: pending
       .mockImplementation(() => Promise.resolve({ ok: true }));                                  // B: succeed
     vi.stubGlobal("fetch", fetchMock);
 
@@ -61,44 +58,40 @@ describe("BibleReader out-of-order highlight race guard", () => {
     // Open morphology popover
     fireEvent.click(getByRole("button", { name: "Ἐν" }));
 
-    // Click "Highlight" once — fires request A (pending)
+    // Click "Highlight" once — queues request A (pending)
     fireEvent.click(getByRole("button", { name: /^Highlight$/ }));
 
-    // Click "Highlight" again — fires request B (resolves ok)
+    // Click "Highlight" again — queues request B (will fire after A settles)
     fireEvent.click(getByRole("button", { name: /^Highlight$/ }));
 
-    // Wait for B to land
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    // Only A should have been dispatched so far (B is waiting in the chain)
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
 
-    // Capture the winning style right after B has settled
+    // Capture the optimistic style (applied immediately for both A and B clicks)
     const winning = getByRole("button", { name: "Ἐν" }).getAttribute("style");
     expect(winning).toMatch(/background-color/);
 
-    // Now resolve A with failure — the guard must ignore this rollback
+    // Resolve A with failure — this unblocks B, and the seq guard must ignore A's rollback
     resolveFirst({ ok: false });
-    // Await the first request explicitly so the stale handler runs fully before asserting
-    await firstRequest;
 
-    // The token button must still show exactly the same style as after B settled
+    // B should now fire and settle
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    // The token button must still show the winning style (B's seq wins, A's rollback is blocked)
     await waitFor(() => {
       const tokenBtn = getByRole("button", { name: "Ἐν" });
       expect(tokenBtn.getAttribute("style")).toBe(winning);
     });
 
-    // No "could not save" status text should have appeared
+    // No "could not save" status text should have appeared (A's seq was stale)
     expect(queryByText(/could not save highlight/i)).toBeNull();
   });
 
   it("English: older failing request does NOT roll back a newer successful highlight", async () => {
-    // Request A: stays pending (deferred promise)
-    // Request B (and onwards): resolves ok immediately
+    // With serialization: A fires, B waits. Resolve A with failure; B fires and succeeds.
     let resolveFirst!: (v: { ok: boolean }) => void;
-    let firstRequest!: Promise<{ ok: boolean }>;
     const fetchMock = vi.fn()
-      .mockImplementationOnce(() => {
-        firstRequest = new Promise<{ ok: boolean }>((r) => { resolveFirst = r; });
-        return firstRequest;
-      }) // A: pending
+      .mockImplementationOnce(() => new Promise<{ ok: boolean }>((r) => { resolveFirst = r; })) // A: pending
       .mockImplementation(() => Promise.resolve({ ok: true }));                                  // B: succeed
     vi.stubGlobal("fetch", fetchMock);
 
@@ -107,27 +100,28 @@ describe("BibleReader out-of-order highlight race guard", () => {
     // Open English word popover by clicking the word "In"
     fireEvent.click(getByRole("button", { name: "In" }));
 
-    // Pick a color from the HighlightPalette — fires request A (pending)
+    // Pick a color from the HighlightPalette — queues request A (pending)
     // The first swatch is "Yellow" (aria-label="Yellow")
     fireEvent.click(getByRole("menuitemradio", { name: "Yellow" }));
 
     // Re-open the popover (picking a color closes it via onClose in EnglishWordPopover)
     fireEvent.click(getByRole("button", { name: "In" }));
 
-    // Pick the "Blue" swatch — fires request B (resolves ok)
+    // Pick the "Blue" swatch — queues request B (will fire after A settles)
     fireEvent.click(getByRole("menuitemradio", { name: "Blue" }));
 
-    // Wait for B to land (2 total fetch calls)
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    // Only A should have been dispatched so far (B is waiting in the chain)
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
 
-    // Capture the winning style right after B has settled
+    // Capture the winning style
     const winning = getByRole("button", { name: "In" }).getAttribute("style");
     expect(winning).toMatch(/background-color/);
 
-    // Resolve A with failure — the guard must ignore this rollback
+    // Resolve A with failure — unblocks B; seq guard must ignore A's rollback
     resolveFirst({ ok: false });
-    // Await the first request explicitly so the stale handler runs fully before asserting
-    await firstRequest;
+
+    // B should now fire and settle
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
 
     // Word button must still show exactly the winning style
     await waitFor(() => {
@@ -140,67 +134,61 @@ describe("BibleReader out-of-order highlight race guard", () => {
   });
 });
 
-describe("BibleReader abort superseded highlight writes", () => {
-  it("Greek: in-flight write is aborted when the same token is re-highlighted", async () => {
-    let signalA: AbortSignal | undefined;
-    const fetchMock = vi.fn((_url: string, init: RequestInit) => {
-      if (!signalA) {
-        // Request A: capture its signal, never settle
-        signalA = init.signal!;
-        return new Promise<{ ok: boolean }>(() => {});
-      }
-      // Request B: settle immediately
-      return Promise.resolve({ ok: true });
-    });
+describe("BibleReader highlight write serialization", () => {
+  it("Greek: second write for the same token is not dispatched until the first settles", async () => {
+    let resolveFirst!: (v: { ok: boolean }) => void;
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(() => new Promise<{ ok: boolean }>((r) => { resolveFirst = r; })) // A: pending
+      .mockImplementation(() => Promise.resolve({ ok: true }));                                  // B
     vi.stubGlobal("fetch", fetchMock);
 
     const { getByRole } = render(<BibleReader verses={[verse]} initialMode="greek" />);
 
-    // Open morphology popover
+    // Open morphology popover and click Highlight twice
     fireEvent.click(getByRole("button", { name: "Ἐν" }));
+    fireEvent.click(getByRole("button", { name: /^Highlight$/ })); // A dispatched
+    fireEvent.click(getByRole("button", { name: /^Highlight$/ })); // B queued (not yet dispatched)
 
-    // Click "Highlight" — fires request A (never settles, signal captured)
-    fireEvent.click(getByRole("button", { name: /^Highlight$/ }));
+    // Only A should have been dispatched
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
 
-    // Click "Highlight" again — fires request B (resolves ok), should abort A
-    fireEvent.click(getByRole("button", { name: /^Highlight$/ }));
+    // B must still be queued, not sent
+    expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    // Wait for both fetch calls
+    // Settle A
+    resolveFirst({ ok: true });
+
+    // B should now be dispatched
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-
-    // Request A's signal must now be aborted
-    expect(signalA?.aborted).toBe(true);
   });
 
-  it("English: in-flight write is aborted when the same word is re-highlighted", async () => {
-    let signalA: AbortSignal | undefined;
-    const fetchMock = vi.fn((_url: string, init: RequestInit) => {
-      if (!signalA) {
-        // Request A: capture its signal, never settle
-        signalA = init.signal!;
-        return new Promise<{ ok: boolean }>(() => {});
-      }
-      // Request B: settle immediately
-      return Promise.resolve({ ok: true });
-    });
+  it("English: second write for the same word is not dispatched until the first settles", async () => {
+    let resolveFirst!: (v: { ok: boolean }) => void;
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(() => new Promise<{ ok: boolean }>((r) => { resolveFirst = r; })) // A: pending
+      .mockImplementation(() => Promise.resolve({ ok: true }));                                  // B
     vi.stubGlobal("fetch", fetchMock);
 
     const { getByRole } = render(<BibleReader verses={[verse]} initialMode="english" />);
 
-    // Open English word popover
+    // Open English word popover and pick a color twice
     fireEvent.click(getByRole("button", { name: "In" }));
+    fireEvent.click(getByRole("menuitemradio", { name: "Yellow" })); // A dispatched
 
-    // Pick Yellow — fires request A (never settles, signal captured)
-    fireEvent.click(getByRole("menuitemradio", { name: "Yellow" }));
-
-    // Re-open the popover and pick Blue — fires request B, should abort A
+    // Re-open popover and pick another color
     fireEvent.click(getByRole("button", { name: "In" }));
-    fireEvent.click(getByRole("menuitemradio", { name: "Blue" }));
+    fireEvent.click(getByRole("menuitemradio", { name: "Blue" }));   // B queued (not yet dispatched)
 
-    // Wait for both fetch calls
+    // Only A should have been dispatched
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    // B must still be queued, not sent
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    // Settle A
+    resolveFirst({ ok: true });
+
+    // B should now be dispatched
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-
-    // Request A's signal must now be aborted
-    expect(signalA?.aborted).toBe(true);
   });
 });

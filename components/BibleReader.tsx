@@ -64,7 +64,7 @@ export function BibleReader({
   const [tokenColorOverride, setTokenColorOverride] = useState<Record<string, string | null>>({});
   const [englishColorOverride, setEnglishColorOverride] = useState<Record<string, string | null>>({});
   const highlightSeqRef = useRef<Record<string, number>>({});
-  const highlightAbortRef = useRef<Record<string, AbortController>>({});
+  const highlightChainRef = useRef<Record<string, Promise<unknown>>>({});
 
   useAutoDismissMap(status, setStatus);
 
@@ -124,36 +124,36 @@ export function BibleReader({
     const prev = key in tokenColorOverride ? tokenColorOverride[key] : token.highlightColor;
     const seq = (highlightSeqRef.current[key] ?? 0) + 1;
     highlightSeqRef.current[key] = seq;
-    highlightAbortRef.current[key]?.abort();
-    const controller = new AbortController();
-    highlightAbortRef.current[key] = controller;
     setTokenColorOverride((current) => ({ ...current, [key]: color }));
-    try {
-      const response =
-        color === null
-          ? await fetch("/api/highlights", {
-              method: "DELETE",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ tokenId: token.id }),
-              signal: controller.signal
-            })
-          : await fetch("/api/highlights", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ tokenId: token.id, color }),
-              signal: controller.signal
-            });
-      if (!response.ok && highlightSeqRef.current[key] === seq) {
-        setTokenColorOverride((current) => ({ ...current, [key]: prev }));
-        setVerseStatus(verse.id, "Could not save highlight.");
+
+    const previous = highlightChainRef.current[key] ?? Promise.resolve();
+    const run = previous.catch(() => {}).then(async () => {
+      try {
+        const response =
+          color === null
+            ? await fetch("/api/highlights", {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ tokenId: token.id })
+              })
+            : await fetch("/api/highlights", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ tokenId: token.id, color })
+              });
+        if (!response.ok && highlightSeqRef.current[key] === seq) {
+          setTokenColorOverride((current) => ({ ...current, [key]: prev }));
+          setVerseStatus(verse.id, "Could not save highlight.");
+        }
+      } catch {
+        if (highlightSeqRef.current[key] === seq) {
+          setTokenColorOverride((current) => ({ ...current, [key]: prev }));
+          setVerseStatus(verse.id, "Network error. Try again.");
+        }
       }
-    } catch (error) {
-      if ((error as { name?: string })?.name === "AbortError") return;
-      if (highlightSeqRef.current[key] === seq) {
-        setTokenColorOverride((current) => ({ ...current, [key]: prev }));
-        setVerseStatus(verse.id, "Network error. Try again.");
-      }
-    }
+    });
+    highlightChainRef.current[key] = run;
+    await run;
   }
 
   async function highlightEnglishWord(verse: ReaderVerse, wordIndex: number, color: string | null) {
@@ -165,36 +165,36 @@ export function BibleReader({
         : verse.englishHighlights.find((h) => h.wordIndex === wordIndex)?.color ?? null;
     const seq = (highlightSeqRef.current[key] ?? 0) + 1;
     highlightSeqRef.current[key] = seq;
-    highlightAbortRef.current[key]?.abort();
-    const controller = new AbortController();
-    highlightAbortRef.current[key] = controller;
     setEnglishColorOverride((current) => ({ ...current, [key]: color }));
-    try {
-      const response =
-        color === null
-          ? await fetch("/api/highlights", {
-              method: "DELETE",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ verseId: verse.englishVerseId, englishWordIndex: wordIndex }),
-              signal: controller.signal
-            })
-          : await fetch("/api/highlights", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ verseId: verse.englishVerseId, englishWordIndex: wordIndex, color }),
-              signal: controller.signal
-            });
-      if (!response.ok && highlightSeqRef.current[key] === seq) {
-        setEnglishColorOverride((current) => ({ ...current, [key]: prev }));
-        setVerseStatus(verse.id, "Could not save highlight.");
+
+    const previous = highlightChainRef.current[key] ?? Promise.resolve();
+    const run = previous.catch(() => {}).then(async () => {
+      try {
+        const response =
+          color === null
+            ? await fetch("/api/highlights", {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ verseId: verse.englishVerseId, englishWordIndex: wordIndex })
+              })
+            : await fetch("/api/highlights", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ verseId: verse.englishVerseId, englishWordIndex: wordIndex, color })
+              });
+        if (!response.ok && highlightSeqRef.current[key] === seq) {
+          setEnglishColorOverride((current) => ({ ...current, [key]: prev }));
+          setVerseStatus(verse.id, "Could not save highlight.");
+        }
+      } catch {
+        if (highlightSeqRef.current[key] === seq) {
+          setEnglishColorOverride((current) => ({ ...current, [key]: prev }));
+          setVerseStatus(verse.id, "Network error. Try again.");
+        }
       }
-    } catch (error) {
-      if ((error as { name?: string })?.name === "AbortError") return;
-      if (highlightSeqRef.current[key] === seq) {
-        setEnglishColorOverride((current) => ({ ...current, [key]: prev }));
-        setVerseStatus(verse.id, "Network error. Try again.");
-      }
-    }
+    });
+    highlightChainRef.current[key] = run;
+    await run;
   }
 
   if (verses.length === 0) {

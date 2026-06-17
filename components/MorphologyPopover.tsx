@@ -209,7 +209,9 @@ export function MorphologyPopover({
         </button>
       </form>
 
-      {status ? <p className="mt-3 text-sm text-slate-600">{status}</p> : null}
+      {status ? (
+        <p role="status" aria-live="polite" className="mt-3 text-sm text-slate-600">{status}</p>
+      ) : null}
     </div>
   );
 }

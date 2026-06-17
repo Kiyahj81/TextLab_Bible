@@ -1798,6 +1798,8 @@ git commit -m "polish(read): only one word popover open at a time"
 
 Let the reader type a free-text reference (e.g. `John 3:16`, `Rom 5`, `1 cor 13:4`) in addition to the book/chapter dropdowns. Reuses the existing reference machinery; the dropdowns remain and keep working without JavaScript.
 
+> **Scope addition (decided 2026-06-17, after Phase C merged — user request):** the quick-jump must ALSO live in the Phase C **sticky reader bar** (the pinned bar inside [components/BibleReader.tsx](../../../components/BibleReader.tsx) that carries the chapter label + mode toggle), not only in `ReaderControls` at the top. Without this, the reader has to scroll all the way back to the top to change book/chapter/verse while reading. Surface the free-text quick-jump (`parsePassageQuery` → `router.push`) in the sticky bar alongside the chapter label and mode toggle — and consider compact prev/next chapter controls there too — so the reader can jump to any passage from anywhere while scrolled. Keep the `ReaderControls` field as well (Task F2; it works without JavaScript). Any scroll-to-target after a jump must respect `prefers-reduced-motion` (the Phase D guard). This completes the Phase C (C2) sticky-bar wayfinding intent.
+
 ### Task F1: `parsePassageQuery` helper (accepts chapter-only and chapter:verse)
 
 **Files:**

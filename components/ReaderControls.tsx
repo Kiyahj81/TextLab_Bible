@@ -15,8 +15,8 @@ export function ReaderControls({
   const [book, setBook] = useState(selectedBook);
   const [chapterOverride, setChapterOverride] = useState<number | null>(selectedChapter);
 
-  // Re-sync to URL-driven props (e.g. after ReaderLocationMemo restores a
-  // saved passage via router.replace), otherwise the dropdowns keep showing
+  // Re-sync to URL-driven props (e.g. after a server-side redirect restores a
+  // saved passage on a bare /read visit), otherwise the dropdowns keep showing
   // their initial-mount values while the page actually displays a different
   // book/chapter.
   useEffect(() => {

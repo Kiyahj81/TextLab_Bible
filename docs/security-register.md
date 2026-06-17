@@ -142,6 +142,19 @@ sprint and at every Next.js minor upgrade. Cross-check each open row.
 | Owner | Maintainer (kiyahj81) |
 | Opened | 2026-06-14 (kept-stopword PR review — Codex P2) |
 
+### Read-page reader-preference cookies — non-`httpOnly` by design (Phase A)
+
+| Field | Value |
+| --- | --- |
+| Severity | Low (cookie-posture consideration; not a vulnerability) |
+| Change | Phase A (`/read` first-load stability) introduces three client-readable preference cookies, written by `writePrefCookie` in `lib/readerPrefs.ts` and read server-side via `cookies()` in `app/read/page.tsx`: `textlab-reader-mode`, `textlab-reader-last-passage`, and `textlab-intro-dismissed-<id>`. They replace the previous post-hydration `localStorage` reads so the server renders the correct first paint (no mode flash / intro blink / client redirect-refetch). |
+| Attributes | `path=/; max-age=31536000 (1 year); SameSite=Lax`. Intentionally **non-`httpOnly`** (a client component writes them via `document.cookie`) and **non-`Secure`** (no `Secure` attribute is set). |
+| Data sensitivity | None — display preferences only: chosen reader mode, last book/chapter viewed, whether the intro blurb was dismissed. No identifiers, secrets, or PII. |
+| Status | Accepted — by design |
+| Mitigation | The values are non-sensitive UI state and must be JS-readable on write, so `httpOnly` is not applicable. `SameSite=Lax` limits cross-site send. Server parsing is defensive: `parseReaderMode` falls back to `parallel` and `parseSavedPassage` rejects malformed JSON / non-integer chapters, so a tampered cookie cannot inject state beyond the validated union/shape; the bare-URL redirect target is built from the parsed (validated) book osisId + integer chapter, URL-encoded. |
+| Owner | Maintainer (kiyahj81) |
+| Opened | 2026-06-17 (Phase A — Read page first-load stability) |
+
 ## Tooling notes
 
 - `npm audit` requires network access to the npm registry. If the

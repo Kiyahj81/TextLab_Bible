@@ -1,8 +1,6 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, beforeEach } from "vitest";
 import { render } from "@testing-library/react";
-
-vi.mock("next/navigation", () => ({ useRouter: () => ({ replace: vi.fn() }) }));
 
 import { ReaderLocationMemo } from "@/components/ReaderLocationMemo";
 

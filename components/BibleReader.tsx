@@ -76,7 +76,11 @@ export function BibleReader({
   useEffect(() => {
     if (!targetVerse) return;
     const node = document.getElementById(`verse-${targetVerse}`);
-    if (node) node.scrollIntoView({ block: "center", behavior: "smooth" });
+    if (!node) return;
+    const reduce =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    node.scrollIntoView({ block: "center", behavior: reduce ? "auto" : "smooth" });
   }, [targetVerse]);
 
   function changeReaderMode(next: ReaderMode) {

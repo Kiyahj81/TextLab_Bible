@@ -17,7 +17,7 @@ const verse = {
 
 describe("BibleReader initial mode", () => {
   it("renders greek-only on first paint when initialMode=greek (no parallel flash)", () => {
-    const { queryByText } = render(<BibleReader verses={[verse]} initialMode="greek" />);
+    const { queryByText } = render(<BibleReader verses={[verse]} initialMode="greek" chapterLabel="John 1" />);
     expect(queryByText("SBLGNT")).toBeTruthy();
     expect(queryByText("WEB")).toBeNull(); // English column not rendered
   });

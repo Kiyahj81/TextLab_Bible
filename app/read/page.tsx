@@ -62,9 +62,12 @@ export default async function ReadPage({ searchParams }: { searchParams: SearchP
         <ReaderControls books={books} passages={passages} selectedBook={book} selectedChapter={chapter} selectedVerse={targetVerse} />
       </section>
 
-      <ChapterNav prev={neighbors.prev} next={neighbors.next} />
-
-      <BibleReader verses={verses} targetVerse={targetVerse} initialMode={initialMode} />
+      <BibleReader
+        verses={verses}
+        targetVerse={targetVerse}
+        initialMode={initialMode}
+        chapterLabel={`${bookName(book)} ${chapter}`}
+      />
 
       <ChapterNav prev={neighbors.prev} next={neighbors.next} />
     </div>

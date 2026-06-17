@@ -48,11 +48,13 @@ function tokenizeEnglish(text: string): EnglishToken[] {
 export function BibleReader({
   verses,
   targetVerse,
-  initialMode = "parallel"
+  initialMode = "parallel",
+  chapterLabel
 }: {
   verses: ReaderVerse[];
   targetVerse?: number | null;
   initialMode?: ReaderMode;
+  chapterLabel: string;
 }) {
   const [selectedTokenId, setSelectedTokenId] = useState<string | null>(null);
   const [selectedEnglishWord, setSelectedEnglishWord] = useState<string | null>(null);
@@ -215,7 +217,8 @@ export function BibleReader({
 
   return (
     <div className="space-y-8">
-      <div className="flex justify-end">
+      <div className="sticky top-0 z-10 -mx-4 flex items-center justify-between gap-3 border-b border-stone-200 bg-[var(--background)]/90 px-4 py-2 backdrop-blur">
+        <span className="font-display text-sm font-semibold text-slate-700">{chapterLabel}</span>
         <ReaderModeToggle mode={readerMode} onChange={changeReaderMode} />
       </div>
 

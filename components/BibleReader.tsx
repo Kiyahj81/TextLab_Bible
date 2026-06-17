@@ -223,7 +223,7 @@ export function BibleReader({
         <ReaderModeToggle mode={readerMode} onChange={changeReaderMode} />
       </div>
 
-      <div className={`grid gap-4 px-6 ${showBothColumns ? "md:grid-cols-2" : "max-w-[68ch]"}`}>
+      <div className={`grid gap-4 border-l-2 border-transparent pl-6 ${showBothColumns ? "md:grid-cols-2" : "max-w-[68ch]"}`}>
         {showGreek ? (
           <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">SBLGNT</div>
         ) : null}

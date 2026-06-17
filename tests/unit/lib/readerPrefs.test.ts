@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseReaderMode, READER_MODE_COOKIE } from "@/lib/readerPrefs";
+import { parseReaderMode, parseSavedPassage, READER_MODE_COOKIE } from "@/lib/readerPrefs";
 
 describe("parseReaderMode", () => {
   it("accepts the three valid modes", () => {
@@ -14,5 +14,26 @@ describe("parseReaderMode", () => {
   });
   it("exposes a stable cookie name", () => {
     expect(READER_MODE_COOKIE).toBe("textlab-reader-mode");
+  });
+});
+
+describe("parseSavedPassage", () => {
+  it("parses a valid saved passage", () => {
+    expect(parseSavedPassage('{"book":"John","chapter":3}')).toEqual({ book: "John", chapter: 3 });
+  });
+  it("rejects empty, missing, or malformed input", () => {
+    expect(parseSavedPassage(null)).toBeNull();
+    expect(parseSavedPassage(undefined)).toBeNull();
+    expect(parseSavedPassage("")).toBeNull();
+    expect(parseSavedPassage("not json")).toBeNull();
+    expect(parseSavedPassage("{}")).toBeNull();
+  });
+  it("rejects an empty book (would build an invalid /read redirect)", () => {
+    expect(parseSavedPassage('{"book":"","chapter":3}')).toBeNull();
+  });
+  it("rejects a non-positive or non-integer chapter", () => {
+    expect(parseSavedPassage('{"book":"John","chapter":0}')).toBeNull();
+    expect(parseSavedPassage('{"book":"John","chapter":-1}')).toBeNull();
+    expect(parseSavedPassage('{"book":"John","chapter":3.5}')).toBeNull();
   });
 });

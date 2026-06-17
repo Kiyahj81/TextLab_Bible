@@ -20,7 +20,14 @@ export function parseSavedPassage(value: string | null | undefined): SavedPassag
   if (!value) return null;
   try {
     const parsed = JSON.parse(value) as Partial<SavedPassage>;
-    if (typeof parsed?.book === "string" && Number.isInteger(parsed?.chapter)) {
+    // Reject empty book / non-positive / non-integer chapter: this value builds
+    // a bare-/read redirect URL, so a tampered cookie must not yield an invalid passage.
+    if (
+      typeof parsed?.book === "string" &&
+      parsed.book.length > 0 &&
+      Number.isInteger(parsed?.chapter) &&
+      (parsed.chapter as number) >= 1
+    ) {
       return { book: parsed.book, chapter: parsed.chapter as number };
     }
   } catch {

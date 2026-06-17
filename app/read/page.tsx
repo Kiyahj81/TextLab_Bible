@@ -25,17 +25,21 @@ export default async function ReadPage({ searchParams }: { searchParams: SearchP
   const cookieStore = await cookies();
   const initialMode = parseReaderMode(cookieStore.get(READER_MODE_COOKIE)?.value) ?? "parallel";
   const introDismissed = cookieStore.get(introCookieName("read"))?.value === "1";
-  const isBareUrl =
-    params.book === undefined && params.chapter === undefined && params.verse === undefined;
+  // Treat empty query values (e.g. `/read?book=`) as absent, so a bare-ish URL
+  // still restores the saved passage and the book still defaults to John.
+  const bookParam = getParam(params.book) || undefined;
+  const chapterParam = getParam(params.chapter) || undefined;
+  const verseParam = getParam(params.verse) || undefined;
+  const isBareUrl = bookParam === undefined && chapterParam === undefined && verseParam === undefined;
   if (isBareUrl) {
     const saved = parseSavedPassage(cookieStore.get(LAST_PASSAGE_COOKIE)?.value);
     if (saved) {
       redirect(`/read?book=${encodeURIComponent(saved.book)}&chapter=${saved.chapter}`);
     }
   }
-  const book = getParam(params.book) ?? "John";
-  const chapter = parsePositiveInt(getParam(params.chapter)) ?? 1;
-  const targetVerse = parsePositiveInt(getParam(params.verse)) ?? null;
+  const book = bookParam ?? "John";
+  const chapter = parsePositiveInt(chapterParam) ?? 1;
+  const targetVerse = parsePositiveInt(verseParam) ?? null;
   const [books, passages, verses, neighbors] = await Promise.all([
     getAvailableReaderBooks(),
     getAvailablePassages(),

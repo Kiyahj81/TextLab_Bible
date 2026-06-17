@@ -6,6 +6,8 @@ import { prisma } from "@/lib/db";
 import { parseNotesSort, parseReferenceFilter } from "@/lib/notes-filter";
 import { parsePositiveInt } from "@/lib/params";
 import { formatReference } from "@/lib/references";
+import { introCookieName } from "@/lib/readerPrefs";
+import { cookies } from "next/headers";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -14,6 +16,7 @@ export const dynamic = "force-dynamic";
 export default async function NotesPage({ searchParams }: { searchParams: SearchParams }) {
   const userId = await requirePageAuth();
   const params = await searchParams;
+  const introDismissed = (await cookies()).get(introCookieName("notes"))?.value === "1";
   const tag = getParam(params.tag) ?? "";
   const reference = getParam(params.reference) ?? "";
   const keyword = getParam(params.keyword) ?? "";
@@ -112,7 +115,7 @@ export default async function NotesPage({ searchParams }: { searchParams: Search
           Study Annotations
         </p>
         <h1 className="font-display text-3xl font-semibold tracking-tight text-slate-950">Notes</h1>
-        <DismissibleIntro id="notes">
+        <DismissibleIntro id="notes" defaultDismissed={introDismissed}>
           Review and edit notes attached to verses or Greek tokens.
         </DismissibleIntro>
       </div>

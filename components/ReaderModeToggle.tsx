@@ -1,6 +1,8 @@
 "use client";
 
-export type ReaderMode = "greek" | "english" | "parallel";
+import type { ReaderMode } from "@/lib/readerPrefs";
+
+export type { ReaderMode };
 
 const OPTIONS: { value: ReaderMode; label: string }[] = [
   { value: "greek", label: "Greek" },

@@ -9,6 +9,8 @@ import { querySearchLabel, scopeSuffix } from "@/lib/searchLabel";
 import { getAvailableReaderBooks, getLouwNidaDomainOptions, searchDomain, searchKeyword, searchLemma, searchMorphology } from "@/lib/search";
 import type { DomainOptions } from "@/lib/search";
 import { normalizeSearchMode } from "@/lib/searchMode";
+import { introCookieName } from "@/lib/readerPrefs";
+import { cookies } from "next/headers";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -17,6 +19,7 @@ export const dynamic = "force-dynamic";
 export default async function SearchPage({ searchParams }: { searchParams: SearchParams }) {
   const userId = await requirePageAuth();
   const params = await searchParams;
+  const introDismissed = (await cookies()).get(introCookieName("search"))?.value === "1";
   const mode = normalizeSearchMode(getParam(params.mode));
   const query = getParam(params.q) ?? "";
   const book = getParam(params.book) ?? "";
@@ -133,7 +136,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
           Lexical &amp; Morphological
         </p>
         <h1 className="font-display text-3xl font-semibold tracking-tight text-slate-950">Search</h1>
-        <DismissibleIntro id="search">
+        <DismissibleIntro id="search" defaultDismissed={introDismissed}>
           Search verses by keyword, Greek tokens by lemma, or morphology codes by exact or prefix match.
         </DismissibleIntro>
       </div>

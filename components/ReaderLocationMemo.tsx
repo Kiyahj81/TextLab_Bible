@@ -1,43 +1,15 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { LAST_PASSAGE_COOKIE, writePrefCookie } from "@/lib/readerPrefs";
 
-const STORAGE_KEY = "textlab-reader-last-passage";
-
-type SavedPassage = { book: string; chapter: number };
-
-function readSavedPassage(): SavedPassage | null {
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<SavedPassage>;
-    if (typeof parsed?.book === "string" && typeof parsed?.chapter === "number") {
-      return { book: parsed.book, chapter: parsed.chapter };
-    }
-  } catch {
-    // malformed storage — ignore
-  }
-  return null;
-}
-
+// Persists the current passage so the server can restore it on a bare /read
+// visit (the redirect now happens server-side in app/read/page.tsx, before
+// paint — no client flash). This component only writes; it never navigates.
 export function ReaderLocationMemo({ book, chapter }: { book: string; chapter: number }) {
-  const router = useRouter();
-
   useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const isBareUrl = window.location.search === "";
-    if (isBareUrl) {
-      const saved = readSavedPassage();
-      if (saved && (saved.book !== book || saved.chapter !== chapter)) {
-        router.replace(`/read?book=${saved.book}&chapter=${saved.chapter}`);
-        return;
-      }
-    }
-
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ book, chapter }));
-  }, [book, chapter, router]);
+    writePrefCookie(LAST_PASSAGE_COOKIE, JSON.stringify({ book, chapter }));
+  }, [book, chapter]);
 
   return null;
 }

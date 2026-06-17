@@ -3,11 +3,14 @@ import { DismissibleIntro } from "@/components/DismissibleIntro";
 import { assistantGuardrailsDisplay } from "@/lib/ai/assistantGuardrailsDisplay";
 import { requirePageAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { introCookieName } from "@/lib/readerPrefs";
+import { cookies } from "next/headers";
 
 export const dynamic = "force-dynamic";
 
 export default async function AssistantPage() {
   const userId = await requirePageAuth();
+  const introDismissed = (await cookies()).get(introCookieName("assistant"))?.value === "1";
   const generatedNotes = await prisma.generatedStudyNote.findMany({
     where: { userId },
     orderBy: { createdAt: "desc" },
@@ -21,7 +24,7 @@ export default async function AssistantPage() {
           Corpus-Grounded Q&amp;A
         </p>
         <h1 className="font-display text-3xl font-semibold tracking-tight text-slate-950">Assistant</h1>
-        <DismissibleIntro id="assistant">
+        <DismissibleIntro id="assistant" defaultDismissed={introDismissed}>
           Ask corpus-backed Bible questions. The assistant shows model routing, retrieval trace, and citations before export.
         </DismissibleIntro>
       </div>

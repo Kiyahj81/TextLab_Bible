@@ -5,12 +5,15 @@ import { ReaderControls } from "@/components/ReaderControls";
 import { ReaderLocationMemo } from "@/components/ReaderLocationMemo";
 import { requirePageAuth } from "@/lib/auth";
 import { parsePositiveInt } from "@/lib/params";
+import { introCookieName, parseReaderMode, parseSavedPassage, LAST_PASSAGE_COOKIE, READER_MODE_COOKIE } from "@/lib/readerPrefs";
+import { redirect } from "next/navigation";
 import {
   getAvailablePassages,
   getAvailableReaderBooks,
   getPassageNeighbors,
   getReaderPassage
 } from "@/lib/search";
+import { cookies } from "next/headers";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -19,9 +22,24 @@ export const dynamic = "force-dynamic";
 export default async function ReadPage({ searchParams }: { searchParams: SearchParams }) {
   const userId = await requirePageAuth();
   const params = await searchParams;
-  const book = getParam(params.book) ?? "John";
-  const chapter = parsePositiveInt(getParam(params.chapter)) ?? 1;
-  const targetVerse = parsePositiveInt(getParam(params.verse)) ?? null;
+  const cookieStore = await cookies();
+  const initialMode = parseReaderMode(cookieStore.get(READER_MODE_COOKIE)?.value) ?? "parallel";
+  const introDismissed = cookieStore.get(introCookieName("read"))?.value === "1";
+  // Treat empty query values (e.g. `/read?book=`) as absent, so a bare-ish URL
+  // still restores the saved passage and the book still defaults to John.
+  const bookParam = getParam(params.book) || undefined;
+  const chapterParam = getParam(params.chapter) || undefined;
+  const verseParam = getParam(params.verse) || undefined;
+  const isBareUrl = bookParam === undefined && chapterParam === undefined && verseParam === undefined;
+  if (isBareUrl) {
+    const saved = parseSavedPassage(cookieStore.get(LAST_PASSAGE_COOKIE)?.value);
+    if (saved) {
+      redirect(`/read?book=${encodeURIComponent(saved.book)}&chapter=${saved.chapter}`);
+    }
+  }
+  const book = bookParam ?? "John";
+  const chapter = parsePositiveInt(chapterParam) ?? 1;
+  const targetVerse = parsePositiveInt(verseParam) ?? null;
   const [books, passages, verses, neighbors] = await Promise.all([
     getAvailableReaderBooks(),
     getAvailablePassages(),
@@ -38,7 +56,7 @@ export default async function ReadPage({ searchParams }: { searchParams: SearchP
             Greek New Testament
           </p>
           <h1 className="font-display text-4xl font-semibold tracking-tight text-slate-950">Reader</h1>
-          <DismissibleIntro id="read">
+          <DismissibleIntro id="read" defaultDismissed={introDismissed}>
             Read the Greek New Testament beside English, and click any Greek word for its morphology.
           </DismissibleIntro>
         </div>
@@ -47,7 +65,7 @@ export default async function ReadPage({ searchParams }: { searchParams: SearchP
 
       <ChapterNav prev={neighbors.prev} next={neighbors.next} />
 
-      <BibleReader verses={verses} targetVerse={targetVerse} />
+      <BibleReader verses={verses} targetVerse={targetVerse} initialMode={initialMode} />
 
       <ChapterNav prev={neighbors.prev} next={neighbors.next} />
     </div>

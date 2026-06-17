@@ -6,15 +6,9 @@ import type { SubmitEvent } from "react";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { EnglishWordPopover } from "@/components/EnglishWordPopover";
 import { MorphologyPopover, ReaderToken } from "@/components/MorphologyPopover";
-import { ReaderModeToggle, type ReaderMode } from "@/components/ReaderModeToggle";
+import { ReaderModeToggle } from "@/components/ReaderModeToggle";
+import { writePrefCookie, READER_MODE_COOKIE, type ReaderMode } from "@/lib/readerPrefs";
 import { useAutoDismissMap } from "@/lib/useAutoDismissStatus";
-
-const READER_MODE_STORAGE_KEY = "textlab-reader-mode";
-const READER_MODES: ReaderMode[] = ["greek", "english", "parallel"];
-
-function isReaderMode(value: string | null): value is ReaderMode {
-  return value !== null && READER_MODES.includes(value as ReaderMode);
-}
 
 type EnglishHighlight = { wordIndex: number; color: string };
 
@@ -54,10 +48,12 @@ function tokenizeEnglish(text: string): EnglishToken[] {
 
 export function BibleReader({
   verses,
-  targetVerse
+  targetVerse,
+  initialMode = "parallel"
 }: {
   verses: ReaderVerse[];
   targetVerse?: number | null;
+  initialMode?: ReaderMode;
 }) {
   const router = useRouter();
   const [selectedTokenId, setSelectedTokenId] = useState<string | null>(null);
@@ -66,7 +62,7 @@ export function BibleReader({
   const [tokenNoteDrafts, setTokenNoteDrafts] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<Record<string, string>>({});
   const [savingNote, setSavingNote] = useState<Record<string, boolean>>({});
-  const [readerMode, setReaderMode] = useState<ReaderMode>("parallel");
+  const [readerMode, setReaderMode] = useState<ReaderMode>(initialMode);
 
   useAutoDismissMap(status, setStatus);
 
@@ -76,16 +72,9 @@ export function BibleReader({
     if (node) node.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [targetVerse]);
 
-  useEffect(() => {
-    const saved = typeof window === "undefined" ? null : window.localStorage.getItem(READER_MODE_STORAGE_KEY);
-    if (isReaderMode(saved)) setReaderMode(saved);
-  }, []);
-
   function changeReaderMode(next: ReaderMode) {
     setReaderMode(next);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(READER_MODE_STORAGE_KEY, next);
-    }
+    writePrefCookie(READER_MODE_COOKIE, next);
   }
 
   function setTokenDraft(tokenId: string, next: string) {

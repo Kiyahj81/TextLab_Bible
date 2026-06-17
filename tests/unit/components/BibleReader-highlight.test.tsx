@@ -191,6 +191,40 @@ describe("BibleReader highlight write serialization", () => {
     // B should now be dispatched
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
   });
+
+  it("Greek: queued write is not dispatched by a local timeout while the first write is unresolved", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchMock = vi.fn((_url: string, init: RequestInit) => {
+        if (fetchMock.mock.calls.length === 1) {
+          const signal = init.signal;
+          return new Promise<{ ok: boolean }>((_resolve, reject) => {
+            signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+          });
+        }
+        return Promise.resolve({ ok: true });
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      const { getByRole } = render(<BibleReader verses={[verse]} initialMode="greek" />);
+
+      fireEvent.click(getByRole("button", { name: "Ἐν" }));
+      fireEvent.click(getByRole("button", { name: /^Highlight$/ }));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      fireEvent.click(getByRole("button", { name: /^Highlight$/ }));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(10_500);
+      await Promise.resolve();
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("BibleReader confirmed-color rollback", () => {

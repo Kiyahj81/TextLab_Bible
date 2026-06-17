@@ -9,17 +9,6 @@ import { ReaderModeToggle } from "@/components/ReaderModeToggle";
 import { writePrefCookie, READER_MODE_COOKIE, type ReaderMode } from "@/lib/readerPrefs";
 import { useAutoDismissMap } from "@/lib/useAutoDismissStatus";
 
-const HIGHLIGHT_WRITE_TIMEOUT_MS = 10_000;
-async function fetchHighlight(input: RequestInfo | URL, init: RequestInit): Promise<Response> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), HIGHLIGHT_WRITE_TIMEOUT_MS);
-  try {
-    return await fetch(input, { ...init, signal: controller.signal });
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
 type EnglishHighlight = { wordIndex: number; color: string };
 
 type ReaderVerse = {
@@ -142,12 +131,12 @@ export function BibleReader({
       try {
         const response =
           color === null
-            ? await fetchHighlight("/api/highlights", {
+            ? await fetch("/api/highlights", {
                 method: "DELETE",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ tokenId: token.id })
               })
-            : await fetchHighlight("/api/highlights", {
+            : await fetch("/api/highlights", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ tokenId: token.id, color })
@@ -183,12 +172,12 @@ export function BibleReader({
       try {
         const response =
           color === null
-            ? await fetchHighlight("/api/highlights", {
+            ? await fetch("/api/highlights", {
                 method: "DELETE",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ verseId: verse.englishVerseId, englishWordIndex: wordIndex })
               })
-            : await fetchHighlight("/api/highlights", {
+            : await fetch("/api/highlights", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ verseId: verse.englishVerseId, englishWordIndex: wordIndex, color })

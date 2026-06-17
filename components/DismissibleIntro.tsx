@@ -1,25 +1,24 @@
 "use client";
 
 import { X } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { introCookieName, writePrefCookie } from "@/lib/readerPrefs";
 
-export function DismissibleIntro({ id, children }: { id: string; children: ReactNode }) {
-  const storageKey = `textlab-intro-dismissed-${id}`;
-  const [dismissed, setDismissed] = useState(false);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (window.localStorage.getItem(storageKey) === "1") {
-      setDismissed(true);
-    }
-  }, [storageKey]);
+export function DismissibleIntro({
+  id,
+  defaultDismissed = false,
+  children
+}: {
+  id: string;
+  defaultDismissed?: boolean;
+  children: ReactNode;
+}) {
+  const [dismissed, setDismissed] = useState(defaultDismissed);
 
   if (dismissed) return null;
 
   function dismiss() {
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(storageKey, "1");
-    }
+    writePrefCookie(introCookieName(id), "1");
     setDismissed(true);
   }
 
@@ -30,7 +29,7 @@ export function DismissibleIntro({ id, children }: { id: string; children: React
         type="button"
         onClick={dismiss}
         aria-label="Dismiss this description"
-        className="mt-0.5 text-slate-400 hover:text-slate-700"
+        className="mt-0.5 text-slate-500 hover:text-slate-700"
       >
         <X size={16} />
       </button>

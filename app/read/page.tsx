@@ -5,7 +5,7 @@ import { ReaderControls } from "@/components/ReaderControls";
 import { ReaderLocationMemo } from "@/components/ReaderLocationMemo";
 import { requirePageAuth } from "@/lib/auth";
 import { parsePositiveInt } from "@/lib/params";
-import { parseReaderMode, parseSavedPassage, LAST_PASSAGE_COOKIE, READER_MODE_COOKIE } from "@/lib/readerPrefs";
+import { introCookieName, parseReaderMode, parseSavedPassage, LAST_PASSAGE_COOKIE, READER_MODE_COOKIE } from "@/lib/readerPrefs";
 import { redirect } from "next/navigation";
 import {
   getAvailablePassages,
@@ -24,6 +24,7 @@ export default async function ReadPage({ searchParams }: { searchParams: SearchP
   const params = await searchParams;
   const cookieStore = await cookies();
   const initialMode = parseReaderMode(cookieStore.get(READER_MODE_COOKIE)?.value) ?? "parallel";
+  const introDismissed = cookieStore.get(introCookieName("read"))?.value === "1";
   const isBareUrl =
     params.book === undefined && params.chapter === undefined && params.verse === undefined;
   if (isBareUrl) {
@@ -51,7 +52,7 @@ export default async function ReadPage({ searchParams }: { searchParams: SearchP
             Greek New Testament
           </p>
           <h1 className="font-display text-4xl font-semibold tracking-tight text-slate-950">Reader</h1>
-          <DismissibleIntro id="read">
+          <DismissibleIntro id="read" defaultDismissed={introDismissed}>
             Read the Greek New Testament beside English, and click any Greek word for its morphology.
           </DismissibleIntro>
         </div>

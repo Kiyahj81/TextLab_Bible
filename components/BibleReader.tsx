@@ -58,6 +58,7 @@ export function BibleReader({
 }) {
   const [selectedTokenId, setSelectedTokenId] = useState<string | null>(null);
   const [selectedEnglishWord, setSelectedEnglishWord] = useState<string | null>(null);
+  const [openNote, setOpenNote] = useState<Record<string, boolean>>({});
   const [noteBodies, setNoteBodies] = useState<Record<string, string>>({});
   const [tokenNoteDrafts, setTokenNoteDrafts] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<Record<string, string>>({});
@@ -301,30 +302,41 @@ export function BibleReader({
             ) : null}
           </div>
 
-          <form onSubmit={(event) => addVerseNote(event, verse)} className="mt-4 border-t border-stone-200 pt-4">
-            <label className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700">
+          <div className="mt-4 border-t border-stone-200 pt-4">
+            <button
+              type="button"
+              onClick={() => setOpenNote((c) => ({ ...c, [verse.id]: !c[verse.id] }))}
+              aria-expanded={!!openNote[verse.id]}
+              className="flex items-center gap-2 text-sm font-medium text-slate-700 hover:text-accent-800"
+            >
               <NotebookPen size={16} />
               Note on {verse.reference}
-            </label>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <input
-                value={noteBodies[verse.id] ?? ""}
-                onChange={(event) =>
-                  setNoteBodies((current) => ({ ...current, [verse.id]: event.target.value }))
-                }
-                className="min-w-0 flex-1 rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-accent-600"
-                placeholder="Write a brief note"
-              />
-              <button
-                type="submit"
-                disabled={savingNote[verse.id] || !(noteBodies[verse.id] ?? "").trim()}
-                className="rounded-md bg-accent-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Save note
-              </button>
-            </div>
-            {status[verse.id] ? <p className="mt-2 text-sm text-slate-600">{status[verse.id]}</p> : null}
-          </form>
+            </button>
+            {openNote[verse.id] ? (
+              <form onSubmit={(event) => addVerseNote(event, verse)} className="mt-3 flex flex-col gap-2">
+                <textarea
+                  value={noteBodies[verse.id] ?? ""}
+                  onChange={(event) =>
+                    setNoteBodies((current) => ({ ...current, [verse.id]: event.target.value }))
+                  }
+                  className="min-h-20 w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-accent-600"
+                  placeholder="Write a note"
+                />
+                <div className="flex justify-end">
+                  <button
+                    type="submit"
+                    disabled={savingNote[verse.id] || !(noteBodies[verse.id] ?? "").trim()}
+                    className="rounded-md bg-accent-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Save note
+                  </button>
+                </div>
+              </form>
+            ) : null}
+            {status[verse.id] ? (
+              <p role="status" aria-live="polite" className="mt-2 text-sm text-slate-600">{status[verse.id]}</p>
+            ) : null}
+          </div>
         </article>
       ))}
     </div>

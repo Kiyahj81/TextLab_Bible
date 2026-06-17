@@ -222,6 +222,17 @@ export function BibleReader({
         <ReaderModeToggle mode={readerMode} onChange={changeReaderMode} />
       </div>
 
+      <div className={`grid gap-4 px-6 ${showBothColumns ? "md:grid-cols-2" : ""}`}>
+        {showGreek ? (
+          <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">SBLGNT</div>
+        ) : null}
+        {showEnglish ? (
+          <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            {verses[0]?.englishCorpus ?? "WEB"}
+          </div>
+        ) : null}
+      </div>
+
       {verses.map((verse) => (
         <article
           key={verse.id}
@@ -234,7 +245,6 @@ export function BibleReader({
           <div className={`grid gap-4 ${showBothColumns ? "md:grid-cols-2" : ""}`}>
             {showGreek ? (
               <div>
-                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">SBLGNT</div>
                 <div className="greek-text text-[1.45rem] leading-10 text-slate-950">
                   <span className="oldstyle-nums mr-2 align-super text-sm font-semibold text-slate-500" aria-hidden>
                     {verse.verse}
@@ -279,9 +289,6 @@ export function BibleReader({
             ) : null}
             {showEnglish ? (
               <div>
-                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  {verse.englishCorpus}
-                </div>
                 <EnglishVerseText
                   verse={verse}
                   selectedKey={selectedEnglishWord}

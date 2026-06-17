@@ -5,12 +5,14 @@ import { ReaderControls } from "@/components/ReaderControls";
 import { ReaderLocationMemo } from "@/components/ReaderLocationMemo";
 import { requirePageAuth } from "@/lib/auth";
 import { parsePositiveInt } from "@/lib/params";
+import { parseReaderMode, READER_MODE_COOKIE } from "@/lib/readerPrefs";
 import {
   getAvailablePassages,
   getAvailableReaderBooks,
   getPassageNeighbors,
   getReaderPassage
 } from "@/lib/search";
+import { cookies } from "next/headers";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -19,6 +21,8 @@ export const dynamic = "force-dynamic";
 export default async function ReadPage({ searchParams }: { searchParams: SearchParams }) {
   const userId = await requirePageAuth();
   const params = await searchParams;
+  const cookieStore = await cookies();
+  const initialMode = parseReaderMode(cookieStore.get(READER_MODE_COOKIE)?.value) ?? "parallel";
   const book = getParam(params.book) ?? "John";
   const chapter = parsePositiveInt(getParam(params.chapter)) ?? 1;
   const targetVerse = parsePositiveInt(getParam(params.verse)) ?? null;
@@ -47,7 +51,7 @@ export default async function ReadPage({ searchParams }: { searchParams: SearchP
 
       <ChapterNav prev={neighbors.prev} next={neighbors.next} />
 
-      <BibleReader verses={verses} targetVerse={targetVerse} />
+      <BibleReader verses={verses} targetVerse={targetVerse} initialMode={initialMode} />
 
       <ChapterNav prev={neighbors.prev} next={neighbors.next} />
     </div>

@@ -48,14 +48,17 @@ function tokenizeEnglish(text: string): EnglishToken[] {
 export function BibleReader({
   verses,
   targetVerse,
-  initialMode = "parallel"
+  initialMode = "parallel",
+  chapterLabel
 }: {
   verses: ReaderVerse[];
   targetVerse?: number | null;
   initialMode?: ReaderMode;
+  chapterLabel: string;
 }) {
   const [selectedTokenId, setSelectedTokenId] = useState<string | null>(null);
   const [selectedEnglishWord, setSelectedEnglishWord] = useState<string | null>(null);
+  const [openNote, setOpenNote] = useState<Record<string, boolean>>({});
   const [noteBodies, setNoteBodies] = useState<Record<string, string>>({});
   const [tokenNoteDrafts, setTokenNoteDrafts] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<Record<string, string>>({});
@@ -215,25 +218,38 @@ export function BibleReader({
 
   return (
     <div className="space-y-8">
-      <div className="flex justify-end">
+      <div className="sticky top-0 z-10 -mx-4 flex items-center justify-between gap-3 border-b border-stone-200 bg-[var(--background)]/90 px-4 py-2 backdrop-blur">
+        <span className="font-display text-sm font-semibold text-slate-700">{chapterLabel}</span>
         <ReaderModeToggle mode={readerMode} onChange={changeReaderMode} />
+      </div>
+
+      <div className={`grid gap-4 border-l-2 border-transparent pl-6 ${showBothColumns ? "md:grid-cols-2" : "max-w-[68ch]"}`}>
+        {showGreek ? (
+          <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">SBLGNT</div>
+        ) : null}
+        {showEnglish ? (
+          <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            {verses[0]?.englishCorpus ?? "WEB"}
+          </div>
+        ) : null}
       </div>
 
       {verses.map((verse) => (
         <article
           key={verse.id}
           id={`verse-${verse.verse}`}
+          aria-label={verse.reference}
           className={`scroll-mt-24 border-l-2 border-accent-200 pl-6 ${
-            targetVerse === verse.verse ? "rounded-sm ring-2 ring-amber-300 ring-offset-4 ring-offset-[var(--background)]" : ""
+            targetVerse === verse.verse ? "rounded-sm ring-2 ring-accent-400 ring-offset-4 ring-offset-[var(--background)]" : ""
           }`}
         >
-          <h2 className="oldstyle-nums mb-3 font-display text-base font-semibold text-slate-700">{verse.reference}</h2>
-
-          <div className={`grid gap-4 ${showBothColumns ? "md:grid-cols-2" : ""}`}>
+          <div className={`grid gap-4 ${showBothColumns ? "md:grid-cols-2" : "max-w-[68ch]"}`}>
             {showGreek ? (
               <div>
-                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">SBLGNT</div>
                 <div className="greek-text text-[1.45rem] leading-10 text-slate-950">
+                  <span className="oldstyle-nums mr-2 align-super text-sm font-semibold text-slate-500" aria-hidden>
+                    {verse.verse}
+                  </span>
                   {verse.tokens.length > 0
                     ? verse.tokens.map((token) => {
                         const tokenColor =
@@ -274,9 +290,6 @@ export function BibleReader({
             ) : null}
             {showEnglish ? (
               <div>
-                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  {verse.englishCorpus}
-                </div>
                 <EnglishVerseText
                   verse={verse}
                   selectedKey={selectedEnglishWord}
@@ -289,30 +302,41 @@ export function BibleReader({
             ) : null}
           </div>
 
-          <form onSubmit={(event) => addVerseNote(event, verse)} className="mt-4 border-t border-stone-200 pt-4">
-            <label className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700">
+          <div className="mt-4 border-t border-stone-200 pt-4">
+            <button
+              type="button"
+              onClick={() => setOpenNote((c) => ({ ...c, [verse.id]: !c[verse.id] }))}
+              aria-expanded={!!openNote[verse.id]}
+              className="flex items-center gap-2 text-sm font-medium text-slate-700 hover:text-accent-800"
+            >
               <NotebookPen size={16} />
               Note on {verse.reference}
-            </label>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <input
-                value={noteBodies[verse.id] ?? ""}
-                onChange={(event) =>
-                  setNoteBodies((current) => ({ ...current, [verse.id]: event.target.value }))
-                }
-                className="min-w-0 flex-1 rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-accent-600"
-                placeholder="Write a brief note"
-              />
-              <button
-                type="submit"
-                disabled={savingNote[verse.id] || !(noteBodies[verse.id] ?? "").trim()}
-                className="rounded-md bg-accent-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Save note
-              </button>
-            </div>
-            {status[verse.id] ? <p className="mt-2 text-sm text-slate-600">{status[verse.id]}</p> : null}
-          </form>
+            </button>
+            {openNote[verse.id] ? (
+              <form onSubmit={(event) => addVerseNote(event, verse)} className="mt-3 flex flex-col gap-2">
+                <textarea
+                  value={noteBodies[verse.id] ?? ""}
+                  onChange={(event) =>
+                    setNoteBodies((current) => ({ ...current, [verse.id]: event.target.value }))
+                  }
+                  className="min-h-20 w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-accent-600"
+                  placeholder="Write a note"
+                />
+                <div className="flex justify-end">
+                  <button
+                    type="submit"
+                    disabled={savingNote[verse.id] || !(noteBodies[verse.id] ?? "").trim()}
+                    className="rounded-md bg-accent-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Save note
+                  </button>
+                </div>
+              </form>
+            ) : null}
+            {status[verse.id] ? (
+              <p role="status" aria-live="polite" className="mt-2 text-sm text-slate-600">{status[verse.id]}</p>
+            ) : null}
+          </div>
         </article>
       ))}
     </div>
@@ -342,11 +366,21 @@ function EnglishVerseText({
   }, [verse.englishHighlights]);
 
   if (!verse.englishVerseId) {
-    return <div className="text-base leading-7 text-slate-800">{verse.englishText}</div>;
+    return (
+      <div className="text-xl leading-10 text-slate-950">
+        <span className="oldstyle-nums mr-2 align-super text-sm font-semibold text-slate-500" aria-hidden>
+          {verse.verse}
+        </span>
+        {verse.englishText}
+      </div>
+    );
   }
 
   return (
-    <div className="text-base leading-7 text-slate-800">
+    <div className="text-xl leading-10 text-slate-950">
+      <span className="oldstyle-nums mr-2 align-super text-sm font-semibold text-slate-500" aria-hidden>
+        {verse.verse}
+      </span>
       {tokens.map((token, index) => {
         if (token.kind === "space") {
           return <Fragment key={`s-${index}`}>{token.value}</Fragment>;

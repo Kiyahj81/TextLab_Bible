@@ -25,7 +25,7 @@ afterEach(() => {
 
 describe("BibleReader optimistic highlight", () => {
   it("colors the token immediately when Highlight is applied (no refetch needed)", async () => {
-    const { getByRole } = render(<BibleReader verses={[verse]} initialMode="greek" />);
+    const { getByRole } = render(<BibleReader verses={[verse]} initialMode="greek" chapterLabel="John 1" />);
     fireEvent.click(getByRole("button", { name: "Ἐν" }));          // open popover
     fireEvent.click(getByRole("button", { name: /^Highlight$/ }));  // apply default color
     const tokenBtn = getByRole("button", { name: "Ἐν" });
@@ -34,7 +34,7 @@ describe("BibleReader optimistic highlight", () => {
 
   it("reverts and shows an error when the request fails", async () => {
     vi.stubGlobal("fetch", vi.fn(() => Promise.resolve({ ok: false })));
-    const { getByRole, findByText } = render(<BibleReader verses={[verse]} initialMode="greek" />);
+    const { getByRole, findByText } = render(<BibleReader verses={[verse]} initialMode="greek" chapterLabel="John 1" />);
     fireEvent.click(getByRole("button", { name: "Ἐν" }));
     fireEvent.click(getByRole("button", { name: /^Highlight$/ }));
     expect(await findByText(/could not save highlight/i)).toBeTruthy();
@@ -53,7 +53,7 @@ describe("BibleReader out-of-order highlight race guard", () => {
       .mockImplementation(() => Promise.resolve({ ok: true }));                                  // B: succeed
     vi.stubGlobal("fetch", fetchMock);
 
-    const { getByRole, queryByText } = render(<BibleReader verses={[verse]} initialMode="greek" />);
+    const { getByRole, queryByText } = render(<BibleReader verses={[verse]} initialMode="greek" chapterLabel="John 1" />);
 
     // Open morphology popover
     fireEvent.click(getByRole("button", { name: "Ἐν" }));
@@ -95,7 +95,7 @@ describe("BibleReader out-of-order highlight race guard", () => {
       .mockImplementation(() => Promise.resolve({ ok: true }));                                  // B: succeed
     vi.stubGlobal("fetch", fetchMock);
 
-    const { getByRole, queryByText } = render(<BibleReader verses={[verse]} initialMode="english" />);
+    const { getByRole, queryByText } = render(<BibleReader verses={[verse]} initialMode="english" chapterLabel="John 1" />);
 
     // Open English word popover by clicking the word "In"
     fireEvent.click(getByRole("button", { name: "In" }));
@@ -142,7 +142,7 @@ describe("BibleReader highlight write serialization", () => {
       .mockImplementation(() => Promise.resolve({ ok: true }));                                  // B
     vi.stubGlobal("fetch", fetchMock);
 
-    const { getByRole } = render(<BibleReader verses={[verse]} initialMode="greek" />);
+    const { getByRole } = render(<BibleReader verses={[verse]} initialMode="greek" chapterLabel="John 1" />);
 
     // Open morphology popover and click Highlight twice
     fireEvent.click(getByRole("button", { name: "Ἐν" }));
@@ -169,7 +169,7 @@ describe("BibleReader highlight write serialization", () => {
       .mockImplementation(() => Promise.resolve({ ok: true }));                                  // B
     vi.stubGlobal("fetch", fetchMock);
 
-    const { getByRole } = render(<BibleReader verses={[verse]} initialMode="english" />);
+    const { getByRole } = render(<BibleReader verses={[verse]} initialMode="english" chapterLabel="John 1" />);
 
     // Open English word popover and pick a color twice
     fireEvent.click(getByRole("button", { name: "In" }));
@@ -206,7 +206,7 @@ describe("BibleReader highlight write serialization", () => {
       });
       vi.stubGlobal("fetch", fetchMock);
 
-      const { getByRole } = render(<BibleReader verses={[verse]} initialMode="greek" />);
+      const { getByRole } = render(<BibleReader verses={[verse]} initialMode="greek" chapterLabel="John 1" />);
 
       fireEvent.click(getByRole("button", { name: "Ἐν" }));
       fireEvent.click(getByRole("button", { name: /^Highlight$/ }));
@@ -244,7 +244,7 @@ describe("BibleReader confirmed-color rollback", () => {
       .mockImplementationOnce(() => new Promise<{ ok: boolean }>((r) => { resolveB = r; })); // B
     vi.stubGlobal("fetch", fetchMock);
 
-    const { getByRole, findByText } = render(<BibleReader verses={[verse]} initialMode="greek" />);
+    const { getByRole, findByText } = render(<BibleReader verses={[verse]} initialMode="greek" chapterLabel="John 1" />);
 
     // Open morphology popover
     fireEvent.click(getByRole("button", { name: "Ἐν" }));
@@ -286,7 +286,7 @@ describe("BibleReader confirmed-color rollback", () => {
       .mockImplementationOnce(() => new Promise<{ ok: boolean }>((r) => { resolveB = r; })); // B
     vi.stubGlobal("fetch", fetchMock);
 
-    const { getByRole, findByText } = render(<BibleReader verses={[verse]} initialMode="english" />);
+    const { getByRole, findByText } = render(<BibleReader verses={[verse]} initialMode="english" chapterLabel="John 1" />);
 
     // Open English word popover, pick Blue (A)
     fireEvent.click(getByRole("button", { name: "In" }));

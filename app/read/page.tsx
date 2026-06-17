@@ -3,6 +3,8 @@ import { ChapterNav } from "@/components/ChapterNav";
 import { DismissibleIntro } from "@/components/DismissibleIntro";
 import { ReaderControls } from "@/components/ReaderControls";
 import { ReaderLocationMemo } from "@/components/ReaderLocationMemo";
+import { ReaderMasthead } from "@/components/ReaderMasthead";
+import { bookName } from "@/lib/references";
 import { requirePageAuth } from "@/lib/auth";
 import { parsePositiveInt } from "@/lib/params";
 import { introCookieName, parseReaderMode, parseSavedPassage, LAST_PASSAGE_COOKIE, READER_MODE_COOKIE } from "@/lib/readerPrefs";
@@ -52,10 +54,7 @@ export default async function ReadPage({ searchParams }: { searchParams: SearchP
       <ReaderLocationMemo book={book} chapter={chapter} />
       <section className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-accent-700">
-            Greek New Testament
-          </p>
-          <h1 className="font-display text-4xl font-semibold tracking-tight text-slate-950">Reader</h1>
+          <ReaderMasthead bookLabel={bookName(book)} chapter={chapter} />
           <DismissibleIntro id="read" defaultDismissed={introDismissed}>
             Read the Greek New Testament beside English, and click any Greek word for its morphology.
           </DismissibleIntro>
@@ -63,9 +62,12 @@ export default async function ReadPage({ searchParams }: { searchParams: SearchP
         <ReaderControls books={books} passages={passages} selectedBook={book} selectedChapter={chapter} selectedVerse={targetVerse} />
       </section>
 
-      <ChapterNav prev={neighbors.prev} next={neighbors.next} />
-
-      <BibleReader verses={verses} targetVerse={targetVerse} initialMode={initialMode} />
+      <BibleReader
+        verses={verses}
+        targetVerse={targetVerse}
+        initialMode={initialMode}
+        chapterLabel={`${bookName(book)} ${chapter}`}
+      />
 
       <ChapterNav prev={neighbors.prev} next={neighbors.next} />
     </div>

@@ -192,3 +192,95 @@ describe("BibleReader highlight write serialization", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
   });
 });
+
+describe("BibleReader confirmed-color rollback", () => {
+  // RED→GREEN regression: when BOTH A and B fail, rollback must use the confirmed color
+  // (null, i.e. server value / no highlight) rather than A's optimistic color.
+  // On the OLD code `prev` was read from optimistic state, so B's failure would roll back
+  // to A's speculative color (never persisted), leaving a phantom highlight.
+
+  it("Greek: A fails then B fails — rolls back to original null, not A's speculative color", async () => {
+    // Both fetches return { ok: false }. Serialized: A fires, B waits, A settles with failure,
+    // B fires, B settles with failure. After both settle, confirmed is still null (no write ever
+    // succeeded), so the token button must have no background-color.
+    let resolveA!: (v: { ok: boolean }) => void;
+    let resolveB!: (v: { ok: boolean }) => void;
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(() => new Promise<{ ok: boolean }>((r) => { resolveA = r; })) // A
+      .mockImplementationOnce(() => new Promise<{ ok: boolean }>((r) => { resolveB = r; })); // B
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { getByRole, findByText } = render(<BibleReader verses={[verse]} initialMode="greek" />);
+
+    // Open morphology popover
+    fireEvent.click(getByRole("button", { name: "Ἐν" }));
+
+    // Click Highlight — queues A (pending)
+    fireEvent.click(getByRole("button", { name: /^Highlight$/ }));
+    // Token should show optimistic color immediately
+    expect(getByRole("button", { name: "Ἐν" }).getAttribute("style")).toMatch(/background-color/);
+
+    // Click Highlight again — queues B (waiting for A)
+    fireEvent.click(getByRole("button", { name: /^Highlight$/ }));
+
+    // Only A dispatched
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    // A fails — unblocks B
+    resolveA({ ok: false });
+    // Wait for B to be dispatched
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    // B fails
+    resolveB({ ok: false });
+
+    // After both fail, error status appears and token reverts to no color
+    await findByText(/could not save highlight/i);
+    await waitFor(() => {
+      const style = getByRole("button", { name: "Ἐν" }).getAttribute("style") ?? "";
+      expect(style).not.toMatch(/background-color/);
+    });
+  });
+
+  it("English: A fails then B fails — rolls back to original null, not A's speculative color", async () => {
+    // Same scenario for English word. token has no server highlight (englishHighlights: []).
+    // Pick Blue (A), pick Green (B), both fail → word button must have no background-color.
+    let resolveA!: (v: { ok: boolean }) => void;
+    let resolveB!: (v: { ok: boolean }) => void;
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(() => new Promise<{ ok: boolean }>((r) => { resolveA = r; })) // A
+      .mockImplementationOnce(() => new Promise<{ ok: boolean }>((r) => { resolveB = r; })); // B
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { getByRole, findByText } = render(<BibleReader verses={[verse]} initialMode="english" />);
+
+    // Open English word popover, pick Blue (A)
+    fireEvent.click(getByRole("button", { name: "In" }));
+    fireEvent.click(getByRole("menuitemradio", { name: "Blue" }));
+
+    // Word should show optimistic Blue immediately
+    expect(getByRole("button", { name: "In" }).getAttribute("style")).toMatch(/background-color/);
+
+    // Re-open popover, pick Green (B)
+    fireEvent.click(getByRole("button", { name: "In" }));
+    fireEvent.click(getByRole("menuitemradio", { name: "Green" }));
+
+    // Only A dispatched
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    // A fails — unblocks B
+    resolveA({ ok: false });
+    // Wait for B to be dispatched
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    // B fails
+    resolveB({ ok: false });
+
+    // After both fail, error status appears and word reverts to no color
+    await findByText(/could not save highlight/i);
+    await waitFor(() => {
+      const style = getByRole("button", { name: "In" }).getAttribute("style") ?? "";
+      expect(style).not.toMatch(/background-color/);
+    });
+  });
+});

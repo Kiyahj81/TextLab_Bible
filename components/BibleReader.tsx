@@ -9,6 +9,17 @@ import { ReaderModeToggle } from "@/components/ReaderModeToggle";
 import { writePrefCookie, READER_MODE_COOKIE, type ReaderMode } from "@/lib/readerPrefs";
 import { useAutoDismissMap } from "@/lib/useAutoDismissStatus";
 
+const HIGHLIGHT_WRITE_TIMEOUT_MS = 10_000;
+async function fetchHighlight(input: RequestInfo | URL, init: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), HIGHLIGHT_WRITE_TIMEOUT_MS);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 type EnglishHighlight = { wordIndex: number; color: string };
 
 type ReaderVerse = {
@@ -65,6 +76,7 @@ export function BibleReader({
   const [englishColorOverride, setEnglishColorOverride] = useState<Record<string, string | null>>({});
   const highlightSeqRef = useRef<Record<string, number>>({});
   const highlightChainRef = useRef<Record<string, Promise<unknown>>>({});
+  const confirmedColorRef = useRef<Record<string, string | null>>({});
 
   useAutoDismissMap(status, setStatus);
 
@@ -121,7 +133,6 @@ export function BibleReader({
 
   async function highlightToken(verse: ReaderVerse, token: ReaderToken, color: string | null) {
     const key = token.id;
-    const prev = key in tokenColorOverride ? tokenColorOverride[key] : token.highlightColor;
     const seq = (highlightSeqRef.current[key] ?? 0) + 1;
     highlightSeqRef.current[key] = seq;
     setTokenColorOverride((current) => ({ ...current, [key]: color }));
@@ -131,23 +142,27 @@ export function BibleReader({
       try {
         const response =
           color === null
-            ? await fetch("/api/highlights", {
+            ? await fetchHighlight("/api/highlights", {
                 method: "DELETE",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ tokenId: token.id })
               })
-            : await fetch("/api/highlights", {
+            : await fetchHighlight("/api/highlights", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ tokenId: token.id, color })
               });
-        if (!response.ok && highlightSeqRef.current[key] === seq) {
-          setTokenColorOverride((current) => ({ ...current, [key]: prev }));
+        if (response.ok) {
+          confirmedColorRef.current[key] = color;
+        } else if (highlightSeqRef.current[key] === seq) {
+          const confirmed = key in confirmedColorRef.current ? confirmedColorRef.current[key] : token.highlightColor;
+          setTokenColorOverride((current) => ({ ...current, [key]: confirmed }));
           setVerseStatus(verse.id, "Could not save highlight.");
         }
       } catch {
         if (highlightSeqRef.current[key] === seq) {
-          setTokenColorOverride((current) => ({ ...current, [key]: prev }));
+          const confirmed = key in confirmedColorRef.current ? confirmedColorRef.current[key] : token.highlightColor;
+          setTokenColorOverride((current) => ({ ...current, [key]: confirmed }));
           setVerseStatus(verse.id, "Network error. Try again.");
         }
       }
@@ -159,10 +174,6 @@ export function BibleReader({
   async function highlightEnglishWord(verse: ReaderVerse, wordIndex: number, color: string | null) {
     if (!verse.englishVerseId) return;
     const key = `${verse.id}-${wordIndex}`;
-    const prev =
-      key in englishColorOverride
-        ? englishColorOverride[key]
-        : verse.englishHighlights.find((h) => h.wordIndex === wordIndex)?.color ?? null;
     const seq = (highlightSeqRef.current[key] ?? 0) + 1;
     highlightSeqRef.current[key] = seq;
     setEnglishColorOverride((current) => ({ ...current, [key]: color }));
@@ -172,23 +183,27 @@ export function BibleReader({
       try {
         const response =
           color === null
-            ? await fetch("/api/highlights", {
+            ? await fetchHighlight("/api/highlights", {
                 method: "DELETE",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ verseId: verse.englishVerseId, englishWordIndex: wordIndex })
               })
-            : await fetch("/api/highlights", {
+            : await fetchHighlight("/api/highlights", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ verseId: verse.englishVerseId, englishWordIndex: wordIndex, color })
               });
-        if (!response.ok && highlightSeqRef.current[key] === seq) {
-          setEnglishColorOverride((current) => ({ ...current, [key]: prev }));
+        if (response.ok) {
+          confirmedColorRef.current[key] = color;
+        } else if (highlightSeqRef.current[key] === seq) {
+          const confirmed = key in confirmedColorRef.current ? confirmedColorRef.current[key] : verse.englishHighlights.find((h) => h.wordIndex === wordIndex)?.color ?? null;
+          setEnglishColorOverride((current) => ({ ...current, [key]: confirmed }));
           setVerseStatus(verse.id, "Could not save highlight.");
         }
       } catch {
         if (highlightSeqRef.current[key] === seq) {
-          setEnglishColorOverride((current) => ({ ...current, [key]: prev }));
+          const confirmed = key in confirmedColorRef.current ? confirmedColorRef.current[key] : verse.englishHighlights.find((h) => h.wordIndex === wordIndex)?.color ?? null;
+          setEnglishColorOverride((current) => ({ ...current, [key]: confirmed }));
           setVerseStatus(verse.id, "Network error. Try again.");
         }
       }

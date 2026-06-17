@@ -222,7 +222,7 @@ export function BibleReader({
         <ReaderModeToggle mode={readerMode} onChange={changeReaderMode} />
       </div>
 
-      <div className={`grid gap-4 px-6 ${showBothColumns ? "md:grid-cols-2" : ""}`}>
+      <div className={`grid gap-4 px-6 ${showBothColumns ? "md:grid-cols-2" : "max-w-[68ch]"}`}>
         {showGreek ? (
           <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">SBLGNT</div>
         ) : null}
@@ -242,7 +242,7 @@ export function BibleReader({
             targetVerse === verse.verse ? "rounded-sm ring-2 ring-accent-400 ring-offset-4 ring-offset-[var(--background)]" : ""
           }`}
         >
-          <div className={`grid gap-4 ${showBothColumns ? "md:grid-cols-2" : ""}`}>
+          <div className={`grid gap-4 ${showBothColumns ? "md:grid-cols-2" : "max-w-[68ch]"}`}>
             {showGreek ? (
               <div>
                 <div className="greek-text text-[1.45rem] leading-10 text-slate-950">

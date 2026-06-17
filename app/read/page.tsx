@@ -5,7 +5,8 @@ import { ReaderControls } from "@/components/ReaderControls";
 import { ReaderLocationMemo } from "@/components/ReaderLocationMemo";
 import { requirePageAuth } from "@/lib/auth";
 import { parsePositiveInt } from "@/lib/params";
-import { parseReaderMode, READER_MODE_COOKIE } from "@/lib/readerPrefs";
+import { parseReaderMode, parseSavedPassage, LAST_PASSAGE_COOKIE, READER_MODE_COOKIE } from "@/lib/readerPrefs";
+import { redirect } from "next/navigation";
 import {
   getAvailablePassages,
   getAvailableReaderBooks,
@@ -23,6 +24,14 @@ export default async function ReadPage({ searchParams }: { searchParams: SearchP
   const params = await searchParams;
   const cookieStore = await cookies();
   const initialMode = parseReaderMode(cookieStore.get(READER_MODE_COOKIE)?.value) ?? "parallel";
+  const isBareUrl =
+    params.book === undefined && params.chapter === undefined && params.verse === undefined;
+  if (isBareUrl) {
+    const saved = parseSavedPassage(cookieStore.get(LAST_PASSAGE_COOKIE)?.value);
+    if (saved) {
+      redirect(`/read?book=${encodeURIComponent(saved.book)}&chapter=${saved.chapter}`);
+    }
+  }
   const book = getParam(params.book) ?? "John";
   const chapter = parsePositiveInt(getParam(params.chapter)) ?? 1;
   const targetVerse = parsePositiveInt(getParam(params.verse)) ?? null;

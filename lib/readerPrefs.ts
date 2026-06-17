@@ -24,11 +24,11 @@ export function parseSavedPassage(value: string | null | undefined): SavedPassag
     // a bare-/read redirect URL, so a tampered cookie must not yield an invalid passage.
     if (
       typeof parsed?.book === "string" &&
-      parsed.book.length > 0 &&
+      parsed.book.trim().length > 0 &&
       Number.isInteger(parsed?.chapter) &&
       (parsed.chapter as number) >= 1
     ) {
-      return { book: parsed.book, chapter: parsed.chapter as number };
+      return { book: parsed.book.trim(), chapter: parsed.chapter as number };
     }
   } catch {
     // malformed cookie — ignore

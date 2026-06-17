@@ -28,8 +28,12 @@ describe("parseSavedPassage", () => {
     expect(parseSavedPassage("not json")).toBeNull();
     expect(parseSavedPassage("{}")).toBeNull();
   });
-  it("rejects an empty book (would build an invalid /read redirect)", () => {
+  it("rejects an empty or whitespace-only book (would build an invalid /read redirect)", () => {
     expect(parseSavedPassage('{"book":"","chapter":3}')).toBeNull();
+    expect(parseSavedPassage('{"book":"   ","chapter":3}')).toBeNull();
+  });
+  it("trims surrounding whitespace from an otherwise-valid book", () => {
+    expect(parseSavedPassage('{"book":" John ","chapter":3}')).toEqual({ book: "John", chapter: 3 });
   });
   it("rejects a non-positive or non-integer chapter", () => {
     expect(parseSavedPassage('{"book":"John","chapter":0}')).toBeNull();

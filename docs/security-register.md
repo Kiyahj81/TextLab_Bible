@@ -151,7 +151,7 @@ sprint and at every Next.js minor upgrade. Cross-check each open row.
 | Attributes | `path=/; max-age=31536000 (1 year); SameSite=Lax`. Intentionally **non-`httpOnly`** (a client component writes them via `document.cookie`) and **non-`Secure`** (no `Secure` attribute is set). |
 | Data sensitivity | None — display preferences only: chosen reader mode, last book/chapter viewed, whether the intro blurb was dismissed. No identifiers, secrets, or PII. |
 | Status | Accepted — by design |
-| Mitigation | The values are non-sensitive UI state and must be JS-readable on write, so `httpOnly` is not applicable. `SameSite=Lax` limits cross-site send. Server parsing is defensive: `parseReaderMode` falls back to `parallel` and `parseSavedPassage` rejects malformed JSON, empty book, and non-positive/non-integer chapters, so a tampered cookie cannot inject state beyond the validated union/shape; the bare-URL redirect target is built only from the parsed (validated) non-empty book osisId + positive integer chapter, URL-encoded. |
+| Mitigation | The values are non-sensitive UI state and must be JS-readable on write, so `httpOnly` is not applicable. `SameSite=Lax` limits cross-site send. Server parsing is defensive: `parseReaderMode` falls back to `parallel` and `parseSavedPassage` rejects malformed JSON, empty/whitespace-only book, and non-positive/non-integer chapters (and trims the book), so a tampered cookie cannot inject state beyond the validated union/shape; the bare-URL redirect target is built only from the parsed (validated, trimmed, non-empty) book osisId + positive integer chapter, URL-encoded. |
 | Owner | Maintainer (kiyahj81) |
 | Opened | 2026-06-17 (Phase A — Read page first-load stability) |
 

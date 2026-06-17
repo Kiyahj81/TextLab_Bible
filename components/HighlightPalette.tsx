@@ -27,11 +27,15 @@ export function HighlightPalette({
             onClick={() => onPick(option.value)}
             aria-label={option.label}
             title={option.label}
-            className={`h-6 w-6 rounded-full border ${
-              active ? "border-slate-900 ring-2 ring-slate-300" : "border-stone-300 hover:border-slate-500"
-            }`}
-            style={{ backgroundColor: option.value }}
-          />
+            className="flex h-9 w-9 items-center justify-center rounded-full"
+          >
+            <span
+              className={`block h-6 w-6 rounded-full border ${
+                active ? "border-slate-900 ring-2 ring-slate-300" : "border-stone-300"
+              }`}
+              style={{ backgroundColor: option.value }}
+            />
+          </button>
         );
       })}
       {showClear && onClear ? (
@@ -43,9 +47,11 @@ export function HighlightPalette({
             onClick={onClear}
             aria-label="Remove highlight"
             title="Remove highlight"
-            className="flex h-6 w-6 items-center justify-center rounded-full border border-stone-300 bg-white text-slate-500 hover:border-slate-500 hover:text-slate-700"
+            className="flex h-9 w-9 items-center justify-center rounded-full"
           >
-            <Ban size={14} aria-hidden />
+            <span className="flex h-6 w-6 items-center justify-center rounded-full border border-stone-300 bg-white text-slate-500">
+              <Ban size={14} aria-hidden />
+            </span>
           </button>
         </>
       ) : null}

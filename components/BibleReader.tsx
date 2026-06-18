@@ -215,8 +215,8 @@ export function BibleReader({
           <span className="font-display text-sm font-semibold text-slate-700">{chapterLabel}</span>
           {jumpSlot}
         </div>
-        <div className="flex items-center gap-2">
-          <ReaderLayoutToggle layout={layout} onChange={changeLayout} continuousDisabled={!continuousAvailable} />
+        <div className="flex flex-wrap items-center gap-2">
+          <ReaderLayoutToggle layout={effectiveLayout} onChange={changeLayout} continuousDisabled={!continuousAvailable} />
           <ReaderModeToggle mode={readerMode} onChange={changeReaderMode} />
         </div>
       </div>
@@ -233,22 +233,33 @@ export function BibleReader({
       </div>
 
       {effectiveLayout === "continuous" ? (
-        <ContinuousReader
-          verses={verses}
-          mode={readerMode === "english" ? "english" : "greek"}
-          selectedTokenId={selectedTokenId}
-          setSelectedTokenId={setSelectedTokenId}
-          tokenColorOverride={tokenColorOverride}
-          onHighlightToken={highlightToken}
-          tokenNoteDrafts={tokenNoteDrafts}
-          onTokenDraft={setTokenDraft}
-          onNotesChanged={() => router.refresh()}
-          selectedEnglishWord={selectedEnglishWord}
-          setSelectedEnglishWord={setSelectedEnglishWord}
-          englishColorOverride={englishColorOverride}
-          onPickEnglish={(verse, wordIndex, color) => highlightEnglishWord(verse, wordIndex, color)}
-          onClearEnglish={(verse, wordIndex) => highlightEnglishWord(verse, wordIndex, null)}
-        />
+        <div>
+          {/* Continuous mode has no per-verse status containers, so surface
+              highlight failures (setVerseStatus) in one shared live region. */}
+          <div role="status" aria-live="polite" className="empty:hidden mb-4 text-sm text-slate-600">
+            {Object.entries(status)
+              .filter(([, message]) => message)
+              .map(([verseId, message]) => (
+                <p key={verseId}>{message}</p>
+              ))}
+          </div>
+          <ContinuousReader
+            verses={verses}
+            mode={readerMode === "english" ? "english" : "greek"}
+            selectedTokenId={selectedTokenId}
+            setSelectedTokenId={setSelectedTokenId}
+            tokenColorOverride={tokenColorOverride}
+            onHighlightToken={highlightToken}
+            tokenNoteDrafts={tokenNoteDrafts}
+            onTokenDraft={setTokenDraft}
+            onNotesChanged={() => router.refresh()}
+            selectedEnglishWord={selectedEnglishWord}
+            setSelectedEnglishWord={setSelectedEnglishWord}
+            englishColorOverride={englishColorOverride}
+            onPickEnglish={(verse, wordIndex, color) => highlightEnglishWord(verse, wordIndex, color)}
+            onClearEnglish={(verse, wordIndex) => highlightEnglishWord(verse, wordIndex, null)}
+          />
+        </div>
       ) : (
         verses.map((verse) => (
           <article

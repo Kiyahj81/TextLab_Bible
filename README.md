@@ -14,7 +14,7 @@ Deferred beyond the current scope: OT Hebrew/Aramaic, LXX, Strong's numbers, spe
   - Verses use inline verse numbers; the corpus label (SBLGNT / WEB) appears once per chapter as a column header. Single-language modes cap the reading measure for legibility.
   - Greek token popovers with lemma, morphology, gloss, and Louw-Nida domain/subdomain labels when present.
   - English word and Greek token highlighting apply optimistically (no full-page reload). Per-verse notes open on demand.
-  - Verse and chapter navigation — dropdowns plus a free-text reference quick-jump (type "John 3:16") in the always-visible sticky bar — and last-passage restore (applied server-side on a bare `/read` visit).
+  - Verse and chapter navigation — dropdowns plus a free-text reference quick-jump (type "John 3:16" or "John 3.16") in the always-visible sticky bar — and last-passage restore (applied server-side on a bare `/read` visit).
 - **Search** at `/search`
   - A segmented mode control (Keyword / Lemma / Morphology / Domain) with per-mode placeholders, hint text, and clickable example searches on the empty state; the no-results state gives per-mode recovery guidance.
   - Keyword search with PostgreSQL full-text search. English (WEB) rows use the `bible_english` config (Snowball stemming — `love` matches `loves`, `loved`, and `loving`; every typed word matches, including common words like `just`, `no`, and `own`); Greek (SBLGNT) rows use `bible_simple` (accent-insensitive, whole-lexeme, not stemmed). Highlights track the stemmer via a per-row `ts_headline`.

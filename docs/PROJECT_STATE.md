@@ -41,7 +41,7 @@ Review-driven pass over `/read` (plan: `docs/superpowers/plans/2026-06-17-read-p
 - **Reading experience (Phase C)** — passage masthead replaces the generic "Reader" title; sticky wayfinding bar; inline verse numbers (one heading per chapter); per-chapter corpus headers; capped reading measure in single-column modes; on-demand note editor with an `aria-live` save-status region; accent (not amber) target ring and raised contrast on the corpus labels.
 - **Accessibility (Phase D)** — shared `focus-visible` rings (`lib/ui/focus.ts`) across every reader and popover control; `prefers-reduced-motion` honored for scrolling and animations; aria-live status regions for note saves; larger (~36px) highlight-swatch tap targets.
 - **Copy / polish (Phase E)** — reader-facing empty state with a way back; chapter dropdown shows the chapter number only; raised contrast on low-contrast text (Louw-Nida references); the morphology λ is purely decorative; and only one word popover stays open at a time.
-- **Reference quick-jump (Phase F)** — type a free-text passage reference ("John 3:16", "Rom 5", "1 cor 13:4") to jump straight there; available both in the top controls and in the always-visible sticky bar (so you can navigate without scrolling up), reusing the existing reference parser via `parsePassageQuery`.
+- **Reference quick-jump (Phase F)** — type a free-text passage reference ("John 3:16", "Rom 5", "1 cor 13:4") to jump straight there; available in the always-visible sticky bar (so you can navigate without scrolling up), reusing the existing reference parser via `parsePassageQuery`. The sticky-bar `Go` button uses the primary accent style to match the other reader buttons.
 
 ### Post-Phase-3.0 bug fixes
 

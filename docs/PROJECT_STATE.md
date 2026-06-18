@@ -34,11 +34,13 @@ A three-phase pass over the `/search` surface, sequenced high-impact → medium 
 
 ### Read page improvements (2026-06)
 
-Review-driven pass over `/read` (plan: `docs/superpowers/plans/2026-06-17-read-page-improvements.md`). Phases A–C have shipped; accessibility (Phase D) and copy/polish (Phase E) follow in later PRs.
+Review-driven pass over `/read` (plan: `docs/superpowers/plans/2026-06-17-read-page-improvements.md`). Phases A–E (the review-finding pass) have shipped.
 
 - **First-load stability (Phase A)** — reader mode, last passage, and intro dismissal moved from post-hydration `localStorage` reads to cookies the server reads on first paint, eliminating the parallel-flash / intro-blink / redirect-refetch sequence.
 - **Perceived performance (Phase B)** — route-level `app/read/loading.tsx` skeleton; highlighting is optimistic (removed the per-toggle full-passage `router.refresh`), unifying the Greek and English feedback paths.
 - **Reading experience (Phase C)** — passage masthead replaces the generic "Reader" title; sticky wayfinding bar; inline verse numbers (one heading per chapter); per-chapter corpus headers; capped reading measure in single-column modes; on-demand note editor with an `aria-live` save-status region; accent (not amber) target ring and raised contrast on the corpus labels.
+- **Accessibility (Phase D)** — shared `focus-visible` rings (`lib/ui/focus.ts`) across every reader and popover control; `prefers-reduced-motion` honored for scrolling and animations; aria-live status regions for note saves; larger (~36px) highlight-swatch tap targets.
+- **Copy / polish (Phase E)** — reader-facing empty state with a way back; chapter dropdown shows the chapter number only; raised contrast on low-contrast text (Louw-Nida references); the morphology λ is purely decorative; and only one word popover stays open at a time.
 
 ### Post-Phase-3.0 bug fixes
 

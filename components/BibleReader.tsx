@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { NotebookPen } from "lucide-react";
 import type { SubmitEvent } from "react";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
@@ -212,7 +213,10 @@ export function BibleReader({
   if (verses.length === 0) {
     return (
       <div className="rounded-md border border-stone-300 bg-white p-6 text-slate-700">
-        No sample verses are available for this passage. Run the Prisma seed script after configuring PostgreSQL.
+        <p>This passage isn&apos;t available yet.</p>
+        <Link href="/read?book=John&chapter=1" className="mt-2 inline-block font-medium text-accent-700 hover:text-accent-800">
+          Go to John 1
+        </Link>
       </div>
     );
   }

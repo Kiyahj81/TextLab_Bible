@@ -52,7 +52,7 @@ export function ReaderControls({
         className={`rounded-md border border-stone-300 bg-white px-3 py-2 text-sm ${FOCUS_RING_INPUT}`}
       >
         {chapterOptions.map((p) => (
-          <option key={`${p.book}-${p.chapter}`} value={p.chapter}>{p.label}</option>
+          <option key={`${p.book}-${p.chapter}`} value={p.chapter}>{p.chapter}</option>
         ))}
       </select>
       <input

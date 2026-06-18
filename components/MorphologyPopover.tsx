@@ -26,6 +26,7 @@ export type ReaderToken = {
   gloss: string | null;
   domains: TokenDomainSense[];
   noteCount: number;
+  notes: { id: string; title: string | null; body: string; tags: string[] }[];
   highlightColor: string | null;
 };
 

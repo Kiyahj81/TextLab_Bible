@@ -8,12 +8,12 @@ import { BibleReader } from "@/components/BibleReader";
 const token = {
   id: "t1", book: "John", chapter: 1, verse: 1, wordIndex: 0, surface: "Ἐν",
   normalized: "εν", lemma: "ἐν", morphCode: "P", partOfSpeech: "P-", gloss: "in",
-  domains: [], noteCount: 0, highlightColor: null
+  domains: [], noteCount: 0, notes: [], highlightColor: null
 };
 const verse = {
   id: "v1", book: "John", bookName: "John", chapter: 1, verse: 1, reference: "John 1:1",
   greekText: "Ἐν", englishText: "In", englishCorpus: "WEB", englishVerseId: "e1",
-  englishHighlights: [], tokens: [token]
+  englishHighlights: [], tokens: [token], notes: []
 };
 
 describe("single active popover", () => {

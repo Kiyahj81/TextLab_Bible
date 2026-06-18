@@ -12,7 +12,7 @@ vi.mock("next/navigation", () => ({
 const verse = {
   id: "v1", book: "John", bookName: "John", chapter: 1, verse: 1,
   reference: "John 1:1", greekText: "Ἐν ἀρχῇ", englishText: "In the beginning",
-  englishCorpus: "WEB", englishVerseId: "e1", englishHighlights: [], tokens: []
+  englishCorpus: "WEB", englishVerseId: "e1", englishHighlights: [], tokens: [], notes: []
 };
 
 describe("BibleReader initial mode", () => {

@@ -8,7 +8,7 @@ import { BibleReader } from "@/components/BibleReader";
 const mk = (n: number) => ({
   id: `v${n}`, book: "John", bookName: "John", chapter: 1, verse: n, reference: `John 1:${n}`,
   greekText: "x", englishText: "y", englishCorpus: "WEB", englishVerseId: `e${n}`,
-  englishHighlights: [], tokens: []
+  englishHighlights: [], tokens: [], notes: []
 });
 
 describe("BibleReader column headers", () => {

@@ -8,7 +8,7 @@ import { BibleReader } from "@/components/BibleReader";
 const verse = {
   id: "v1", book: "John", bookName: "John", chapter: 1, verse: 1, reference: "John 1:1",
   greekText: "Ἐν", englishText: "In", englishCorpus: "WEB", englishVerseId: "e1",
-  englishHighlights: [], tokens: []
+  englishHighlights: [], tokens: [], notes: []
 };
 
 describe("BibleReader layout", () => {

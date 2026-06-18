@@ -22,6 +22,7 @@ export type ReaderVerse = {
   englishVerseId: string | null;
   englishHighlights: EnglishHighlight[];
   tokens: ReaderToken[];
+  notes: { id: string; title: string | null; body: string; tags: string[] }[];
 };
 
 export type EnglishToken = { kind: "word"; value: string; wordIndex: number } | { kind: "space"; value: string };

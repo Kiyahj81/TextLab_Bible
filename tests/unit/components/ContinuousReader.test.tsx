@@ -5,15 +5,15 @@ import { ContinuousReader } from "@/components/ContinuousReader";
 
 const token = (id: string, surface: string, verse: number) => ({
   id, book: "John", chapter: 1, verse, wordIndex: 0, surface, normalized: surface,
-  lemma: surface, morphCode: "P", partOfSpeech: "P-", gloss: "", domains: [], noteCount: 0, highlightColor: null
+  lemma: surface, morphCode: "P", partOfSpeech: "P-", gloss: "", domains: [], noteCount: 0, notes: [], highlightColor: null
 });
 const verses = [
   { id: "v1", book: "John", bookName: "John", chapter: 1, verse: 1, reference: "John 1:1",
     greekText: "Ἐν", englishText: "In", englishCorpus: "WEB", englishVerseId: "e1",
-    englishHighlights: [], tokens: [token("t1", "Ἐν", 1)] },
+    englishHighlights: [], tokens: [token("t1", "Ἐν", 1)], notes: [] },
   { id: "v2", book: "John", bookName: "John", chapter: 1, verse: 2, reference: "John 1:2",
     greekText: "οὗτος", englishText: "He", englishCorpus: "WEB", englishVerseId: "e2",
-    englishHighlights: [], tokens: [token("t2", "οὗτος", 2)] }
+    englishHighlights: [], tokens: [token("t2", "οὗτος", 2)], notes: [] }
 ];
 const noop = vi.fn();
 const handlers = {
@@ -41,7 +41,7 @@ describe("ContinuousReader", () => {
     const multiVerse = [
       { id: "v1", book: "John", bookName: "John", chapter: 1, verse: 1, reference: "John 1:1",
         greekText: "Ἐν ἀρχῇ", englishText: "In the beginning", englishCorpus: "WEB", englishVerseId: "e1",
-        englishHighlights: [], tokens: [token("t1", "Ἐν", 1), token("t2", "ἀρχῇ", 1)] }
+        englishHighlights: [], tokens: [token("t1", "Ἐν", 1), token("t2", "ἀρχῇ", 1)], notes: [] }
     ];
     const { container } = render(<ContinuousReader verses={multiVerse} mode="greek" {...handlers} />);
     // Tokens must be space-separated in the text content, not collapsed ("Ἐνἀρχῇ").

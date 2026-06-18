@@ -303,7 +303,7 @@ export function BibleReader({
                   verse={verse}
                   selectedKey={selectedEnglishWord}
                   overrides={englishColorOverride}
-                  onSelect={setSelectedEnglishWord}
+                  onSelect={(key) => { setSelectedTokenId(null); setSelectedEnglishWord(key); }}
                   onPick={(wordIndex, color) => highlightEnglishWord(verse, wordIndex, color)}
                   onClear={(wordIndex) => highlightEnglishWord(verse, wordIndex, null)}
                 />

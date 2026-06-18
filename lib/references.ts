@@ -76,3 +76,29 @@ export function parseTags(input: string) {
     .map((tag) => tag.trim())
     .filter(Boolean);
 }
+
+// Parse a free-text passage query: "Book Chapter" or "Book Chapter:Verse[-VerseEnd]".
+// Verse range collapses to the start verse (the reader scrolls there). Returns null
+// for malformed input or a book not in ntBooks.
+export function parsePassageQuery(
+  input?: string | null
+): { book: string; chapter: number; verse?: number } | null {
+  if (!input) return null;
+  const trimmed = input.trim().replace(/\s+/g, " ");
+  const match = trimmed.match(/^(.+?)\s+(\d+)(?::(\d+)(?:-(\d+))?)?$/);
+  if (!match) return null;
+  const book = normalizeBook(match[1]);
+  if (!book || !ntBooks.some((b) => b.osisId === book)) return null;
+  const chapter = Number.parseInt(match[2], 10);
+  if (chapter < 1) return null;
+  let verse: number | undefined;
+  if (match[3] !== undefined) {
+    verse = Number.parseInt(match[3], 10);
+    if (verse < 1) return null; // reject "John 3:0"; chapter < 1 ("John 0:1") already rejected above
+    if (match[4] !== undefined) {
+      const verseEnd = Number.parseInt(match[4], 10);
+      if (verseEnd < 1) return null;
+    }
+  }
+  return { book, chapter, ...(verse !== undefined ? { verse } : {}) };
+}

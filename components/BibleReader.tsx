@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { NotebookPen } from "lucide-react";
-import type { SubmitEvent } from "react";
+import type { ReactNode, SubmitEvent } from "react";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { EnglishWordPopover } from "@/components/EnglishWordPopover";
 import { MorphologyPopover, ReaderToken } from "@/components/MorphologyPopover";
@@ -51,12 +51,14 @@ export function BibleReader({
   verses,
   targetVerse,
   initialMode = "parallel",
-  chapterLabel
+  chapterLabel,
+  jumpSlot
 }: {
   verses: ReaderVerse[];
   targetVerse?: number | null;
   initialMode?: ReaderMode;
   chapterLabel: string;
+  jumpSlot?: ReactNode;
 }) {
   const [selectedTokenId, setSelectedTokenId] = useState<string | null>(null);
   const [selectedEnglishWord, setSelectedEnglishWord] = useState<string | null>(null);
@@ -228,7 +230,10 @@ export function BibleReader({
   return (
     <div className="space-y-8">
       <div className="sticky top-0 z-10 -mx-4 flex items-center justify-between gap-3 border-b border-stone-200 bg-[var(--background)]/90 px-4 py-2 backdrop-blur">
-        <span className="font-display text-sm font-semibold text-slate-700">{chapterLabel}</span>
+        <div className="flex items-center gap-3">
+          <span className="font-display text-sm font-semibold text-slate-700">{chapterLabel}</span>
+          {jumpSlot}
+        </div>
         <ReaderModeToggle mode={readerMode} onChange={changeReaderMode} />
       </div>
 

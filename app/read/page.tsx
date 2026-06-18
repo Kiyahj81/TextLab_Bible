@@ -2,6 +2,7 @@ import { BibleReader } from "@/components/BibleReader";
 import { ChapterNav } from "@/components/ChapterNav";
 import { DismissibleIntro } from "@/components/DismissibleIntro";
 import { ReaderControls } from "@/components/ReaderControls";
+import { ReaderJumpForm } from "@/components/ReaderJumpForm";
 import { ReaderLocationMemo } from "@/components/ReaderLocationMemo";
 import { ReaderMasthead } from "@/components/ReaderMasthead";
 import { bookName } from "@/lib/references";
@@ -67,6 +68,7 @@ export default async function ReadPage({ searchParams }: { searchParams: SearchP
         targetVerse={targetVerse}
         initialMode={initialMode}
         chapterLabel={`${bookName(book)} ${chapter}`}
+        jumpSlot={<ReaderJumpForm />}
       />
 
       <ChapterNav prev={neighbors.prev} next={neighbors.next} />

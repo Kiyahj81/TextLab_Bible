@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReaderMode } from "@/lib/readerPrefs";
+import { FOCUS_RING } from "@/lib/ui/focus";
 
 export type { ReaderMode };
 
@@ -36,7 +37,7 @@ export function ReaderModeToggle({
               active
                 ? "bg-accent-700 text-white"
                 : "text-slate-600 hover:text-slate-900"
-            }`}
+            } ${FOCUS_RING}`}
           >
             {option.label}
           </button>

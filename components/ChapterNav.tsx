@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { bookName } from "@/lib/references";
+import { FOCUS_RING } from "@/lib/ui/focus";
 
 type Neighbor = { book: string; chapter: number };
 
@@ -36,8 +37,7 @@ function NavLink({
   target: Neighbor | null;
   label: string;
 }) {
-  const baseClass =
-    "inline-flex items-center gap-2 rounded-md border border-stone-300 px-3 py-2 font-medium text-slate-700";
+  const baseClass = `inline-flex items-center gap-2 rounded-md border border-stone-300 px-3 py-2 font-medium text-slate-700 ${FOCUS_RING}`;
   const disabledClass = "cursor-not-allowed opacity-50";
   const activeClass = "hover:border-slate-500 hover:bg-slate-50";
 

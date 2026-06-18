@@ -7,6 +7,7 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { TokenDomainSense } from "@/lib/louwNida";
 import { HighlightMenu } from "@/components/HighlightMenu";
 import { useAutoDismissString } from "@/lib/useAutoDismissStatus";
+import { FOCUS_RING, FOCUS_RING_INPUT } from "@/lib/ui/focus";
 
 const POPOVER_MARGIN = 8;
 const useIsomorphicLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
@@ -141,7 +142,7 @@ export function MorphologyPopover({
         <button
           type="button"
           onClick={onClose}
-          className="rounded-md px-2 py-1 text-sm text-slate-500 hover:bg-stone-100"
+          className={`rounded-md px-2 py-1 text-sm text-slate-500 hover:bg-stone-100 ${FOCUS_RING}`}
         >
           Close
         </button>
@@ -181,7 +182,7 @@ export function MorphologyPopover({
       <div className="mt-4 flex flex-wrap gap-2">
         <Link
           href={lemmaSearchHref}
-          className="inline-flex items-center gap-2 rounded-md bg-accent-700 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-800"
+          className={`inline-flex items-center gap-2 rounded-md bg-accent-700 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-800 ${FOCUS_RING}`}
         >
           <Search size={16} />
           Search lemma
@@ -197,19 +198,21 @@ export function MorphologyPopover({
         <textarea
           value={body}
           onChange={(event) => onBodyChange(event.target.value)}
-          className="min-h-20 w-full rounded-md border border-stone-300 p-2 text-sm outline-none focus:border-accent-600"
+          className={`min-h-20 w-full rounded-md border border-stone-300 p-2 text-sm outline-none focus:border-accent-600 ${FOCUS_RING_INPUT}`}
           placeholder="Write a note on this token"
         />
         <button
           type="submit"
           disabled={saving || !body.trim()}
-          className="rounded-md bg-accent-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className={`rounded-md bg-accent-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-700 disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS_RING}`}
         >
           Save note
         </button>
       </form>
 
-      {status ? <p className="mt-3 text-sm text-slate-600">{status}</p> : null}
+      {status ? (
+        <p role="status" aria-live="polite" className="mt-3 text-sm text-slate-600">{status}</p>
+      ) : null}
     </div>
   );
 }

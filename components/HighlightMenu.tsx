@@ -3,6 +3,7 @@
 import { ChevronDown, Highlighter } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { HighlightPalette } from "@/components/HighlightPalette";
+import { FOCUS_RING } from "@/lib/ui/focus";
 import {
   DEFAULT_HIGHLIGHT_COLOR,
   broadcastHighlightColor,
@@ -78,7 +79,7 @@ export function HighlightMenu({
         type="button"
         onClick={applyCurrent}
         disabled={disabled}
-        className="inline-flex items-center gap-2 rounded-l-md border border-stone-300 px-3 py-2 text-sm font-medium text-slate-700 hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
+        className={`inline-flex items-center gap-2 rounded-l-md border border-stone-300 px-3 py-2 text-sm font-medium text-slate-700 hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS_RING}`}
       >
         <Highlighter size={16} style={{ color }} />
         {label}
@@ -90,7 +91,7 @@ export function HighlightMenu({
         aria-label="Choose highlight color"
         aria-expanded={open}
         aria-haspopup="menu"
-        className="-ml-px inline-flex items-center rounded-r-md border border-stone-300 px-2 py-2 text-slate-500 hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
+        className={`-ml-px inline-flex items-center rounded-r-md border border-stone-300 px-2 py-2 text-slate-500 hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS_RING}`}
       >
         <ChevronDown size={14} aria-hidden />
       </button>

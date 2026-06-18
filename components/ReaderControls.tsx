@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { FOCUS_RING, FOCUS_RING_INPUT } from "@/lib/ui/focus";
 
 type ReaderBookOption = { osisId: string; label: string };
 type ReaderPassageOption = { book: string; label: string; chapter: number };
@@ -41,14 +42,14 @@ export function ReaderControls({
       <select
         aria-label="book" name="book" value={book}
         onChange={(e) => { setBook(e.target.value); setChapterOverride(null); }}
-        className="rounded-md border border-stone-300 bg-white px-3 py-2 text-sm"
+        className={`rounded-md border border-stone-300 bg-white px-3 py-2 text-sm ${FOCUS_RING_INPUT}`}
       >
         {books.map((b) => <option key={b.osisId} value={b.osisId}>{b.label}</option>)}
       </select>
       <select
         aria-label="chapter" name="chapter" value={activeChapter}
         onChange={(e) => setChapterOverride(Number.parseInt(e.target.value, 10))}
-        className="rounded-md border border-stone-300 bg-white px-3 py-2 text-sm"
+        className={`rounded-md border border-stone-300 bg-white px-3 py-2 text-sm ${FOCUS_RING_INPUT}`}
       >
         {chapterOptions.map((p) => (
           <option key={`${p.book}-${p.chapter}`} value={p.chapter}>{p.label}</option>
@@ -62,9 +63,9 @@ export function ReaderControls({
         inputMode="numeric"
         defaultValue={selectedVerse ?? ""}
         placeholder="Verse"
-        className="w-20 rounded-md border border-stone-300 bg-white px-3 py-2 text-sm outline-none focus:border-accent-600"
+        className={`w-20 rounded-md border border-stone-300 bg-white px-3 py-2 text-sm outline-none focus:border-accent-600 ${FOCUS_RING_INPUT}`}
       />
-      <button className="rounded-md bg-accent-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-800">Open</button>
+      <button className={`rounded-md bg-accent-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-800 ${FOCUS_RING}`}>Open</button>
     </form>
   );
 }

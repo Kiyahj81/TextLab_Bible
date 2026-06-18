@@ -12,6 +12,7 @@ import { GreekToken, EnglishWords, type ReaderToken, type ReaderVerse } from "@/
 import { writePrefCookie, READER_MODE_COOKIE, READER_LAYOUT_COOKIE, type ReaderMode, type ReaderLayout } from "@/lib/readerPrefs";
 import { useAutoDismissMap } from "@/lib/useAutoDismissStatus";
 import { FOCUS_RING, FOCUS_RING_INPUT } from "@/lib/ui/focus";
+import { NoteList } from "@/components/NoteList";
 
 export function BibleReader({
   verses,
@@ -102,6 +103,7 @@ export function BibleReader({
       if (response.ok) {
         setVerseStatus(verse.id, "Note saved.");
         setNoteBodies((current) => ({ ...current, [verse.id]: "" }));
+        router.refresh();
       } else {
         setVerseStatus(verse.id, "Could not save note.");
       }
@@ -323,6 +325,11 @@ export function BibleReader({
             </div>
 
             <div className="mt-4 border-t border-stone-200 pt-4">
+              {verse.notes.length > 0 ? (
+                <div className="mb-3">
+                  <NoteList notes={verse.notes} onChanged={() => router.refresh()} />
+                </div>
+              ) : null}
               <button
                 type="button"
                 onClick={() => setOpenNote((c) => ({ ...c, [verse.id]: !c[verse.id] }))}

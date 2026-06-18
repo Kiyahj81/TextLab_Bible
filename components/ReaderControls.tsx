@@ -16,6 +16,7 @@ export function ReaderControls({
 }) {
   const [book, setBook] = useState(selectedBook);
   const [chapterOverride, setChapterOverride] = useState<number | null>(selectedChapter);
+  const [verse, setVerse] = useState(selectedVerse != null ? String(selectedVerse) : "");
 
   // Re-sync to URL-driven props (e.g. after a server-side redirect restores a
   // saved passage on a bare /read visit), otherwise the dropdowns keep showing
@@ -28,6 +29,10 @@ export function ReaderControls({
   useEffect(() => {
     setChapterOverride(selectedChapter);
   }, [selectedChapter]);
+
+  useEffect(() => {
+    setVerse(selectedVerse != null ? String(selectedVerse) : "");
+  }, [selectedVerse]);
 
   const chapterOptions = useMemo(
     () => passages.filter((p) => p.book === book), [book, passages]
@@ -64,7 +69,8 @@ export function ReaderControls({
           type="number"
           min={1}
           inputMode="numeric"
-          defaultValue={selectedVerse ?? ""}
+          value={verse}
+          onChange={(event) => setVerse(event.target.value)}
           placeholder="Verse"
           className={`w-20 rounded-md border border-stone-300 bg-white px-3 py-2 text-sm outline-none focus:border-accent-600 ${FOCUS_RING_INPUT}`}
         />

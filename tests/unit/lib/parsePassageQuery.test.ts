@@ -22,4 +22,7 @@ describe("parsePassageQuery", () => {
     expect(parsePassageQuery("John 0:1")).toBeNull();
     expect(parsePassageQuery("John 3:0")).toBeNull();
   });
+  it("rejects a non-positive range end", () => {
+    expect(parsePassageQuery("John 3:16-0")).toBeNull();
+  });
 });

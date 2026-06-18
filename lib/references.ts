@@ -85,7 +85,7 @@ export function parsePassageQuery(
 ): { book: string; chapter: number; verse?: number } | null {
   if (!input) return null;
   const trimmed = input.trim().replace(/\s+/g, " ");
-  const match = trimmed.match(/^(.+?)\s+(\d+)(?::(\d+)(?:-\d+)?)?$/);
+  const match = trimmed.match(/^(.+?)\s+(\d+)(?::(\d+)(?:-(\d+))?)?$/);
   if (!match) return null;
   const book = normalizeBook(match[1]);
   if (!book || !ntBooks.some((b) => b.osisId === book)) return null;
@@ -95,6 +95,10 @@ export function parsePassageQuery(
   if (match[3] !== undefined) {
     verse = Number.parseInt(match[3], 10);
     if (verse < 1) return null; // reject "John 3:0"; chapter < 1 ("John 0:1") already rejected above
+    if (match[4] !== undefined) {
+      const verseEnd = Number.parseInt(match[4], 10);
+      if (verseEnd < 1) return null;
+    }
   }
   return { book, chapter, ...(verse !== undefined ? { verse } : {}) };
 }

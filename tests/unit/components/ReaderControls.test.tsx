@@ -42,4 +42,15 @@ describe("ReaderControls", () => {
     fireEvent.submit(getByRole("textbox", { name: /reference/i }).closest("form")!);
     expect(getByText(/try a reference like/i)).toBeTruthy();
   });
+
+  it("resyncs the verse field when the verse prop changes (soft nav)", () => {
+    const { getByLabelText, rerender } = render(
+      <ReaderControls books={books} passages={passages} selectedBook="John" selectedChapter={1} selectedVerse={5} />
+    );
+    expect((getByLabelText("verse") as HTMLInputElement).value).toBe("5");
+    rerender(
+      <ReaderControls books={books} passages={passages} selectedBook="John" selectedChapter={3} selectedVerse={16} />
+    );
+    expect((getByLabelText("verse") as HTMLInputElement).value).toBe("16");
+  });
 });

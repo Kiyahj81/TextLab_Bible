@@ -229,7 +229,7 @@ export function BibleReader({
 
   return (
     <div className="space-y-8">
-      <div className="sticky top-0 z-10 -mx-4 flex items-center justify-between gap-3 border-b border-stone-200 bg-[var(--background)]/90 px-4 py-2 backdrop-blur">
+      <div className="sticky top-0 z-10 -mx-4 flex flex-wrap items-center justify-between gap-3 border-b border-stone-200 bg-[var(--background)]/90 px-4 py-2 backdrop-blur">
         <div className="flex items-center gap-3">
           <span className="font-display text-sm font-semibold text-slate-700">{chapterLabel}</span>
           {jumpSlot}

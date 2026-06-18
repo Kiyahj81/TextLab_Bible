@@ -35,7 +35,7 @@ export function ReaderJumpForm({ className, label = "reference" }: { className?:
           value={ref}
           onChange={(event) => { setRef(event.target.value); setRefError(null); }}
           placeholder="Go to e.g. John 3:16"
-          className={`w-44 rounded-md border bg-white px-3 py-2 text-sm ${
+          className={`w-36 sm:w-44 rounded-md border bg-white px-3 py-2 text-sm ${
             refError ? "border-red-400" : "border-stone-300"
           } ${FOCUS_RING_INPUT}`}
         />

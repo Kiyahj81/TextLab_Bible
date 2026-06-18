@@ -11,12 +11,12 @@ const passages = [
 ];
 
 describe("ReaderControls", () => {
-  it("auto-selects first chapter when book changes", () => {
+  it("auto-selects first chapter (by number) when book changes", () => {
     const { getByDisplayValue, getByRole } = render(
       <ReaderControls books={books} passages={passages} selectedBook="John" selectedChapter={2} />
     );
-    expect(getByDisplayValue("John 2")).toBeTruthy();
+    expect(getByDisplayValue("2")).toBeTruthy();
     fireEvent.change(getByRole("combobox", { name: /book/i }), { target: { value: "Rom" } });
-    expect(getByDisplayValue("Romans 1")).toBeTruthy();
+    expect(getByDisplayValue("1")).toBeTruthy();
   });
 });

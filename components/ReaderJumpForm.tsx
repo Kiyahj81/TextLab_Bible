@@ -4,7 +4,7 @@ import type { FormEvent } from "react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { parsePassageQuery } from "@/lib/references";
-import { FOCUS_RING_INPUT } from "@/lib/ui/focus";
+import { FOCUS_RING, FOCUS_RING_INPUT } from "@/lib/ui/focus";
 
 export function ReaderJumpForm({ className }: { className?: string }) {
   const router = useRouter();
@@ -29,15 +29,23 @@ export function ReaderJumpForm({ className }: { className?: string }) {
 
   return (
     <form onSubmit={handleSubmit} className={className}>
-      <input
-        aria-label="reference"
-        value={ref}
-        onChange={(event) => { setRef(event.target.value); setRefError(null); }}
-        placeholder="Go to e.g. John 3:16"
-        className={`w-44 rounded-md border bg-white px-3 py-2 text-sm ${
-          refError ? "border-red-400" : "border-stone-300"
-        } ${FOCUS_RING_INPUT}`}
-      />
+      <div className="flex gap-2">
+        <input
+          aria-label="reference"
+          value={ref}
+          onChange={(event) => { setRef(event.target.value); setRefError(null); }}
+          placeholder="Go to e.g. John 3:16"
+          className={`w-44 rounded-md border bg-white px-3 py-2 text-sm ${
+            refError ? "border-red-400" : "border-stone-300"
+          } ${FOCUS_RING_INPUT}`}
+        />
+        <button
+          type="submit"
+          className={`rounded-md border border-stone-300 px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:border-slate-500 ${FOCUS_RING}`}
+        >
+          Go
+        </button>
+      </div>
       {refError ? <p role="alert" className="mt-1 text-sm text-red-700">{refError}</p> : null}
     </form>
   );

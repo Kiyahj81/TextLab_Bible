@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { render, fireEvent, cleanup, waitFor } from "@testing-library/react";
-
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
 import { BibleReader } from "@/components/BibleReader";
 
 const token = {
@@ -39,6 +39,16 @@ describe("BibleReader optimistic highlight", () => {
     fireEvent.click(getByRole("button", { name: /^Highlight$/ }));
     expect(await findByText(/could not save highlight/i)).toBeTruthy();
     expect(getByRole("button", { name: "Ἐν" }).getAttribute("style") ?? "").not.toMatch(/background-color/);
+  });
+
+  it("surfaces a failed highlight in continuous mode (no per-verse status containers)", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve({ ok: false })));
+    const { getByRole, findByText } = render(
+      <BibleReader verses={[verse]} initialMode="greek" initialLayout="continuous" chapterLabel="John 1" />
+    );
+    fireEvent.click(getByRole("button", { name: "Ἐν" }));          // open popover
+    fireEvent.click(getByRole("button", { name: /^Highlight$/ }));  // apply default color (request fails)
+    expect(await findByText(/could not save highlight/i)).toBeTruthy();
   });
 });
 

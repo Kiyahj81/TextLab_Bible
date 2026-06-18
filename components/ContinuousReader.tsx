@@ -1,0 +1,98 @@
+"use client";
+
+import { Fragment } from "react";
+import { GreekToken, EnglishWords, type ReaderVerse, type ReaderToken } from "@/components/readerTokens";
+
+// Font weight AND text color are applied per-case (see verseNumberClass), NOT here:
+// putting conflicting utilities on one element (font-semibold + font-bold, or
+// text-slate-500 + text-accent-700) lets the cascade keep the base value.
+const VERSE_NUMBER_CLASS = "oldstyle-nums mr-1 align-super text-sm scroll-mt-24";
+// Accent ring + bold + accent color mark the ?verse=N target verse in continuous
+// mode (study mode rings the <article>).
+const VERSE_NUMBER_TARGET = "font-bold text-accent-700 rounded-sm ring-2 ring-accent-400 ring-offset-2 ring-offset-[var(--background)]";
+
+function verseNumberClass(isTarget: boolean) {
+  // Exactly one font-weight + one text-color utility per case so the target's
+  // bold + accent color actually apply.
+  return isTarget ? `${VERSE_NUMBER_CLASS} ${VERSE_NUMBER_TARGET}` : `${VERSE_NUMBER_CLASS} font-semibold text-slate-500`;
+}
+
+export function ContinuousReader(props: {
+  verses: ReaderVerse[];
+  mode: "greek" | "english";
+  selectedTokenId: string | null;
+  setSelectedTokenId: (id: string | null) => void;
+  tokenColorOverride: Record<string, string | null>;
+  onHighlightToken: (verse: ReaderVerse, token: ReaderToken, color: string | null) => void;
+  tokenNoteDrafts: Record<string, string>;
+  onTokenDraft: (tokenId: string, next: string) => void;
+  onNotesChanged: () => void;
+  selectedEnglishWord: string | null;
+  setSelectedEnglishWord: (key: string | null) => void;
+  englishColorOverride: Record<string, string | null>;
+  onPickEnglish: (verse: ReaderVerse, wordIndex: number, color: string) => void;
+  onClearEnglish: (verse: ReaderVerse, wordIndex: number) => void;
+  targetVerse?: number | null;
+}) {
+  const { verses, mode, targetVerse } = props;
+
+  if (mode === "greek") {
+    return (
+      <div className="greek-text max-w-[68ch] text-[1.45rem] leading-10 text-slate-950">
+        {verses.map((verse) => (
+          <Fragment key={verse.id}>
+            <span className="sr-only">{verse.reference} </span>
+            <span id={`verse-${verse.verse}`} className={verseNumberClass(verse.verse === targetVerse)} aria-hidden>{verse.verse}</span>
+            {verse.tokens.length > 0
+              ? verse.tokens.map((token) => {
+                  const color = token.id in props.tokenColorOverride ? props.tokenColorOverride[token.id] : token.highlightColor;
+                  return (
+                    // Trailing space per token so copied/AT text keeps word boundaries
+                    // (button margins only separate them visually). Matches study mode.
+                    <Fragment key={token.id}>
+                      <GreekToken
+                        token={token}
+                        color={color}
+                        reference={verse.reference}
+                        selected={props.selectedTokenId === token.id}
+                        noteDraft={props.tokenNoteDrafts[token.id] ?? ""}
+                        onToggle={() => { props.setSelectedEnglishWord(null); props.setSelectedTokenId(props.selectedTokenId === token.id ? null : token.id); }}
+                        onDraftChange={(next) => props.onTokenDraft(token.id, next)}
+                        onHighlight={(c) => props.onHighlightToken(verse, token, c)}
+                        onClose={() => props.setSelectedTokenId(null)}
+                        onNotesChanged={props.onNotesChanged}
+                      />{" "}
+                    </Fragment>
+                  );
+                })
+              : `${verse.greekText} `}
+          </Fragment>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-[68ch] text-xl leading-10 text-slate-950">
+      {verses.map((verse) => (
+        <Fragment key={verse.id}>
+          <span className="sr-only">{verse.reference} </span>
+          <span id={`verse-${verse.verse}`} className={verseNumberClass(verse.verse === targetVerse)} aria-hidden>{verse.verse}</span>
+          {verse.englishVerseId ? (
+            <EnglishWords
+              verse={verse}
+              overrides={props.englishColorOverride}
+              selectedKey={props.selectedEnglishWord}
+              onSelect={(key) => { props.setSelectedTokenId(null); props.setSelectedEnglishWord(key); }}
+              onPick={(wordIndex, color) => props.onPickEnglish(verse, wordIndex, color)}
+              onClear={(wordIndex) => props.onClearEnglish(verse, wordIndex)}
+            />
+          ) : (
+            verse.englishText
+          )}
+          {" "}
+        </Fragment>
+      ))}
+    </div>
+  );
+}

@@ -35,7 +35,8 @@ export function MorphologyPopover({
   body,
   onBodyChange,
   onHighlight,
-  onClose
+  onClose,
+  onNotesChanged
 }: {
   token: ReaderToken;
   reference: string;
@@ -43,6 +44,7 @@ export function MorphologyPopover({
   onBodyChange: (next: string) => void;
   onHighlight: (color: string | null) => void;
   onClose: () => void;
+  onNotesChanged?: () => void;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -106,6 +108,7 @@ export function MorphologyPopover({
       if (response.ok) {
         onBodyChange("");
         setStatus("Note saved.");
+        onNotesChanged?.();
       } else {
         setStatus("Could not save note.");
       }

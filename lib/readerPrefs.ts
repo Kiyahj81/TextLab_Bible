@@ -36,6 +36,16 @@ export function parseSavedPassage(value: string | null | undefined): SavedPassag
   return null;
 }
 
+export type ReaderLayout = "study" | "continuous";
+export const READER_LAYOUTS: readonly ReaderLayout[] = ["study", "continuous"];
+export const READER_LAYOUT_COOKIE = "textlab-reader-layout";
+
+export function parseReaderLayout(value: string | null | undefined): ReaderLayout | null {
+  return value != null && (READER_LAYOUTS as readonly string[]).includes(value)
+    ? (value as ReaderLayout)
+    : null;
+}
+
 const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365;
 
 // Client-only writer for non-httpOnly preference cookies. Server reads via cookies().

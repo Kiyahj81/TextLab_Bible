@@ -41,3 +41,17 @@ describe("parseSavedPassage", () => {
     expect(parseSavedPassage('{"book":"John","chapter":3.5}')).toBeNull();
   });
 });
+
+import { parseReaderLayout, READER_LAYOUT_COOKIE } from "@/lib/readerPrefs";
+
+describe("parseReaderLayout", () => {
+  it("accepts study and continuous, rejects others", () => {
+    expect(parseReaderLayout("study")).toBe("study");
+    expect(parseReaderLayout("continuous")).toBe("continuous");
+    expect(parseReaderLayout("scroll")).toBeNull();
+    expect(parseReaderLayout(null)).toBeNull();
+  });
+  it("exposes a stable cookie name", () => {
+    expect(READER_LAYOUT_COOKIE).toBe("textlab-reader-layout");
+  });
+});

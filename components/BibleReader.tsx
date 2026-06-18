@@ -221,7 +221,7 @@ export function BibleReader({
         </div>
       </div>
 
-      <div className={`grid gap-4 border-l-2 border-transparent pl-6 ${showBothColumns ? "md:grid-cols-2" : "max-w-[68ch]"}`}>
+      <div className={`grid gap-4 ${effectiveLayout === "continuous" ? "" : "border-l-2 border-transparent pl-6"} ${showBothColumns ? "md:grid-cols-2" : "max-w-[68ch]"}`}>
         {showGreek ? (
           <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">SBLGNT</div>
         ) : null}

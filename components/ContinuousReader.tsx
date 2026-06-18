@@ -34,23 +34,25 @@ export function ContinuousReader(props: {
               ? verse.tokens.map((token) => {
                   const color = token.id in props.tokenColorOverride ? props.tokenColorOverride[token.id] : token.highlightColor;
                   return (
-                    <GreekToken
-                      key={token.id}
-                      token={token}
-                      color={color}
-                      reference={verse.reference}
-                      selected={props.selectedTokenId === token.id}
-                      noteDraft={props.tokenNoteDrafts[token.id] ?? ""}
-                      onToggle={() => { props.setSelectedEnglishWord(null); props.setSelectedTokenId(props.selectedTokenId === token.id ? null : token.id); }}
-                      onDraftChange={(next) => props.onTokenDraft(token.id, next)}
-                      onHighlight={(c) => props.onHighlightToken(verse, token, c)}
-                      onClose={() => props.setSelectedTokenId(null)}
-                      onNotesChanged={props.onNotesChanged}
-                    />
+                    // Trailing space per token so copied/AT text keeps word boundaries
+                    // (button margins only separate them visually). Matches study mode.
+                    <Fragment key={token.id}>
+                      <GreekToken
+                        token={token}
+                        color={color}
+                        reference={verse.reference}
+                        selected={props.selectedTokenId === token.id}
+                        noteDraft={props.tokenNoteDrafts[token.id] ?? ""}
+                        onToggle={() => { props.setSelectedEnglishWord(null); props.setSelectedTokenId(props.selectedTokenId === token.id ? null : token.id); }}
+                        onDraftChange={(next) => props.onTokenDraft(token.id, next)}
+                        onHighlight={(c) => props.onHighlightToken(verse, token, c)}
+                        onClose={() => props.setSelectedTokenId(null)}
+                        onNotesChanged={props.onNotesChanged}
+                      />{" "}
+                    </Fragment>
                   );
                 })
-              : verse.greekText}
-            {" "}
+              : `${verse.greekText} `}
           </Fragment>
         ))}
       </div>

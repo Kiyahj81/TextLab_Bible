@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from "vitest";
-import { render } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render } from "@testing-library/react";
 import { ContinuousReader } from "@/components/ContinuousReader";
 
 const token = (id: string, surface: string, verse: number) => ({
@@ -24,6 +24,8 @@ const handlers = {
 };
 
 describe("ContinuousReader", () => {
+  afterEach(() => cleanup());
+
   it("flows Greek verses with superscript numbers and no note editors", () => {
     const { container, getByRole, getByText, queryByPlaceholderText } = render(
       <ContinuousReader verses={verses} mode="greek" {...handlers} />
@@ -33,5 +35,16 @@ describe("ContinuousReader", () => {
     expect(queryByPlaceholderText(/write a note/i)).toBeNull();          // no per-verse editors
     expect(container.querySelector("#verse-2")).toBeTruthy();             // jump anchor present
     expect(getByText("John 1:1")).toBeTruthy();                           // sr-only verse reference
+  });
+
+  it("keeps whitespace between adjacent Greek tokens in a multi-token verse", () => {
+    const multiVerse = [
+      { id: "v1", book: "John", bookName: "John", chapter: 1, verse: 1, reference: "John 1:1",
+        greekText: "Ἐν ἀρχῇ", englishText: "In the beginning", englishCorpus: "WEB", englishVerseId: "e1",
+        englishHighlights: [], tokens: [token("t1", "Ἐν", 1), token("t2", "ἀρχῇ", 1)] }
+    ];
+    const { container } = render(<ContinuousReader verses={multiVerse} mode="greek" {...handlers} />);
+    // Tokens must be space-separated in the text content, not collapsed ("Ἐνἀρχῇ").
+    expect(container.textContent).toContain("Ἐν ἀρχῇ");
   });
 });

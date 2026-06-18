@@ -3,12 +3,18 @@
 import { Fragment } from "react";
 import { GreekToken, EnglishWords, type ReaderVerse, type ReaderToken } from "@/components/readerTokens";
 
-const VERSE_NUMBER_CLASS = "oldstyle-nums mr-1 align-super text-sm font-semibold text-slate-500 scroll-mt-24";
-// Accent ring marks the ?verse=N target verse in continuous mode (study mode rings the <article>).
-const VERSE_NUMBER_TARGET = "rounded-sm ring-2 ring-accent-400 ring-offset-2 ring-offset-[var(--background)]";
+// Font weight AND text color are applied per-case (see verseNumberClass), NOT here:
+// putting conflicting utilities on one element (font-semibold + font-bold, or
+// text-slate-500 + text-accent-700) lets the cascade keep the base value.
+const VERSE_NUMBER_CLASS = "oldstyle-nums mr-1 align-super text-sm scroll-mt-24";
+// Accent ring + bold + accent color mark the ?verse=N target verse in continuous
+// mode (study mode rings the <article>).
+const VERSE_NUMBER_TARGET = "font-bold text-accent-700 rounded-sm ring-2 ring-accent-400 ring-offset-2 ring-offset-[var(--background)]";
 
 function verseNumberClass(isTarget: boolean) {
-  return isTarget ? `${VERSE_NUMBER_CLASS} ${VERSE_NUMBER_TARGET}` : VERSE_NUMBER_CLASS;
+  // Exactly one font-weight + one text-color utility per case so the target's
+  // bold + accent color actually apply.
+  return isTarget ? `${VERSE_NUMBER_CLASS} ${VERSE_NUMBER_TARGET}` : `${VERSE_NUMBER_CLASS} font-semibold text-slate-500`;
 }
 
 export function ContinuousReader(props: {

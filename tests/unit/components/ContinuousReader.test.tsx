@@ -48,11 +48,18 @@ describe("ContinuousReader", () => {
     expect(container.textContent).toContain("Ἐν ἀρχῇ");
   });
 
-  it("rings the target verse number and only the target", () => {
+  it("rings, bolds, and accents the target verse number and only the target", () => {
     const { container } = render(
       <ContinuousReader verses={verses} mode="greek" targetVerse={2} {...handlers} />
     );
-    expect(container.querySelector("#verse-2")?.className).toMatch(/ring-accent-400/);
-    expect(container.querySelector("#verse-1")?.className ?? "").not.toMatch(/ring-accent-400/);
+    const target = container.querySelector("#verse-2")?.className ?? "";
+    const other = container.querySelector("#verse-1")?.className ?? "";
+    expect(target).toMatch(/ring-accent-400/);
+    expect(target).toMatch(/font-bold/);
+    expect(target).toMatch(/text-accent-700/);
+    expect(other).not.toMatch(/ring-accent-400/);
+    expect(other).not.toMatch(/font-bold/);
+    expect(other).not.toMatch(/text-accent-700/);
+    expect(other).toMatch(/text-slate-500/);
   });
 });

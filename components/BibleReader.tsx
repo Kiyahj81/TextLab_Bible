@@ -299,6 +299,7 @@ export function BibleReader({
                                 onDraftChange={(next) => setTokenDraft(token.id, next)}
                                 onHighlight={(c) => highlightToken(verse, token, c)}
                                 onClose={() => setSelectedTokenId(null)}
+                                onNotesChanged={() => router.refresh()}
                               />{" "}
                             </Fragment>
                           );

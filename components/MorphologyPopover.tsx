@@ -6,6 +6,7 @@ import type { SubmitEvent } from "react";
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { TokenDomainSense } from "@/lib/louwNida";
 import { HighlightMenu } from "@/components/HighlightMenu";
+import { NoteList } from "@/components/NoteList";
 import { useAutoDismissString } from "@/lib/useAutoDismissStatus";
 import { FOCUS_RING, FOCUS_RING_INPUT } from "@/lib/ui/focus";
 
@@ -192,6 +193,12 @@ export function MorphologyPopover({
         </Link>
         <HighlightMenu label="Highlight" onPick={onHighlight} />
       </div>
+
+      {token.notes.length > 0 ? (
+        <div className="mt-4">
+          <NoteList notes={token.notes} onChanged={() => onNotesChanged?.()} />
+        </div>
+      ) : null}
 
       <form onSubmit={addNote} className="mt-4 space-y-2">
         <label className="flex items-center gap-2 text-sm font-medium text-slate-700">

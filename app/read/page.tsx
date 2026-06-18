@@ -63,12 +63,16 @@ export default async function ReadPage({ searchParams }: { searchParams: SearchP
         <ReaderControls books={books} passages={passages} selectedBook={book} selectedChapter={chapter} selectedVerse={targetVerse} />
       </section>
 
+      {/* jumpSlot carries a stable key: it's a Server-Component element passed as
+          a prop and rendered among siblings in BibleReader's sticky bar, so on a
+          client re-render React's reconciler would otherwise flag it as a keyless
+          list child (react.dev/link/warning-keys). */}
       <BibleReader
         verses={verses}
         targetVerse={targetVerse}
         initialMode={initialMode}
         chapterLabel={`${bookName(book)} ${chapter}`}
-        jumpSlot={<ReaderJumpForm label="Jump to reference" />}
+        jumpSlot={<ReaderJumpForm key="reader-jump" label="Jump to reference" />}
       />
 
       <ChapterNav prev={neighbors.prev} next={neighbors.next} />

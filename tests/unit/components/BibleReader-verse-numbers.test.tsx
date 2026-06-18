@@ -1,7 +1,8 @@
 // tests/unit/components/BibleReader-verse-numbers.test.tsx
 // @vitest-environment jsdom
-import { describe, expect, it, afterEach } from "vitest";
+import { describe, expect, it, vi, afterEach } from "vitest";
 import { render, cleanup } from "@testing-library/react";
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
 import { BibleReader } from "@/components/BibleReader";
 
 afterEach(() => {

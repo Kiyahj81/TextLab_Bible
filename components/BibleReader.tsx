@@ -4,9 +4,12 @@ import Link from "next/link";
 import { NotebookPen } from "lucide-react";
 import type { ReactNode, SubmitEvent } from "react";
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ReaderModeToggle } from "@/components/ReaderModeToggle";
+import { ReaderLayoutToggle } from "@/components/ReaderLayoutToggle";
+import { ContinuousReader } from "@/components/ContinuousReader";
 import { GreekToken, EnglishWords, type ReaderToken, type ReaderVerse } from "@/components/readerTokens";
-import { writePrefCookie, READER_MODE_COOKIE, type ReaderMode } from "@/lib/readerPrefs";
+import { writePrefCookie, READER_MODE_COOKIE, READER_LAYOUT_COOKIE, type ReaderMode, type ReaderLayout } from "@/lib/readerPrefs";
 import { useAutoDismissMap } from "@/lib/useAutoDismissStatus";
 import { FOCUS_RING, FOCUS_RING_INPUT } from "@/lib/ui/focus";
 
@@ -14,12 +17,14 @@ export function BibleReader({
   verses,
   targetVerse,
   initialMode = "parallel",
+  initialLayout = "study",
   chapterLabel,
   jumpSlot
 }: {
   verses: ReaderVerse[];
   targetVerse?: number | null;
   initialMode?: ReaderMode;
+  initialLayout?: ReaderLayout;
   chapterLabel: string;
   jumpSlot?: ReactNode;
 }) {
@@ -31,11 +36,16 @@ export function BibleReader({
   const [status, setStatus] = useState<Record<string, string>>({});
   const [savingNote, setSavingNote] = useState<Record<string, boolean>>({});
   const [readerMode, setReaderMode] = useState<ReaderMode>(initialMode);
+  const [layout, setLayout] = useState<ReaderLayout>(initialLayout);
   const [tokenColorOverride, setTokenColorOverride] = useState<Record<string, string | null>>({});
   const [englishColorOverride, setEnglishColorOverride] = useState<Record<string, string | null>>({});
   const highlightSeqRef = useRef<Record<string, number>>({});
   const highlightChainRef = useRef<Record<string, Promise<unknown>>>({});
   const confirmedColorRef = useRef<Record<string, string | null>>({});
+
+  // B2 removed useRouter (highlights became optimistic); re-introduce it here —
+  // ContinuousReader's onNotesChanged refreshes the passage after a note mutation.
+  const router = useRouter();
 
   useAutoDismissMap(status, setStatus);
 
@@ -53,6 +63,14 @@ export function BibleReader({
     setReaderMode(next);
     writePrefCookie(READER_MODE_COOKIE, next);
   }
+
+  function changeLayout(next: ReaderLayout) {
+    setLayout(next);
+    writePrefCookie(READER_LAYOUT_COOKIE, next);
+  }
+
+  const continuousAvailable = readerMode !== "parallel";
+  const effectiveLayout: ReaderLayout = continuousAvailable ? layout : "study";
 
   function setTokenDraft(tokenId: string, next: string) {
     setTokenNoteDrafts((current) => ({ ...current, [tokenId]: next }));
@@ -197,7 +215,10 @@ export function BibleReader({
           <span className="font-display text-sm font-semibold text-slate-700">{chapterLabel}</span>
           {jumpSlot}
         </div>
-        <ReaderModeToggle mode={readerMode} onChange={changeReaderMode} />
+        <div className="flex items-center gap-2">
+          <ReaderLayoutToggle layout={layout} onChange={changeLayout} continuousDisabled={!continuousAvailable} />
+          <ReaderModeToggle mode={readerMode} onChange={changeReaderMode} />
+        </div>
       </div>
 
       <div className={`grid gap-4 border-l-2 border-transparent pl-6 ${showBothColumns ? "md:grid-cols-2" : "max-w-[68ch]"}`}>
@@ -211,102 +232,121 @@ export function BibleReader({
         ) : null}
       </div>
 
-      {verses.map((verse) => (
-        <article
-          key={verse.id}
-          id={`verse-${verse.verse}`}
-          aria-label={verse.reference}
-          className={`scroll-mt-24 border-l-2 border-accent-200 pl-6 ${
-            targetVerse === verse.verse ? "rounded-sm ring-2 ring-accent-400 ring-offset-4 ring-offset-[var(--background)]" : ""
-          }`}
-        >
-          <div className={`grid gap-4 ${showBothColumns ? "md:grid-cols-2" : "max-w-[68ch]"}`}>
-            {showGreek ? (
-              <div>
-                <div className="greek-text text-[1.45rem] leading-10 text-slate-950">
-                  <span className="oldstyle-nums mr-2 align-super text-sm font-semibold text-slate-500" aria-hidden>
-                    {verse.verse}
-                  </span>
-                  {verse.tokens.length > 0
-                    ? verse.tokens.map((token) => {
-                        const tokenColor =
-                          token.id in tokenColorOverride
-                            ? tokenColorOverride[token.id]
-                            : token.highlightColor;
-                        return (
-                          <span key={token.id}>
-                            <GreekToken
-                              token={token}
-                              color={tokenColor ?? null}
-                              reference={verse.reference}
-                              selected={selectedTokenId === token.id}
-                              noteDraft={tokenNoteDrafts[token.id] ?? ""}
-                              onToggle={() => {
-                                setSelectedEnglishWord(null);
-                                setSelectedTokenId(selectedTokenId === token.id ? null : token.id);
-                              }}
-                              onDraftChange={(next) => setTokenDraft(token.id, next)}
-                              onHighlight={(c) => highlightToken(verse, token, c)}
-                              onClose={() => setSelectedTokenId(null)}
-                            />{" "}
-                          </span>
-                        );
-                      })
-                    : verse.greekText}
+      {effectiveLayout === "continuous" ? (
+        <ContinuousReader
+          verses={verses}
+          mode={readerMode === "english" ? "english" : "greek"}
+          selectedTokenId={selectedTokenId}
+          setSelectedTokenId={setSelectedTokenId}
+          tokenColorOverride={tokenColorOverride}
+          onHighlightToken={highlightToken}
+          tokenNoteDrafts={tokenNoteDrafts}
+          onTokenDraft={setTokenDraft}
+          onNotesChanged={() => router.refresh()}
+          selectedEnglishWord={selectedEnglishWord}
+          setSelectedEnglishWord={setSelectedEnglishWord}
+          englishColorOverride={englishColorOverride}
+          onPickEnglish={(verse, wordIndex, color) => highlightEnglishWord(verse, wordIndex, color)}
+          onClearEnglish={(verse, wordIndex) => highlightEnglishWord(verse, wordIndex, null)}
+        />
+      ) : (
+        verses.map((verse) => (
+          <article
+            key={verse.id}
+            id={`verse-${verse.verse}`}
+            aria-label={verse.reference}
+            className={`scroll-mt-24 border-l-2 border-accent-200 pl-6 ${
+              targetVerse === verse.verse ? "rounded-sm ring-2 ring-accent-400 ring-offset-4 ring-offset-[var(--background)]" : ""
+            }`}
+          >
+            <div className={`grid gap-4 ${showBothColumns ? "md:grid-cols-2" : "max-w-[68ch]"}`}>
+              {showGreek ? (
+                <div>
+                  <div className="greek-text text-[1.45rem] leading-10 text-slate-950">
+                    <span className="oldstyle-nums mr-2 align-super text-sm font-semibold text-slate-500" aria-hidden>
+                      {verse.verse}
+                    </span>
+                    {verse.tokens.length > 0
+                      ? verse.tokens.map((token) => {
+                          const tokenColor =
+                            token.id in tokenColorOverride
+                              ? tokenColorOverride[token.id]
+                              : token.highlightColor;
+                          return (
+                            <span key={token.id}>
+                              <GreekToken
+                                token={token}
+                                color={tokenColor ?? null}
+                                reference={verse.reference}
+                                selected={selectedTokenId === token.id}
+                                noteDraft={tokenNoteDrafts[token.id] ?? ""}
+                                onToggle={() => {
+                                  setSelectedEnglishWord(null);
+                                  setSelectedTokenId(selectedTokenId === token.id ? null : token.id);
+                                }}
+                                onDraftChange={(next) => setTokenDraft(token.id, next)}
+                                onHighlight={(c) => highlightToken(verse, token, c)}
+                                onClose={() => setSelectedTokenId(null)}
+                              />{" "}
+                            </span>
+                          );
+                        })
+                      : verse.greekText}
+                  </div>
                 </div>
-              </div>
-            ) : null}
-            {showEnglish ? (
-              <div>
-                <EnglishVerseText
-                  verse={verse}
-                  selectedKey={selectedEnglishWord}
-                  overrides={englishColorOverride}
-                  onSelect={(key) => { setSelectedTokenId(null); setSelectedEnglishWord(key); }}
-                  onPick={(wordIndex, color) => highlightEnglishWord(verse, wordIndex, color)}
-                  onClear={(wordIndex) => highlightEnglishWord(verse, wordIndex, null)}
-                />
-              </div>
-            ) : null}
-          </div>
+              ) : null}
+              {showEnglish ? (
+                <div>
+                  <EnglishVerseText
+                    verse={verse}
+                    selectedKey={selectedEnglishWord}
+                    overrides={englishColorOverride}
+                    onSelect={(key) => { setSelectedTokenId(null); setSelectedEnglishWord(key); }}
+                    onPick={(wordIndex, color) => highlightEnglishWord(verse, wordIndex, color)}
+                    onClear={(wordIndex) => highlightEnglishWord(verse, wordIndex, null)}
+                  />
+                </div>
+              ) : null}
+            </div>
 
-          <div className="mt-4 border-t border-stone-200 pt-4">
-            <button
-              type="button"
-              onClick={() => setOpenNote((c) => ({ ...c, [verse.id]: !c[verse.id] }))}
-              aria-expanded={!!openNote[verse.id]}
-              className={`flex items-center gap-2 text-sm font-medium text-slate-700 hover:text-accent-800 ${FOCUS_RING}`}
-            >
-              <NotebookPen size={16} />
-              Note on {verse.reference}
-            </button>
-            {openNote[verse.id] ? (
-              <form onSubmit={(event) => addVerseNote(event, verse)} className="mt-3 flex flex-col gap-2">
-                <textarea
-                  value={noteBodies[verse.id] ?? ""}
-                  onChange={(event) =>
-                    setNoteBodies((current) => ({ ...current, [verse.id]: event.target.value }))
-                  }
-                  className={`min-h-20 w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-accent-600 ${FOCUS_RING_INPUT}`}
-                  placeholder="Write a note"
-                />
-                <div className="flex justify-end">
-                  <button
-                    type="submit"
-                    disabled={savingNote[verse.id] || !(noteBodies[verse.id] ?? "").trim()}
-                    className={`rounded-md bg-accent-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-700 disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS_RING}`}
-                  >
-                    Save note
-                  </button>
-                </div>
-              </form>
-            ) : null}
-            {status[verse.id] ? (
-              <p role="status" aria-live="polite" className="mt-2 text-sm text-slate-600">{status[verse.id]}</p>
-            ) : null}
-          </div>
-        </article>
-      ))}
+            <div className="mt-4 border-t border-stone-200 pt-4">
+              <button
+                type="button"
+                onClick={() => setOpenNote((c) => ({ ...c, [verse.id]: !c[verse.id] }))}
+                aria-expanded={!!openNote[verse.id]}
+                className={`flex items-center gap-2 text-sm font-medium text-slate-700 hover:text-accent-800 ${FOCUS_RING}`}
+              >
+                <NotebookPen size={16} />
+                Note on {verse.reference}
+              </button>
+              {openNote[verse.id] ? (
+                <form onSubmit={(event) => addVerseNote(event, verse)} className="mt-3 flex flex-col gap-2">
+                  <textarea
+                    value={noteBodies[verse.id] ?? ""}
+                    onChange={(event) =>
+                      setNoteBodies((current) => ({ ...current, [verse.id]: event.target.value }))
+                    }
+                    className={`min-h-20 w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-accent-600 ${FOCUS_RING_INPUT}`}
+                    placeholder="Write a note"
+                  />
+                  <div className="flex justify-end">
+                    <button
+                      type="submit"
+                      disabled={savingNote[verse.id] || !(noteBodies[verse.id] ?? "").trim()}
+                      className={`rounded-md bg-accent-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-700 disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS_RING}`}
+                    >
+                      Save note
+                    </button>
+                  </div>
+                </form>
+              ) : null}
+              {status[verse.id] ? (
+                <p role="status" aria-live="polite" className="mt-2 text-sm text-slate-600">{status[verse.id]}</p>
+              ) : null}
+            </div>
+          </article>
+        ))
+      )}
     </div>
   );
 }

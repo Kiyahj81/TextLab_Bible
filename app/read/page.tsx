@@ -8,7 +8,7 @@ import { ReaderMasthead } from "@/components/ReaderMasthead";
 import { bookName } from "@/lib/references";
 import { requirePageAuth } from "@/lib/auth";
 import { parsePositiveInt } from "@/lib/params";
-import { introCookieName, parseReaderMode, parseSavedPassage, LAST_PASSAGE_COOKIE, READER_MODE_COOKIE } from "@/lib/readerPrefs";
+import { introCookieName, parseReaderMode, parseReaderLayout, parseSavedPassage, LAST_PASSAGE_COOKIE, READER_MODE_COOKIE, READER_LAYOUT_COOKIE } from "@/lib/readerPrefs";
 import { redirect } from "next/navigation";
 import {
   getAvailablePassages,
@@ -27,6 +27,7 @@ export default async function ReadPage({ searchParams }: { searchParams: SearchP
   const params = await searchParams;
   const cookieStore = await cookies();
   const initialMode = parseReaderMode(cookieStore.get(READER_MODE_COOKIE)?.value) ?? "parallel";
+  const initialLayout = parseReaderLayout(cookieStore.get(READER_LAYOUT_COOKIE)?.value) ?? "study";
   const introDismissed = cookieStore.get(introCookieName("read"))?.value === "1";
   // Treat empty query values (e.g. `/read?book=`) as absent, so a bare-ish URL
   // still restores the saved passage and the book still defaults to John.
@@ -71,6 +72,7 @@ export default async function ReadPage({ searchParams }: { searchParams: SearchP
         verses={verses}
         targetVerse={targetVerse}
         initialMode={initialMode}
+        initialLayout={initialLayout}
         chapterLabel={`${bookName(book)} ${chapter}`}
         jumpSlot={<ReaderJumpForm key="reader-jump" label="Jump to reference" />}
       />

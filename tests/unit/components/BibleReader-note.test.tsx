@@ -1,7 +1,8 @@
 // tests/unit/components/BibleReader-note.test.tsx
 // @vitest-environment jsdom
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { render, fireEvent } from "@testing-library/react";
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
 import { BibleReader } from "@/components/BibleReader";
 
 const verse = {

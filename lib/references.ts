@@ -85,7 +85,7 @@ export function parsePassageQuery(
 ): { book: string; chapter: number; verse?: number } | null {
   if (!input) return null;
   const trimmed = input.trim().replace(/\s+/g, " ");
-  const match = trimmed.match(/^(.+?)\s+(\d+)(?::(\d+)(?:-(\d+))?)?$/);
+  const match = trimmed.match(/^(.+?)\s+(\d+)(?:[:.](\d+)(?:-(\d+))?)?$/);
   if (!match) return null;
   const book = normalizeBook(match[1]);
   if (!book || !ntBooks.some((b) => b.osisId === book)) return null;

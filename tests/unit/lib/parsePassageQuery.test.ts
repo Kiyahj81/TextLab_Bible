@@ -25,4 +25,9 @@ describe("parsePassageQuery", () => {
   it("rejects a non-positive range end", () => {
     expect(parsePassageQuery("John 3:16-0")).toBeNull();
   });
+  it("accepts a dot as the chapter:verse separator", () => {
+    expect(parsePassageQuery("Rom 8.18")).toEqual({ book: "Rom", chapter: 8, verse: 18 });
+    expect(parsePassageQuery("John 3.16")).toEqual({ book: "John", chapter: 3, verse: 16 });
+    expect(parsePassageQuery("1 cor 13.4-7")).toEqual({ book: "1Cor", chapter: 13, verse: 4 });
+  });
 });

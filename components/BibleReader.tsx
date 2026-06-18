@@ -3,49 +3,12 @@
 import Link from "next/link";
 import { NotebookPen } from "lucide-react";
 import type { ReactNode, SubmitEvent } from "react";
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { EnglishWordPopover } from "@/components/EnglishWordPopover";
-import { MorphologyPopover, ReaderToken } from "@/components/MorphologyPopover";
+import { useEffect, useRef, useState } from "react";
 import { ReaderModeToggle } from "@/components/ReaderModeToggle";
+import { GreekToken, EnglishWords, type ReaderToken, type ReaderVerse } from "@/components/readerTokens";
 import { writePrefCookie, READER_MODE_COOKIE, type ReaderMode } from "@/lib/readerPrefs";
 import { useAutoDismissMap } from "@/lib/useAutoDismissStatus";
 import { FOCUS_RING, FOCUS_RING_INPUT } from "@/lib/ui/focus";
-
-type EnglishHighlight = { wordIndex: number; color: string };
-
-type ReaderVerse = {
-  id: string;
-  book: string;
-  bookName: string;
-  chapter: number;
-  verse: number;
-  reference: string;
-  greekText: string;
-  englishText: string;
-  englishCorpus: string;
-  englishVerseId: string | null;
-  englishHighlights: EnglishHighlight[];
-  tokens: ReaderToken[];
-};
-
-type EnglishToken = { kind: "word"; value: string; wordIndex: number } | { kind: "space"; value: string };
-
-function tokenizeEnglish(text: string): EnglishToken[] {
-  if (!text) return [];
-  const parts = text.split(/(\s+)/);
-  const result: EnglishToken[] = [];
-  let wordIndex = 0;
-  for (const part of parts) {
-    if (!part) continue;
-    if (/^\s+$/.test(part)) {
-      result.push({ kind: "space", value: part });
-    } else {
-      result.push({ kind: "word", value: part, wordIndex });
-      wordIndex += 1;
-    }
-  }
-  return result;
-}
 
 export function BibleReader({
   verses,
@@ -271,31 +234,22 @@ export function BibleReader({
                             ? tokenColorOverride[token.id]
                             : token.highlightColor;
                         return (
-                        <Fragment key={token.id}>
-                          <span className="relative inline-block">
-                            <button
-                              type="button"
-                              onClick={() => {
+                          <span key={token.id}>
+                            <GreekToken
+                              token={token}
+                              color={tokenColor ?? null}
+                              reference={verse.reference}
+                              selected={selectedTokenId === token.id}
+                              noteDraft={tokenNoteDrafts[token.id] ?? ""}
+                              onToggle={() => {
                                 setSelectedEnglishWord(null);
                                 setSelectedTokenId(selectedTokenId === token.id ? null : token.id);
                               }}
-                              style={tokenColor ? { backgroundColor: tokenColor } : undefined}
-                              className={`mx-0.5 rounded px-1 py-0.5 transition-colors hover:bg-accent-50 ${FOCUS_RING}`}
-                            >
-                              {token.surface}
-                            </button>
-                            {selectedTokenId === token.id ? (
-                              <MorphologyPopover
-                                token={token}
-                                reference={verse.reference}
-                                body={tokenNoteDrafts[token.id] ?? ""}
-                                onBodyChange={(next) => setTokenDraft(token.id, next)}
-                                onHighlight={(color) => highlightToken(verse, token, color)}
-                                onClose={() => setSelectedTokenId(null)}
-                              />
-                            ) : null}
-                          </span>{" "}
-                        </Fragment>
+                              onDraftChange={(next) => setTokenDraft(token.id, next)}
+                              onHighlight={(c) => highlightToken(verse, token, c)}
+                              onClose={() => setSelectedTokenId(null)}
+                            />{" "}
+                          </span>
                         );
                       })
                     : verse.greekText}
@@ -372,13 +326,6 @@ function EnglishVerseText({
   onPick: (wordIndex: number, color: string) => void;
   onClear: (wordIndex: number) => void;
 }) {
-  const tokens = useMemo(() => tokenizeEnglish(verse.englishText), [verse.englishText]);
-  const highlightByWord = useMemo(() => {
-    const map = new Map<number, string>();
-    for (const entry of verse.englishHighlights) map.set(entry.wordIndex, entry.color);
-    return map;
-  }, [verse.englishHighlights]);
-
   if (!verse.englishVerseId) {
     return (
       <div className="text-xl leading-10 text-slate-950">
@@ -395,35 +342,14 @@ function EnglishVerseText({
       <span className="oldstyle-nums mr-2 align-super text-sm font-semibold text-slate-500" aria-hidden>
         {verse.verse}
       </span>
-      {tokens.map((token, index) => {
-        if (token.kind === "space") {
-          return <Fragment key={`s-${index}`}>{token.value}</Fragment>;
-        }
-        const key = `${verse.id}-${token.wordIndex}`;
-        const color = key in overrides ? overrides[key] : highlightByWord.get(token.wordIndex) ?? null;
-        const open = selectedKey === key;
-        return (
-          <span key={key} className="relative inline-block">
-            <button
-              type="button"
-              onClick={() => onSelect(open ? null : key)}
-              style={color ? { backgroundColor: color } : undefined}
-              className={`rounded px-1 py-0.5 transition-colors hover:bg-accent-50 ${FOCUS_RING}`}
-            >
-              {token.value}
-            </button>
-            {open ? (
-              <EnglishWordPopover
-                word={token.value}
-                activeColor={color}
-                onPick={(nextColor) => onPick(token.wordIndex, nextColor)}
-                onClear={() => onClear(token.wordIndex)}
-                onClose={() => onSelect(null)}
-              />
-            ) : null}
-          </span>
-        );
-      })}
+      <EnglishWords
+        verse={verse}
+        overrides={overrides}
+        selectedKey={selectedKey}
+        onSelect={onSelect}
+        onPick={onPick}
+        onClear={onClear}
+      />
     </div>
   );
 }

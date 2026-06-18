@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { parsePassageQuery } from "@/lib/references";
 import { FOCUS_RING, FOCUS_RING_INPUT } from "@/lib/ui/focus";
 
-export function ReaderJumpForm({ className }: { className?: string }) {
+export function ReaderJumpForm({ className, label = "reference" }: { className?: string; label?: string }) {
   const router = useRouter();
   const [ref, setRef] = useState("");
   const [refError, setRefError] = useState<string | null>(null);
@@ -31,7 +31,7 @@ export function ReaderJumpForm({ className }: { className?: string }) {
     <form onSubmit={handleSubmit} className={className}>
       <div className="flex gap-2">
         <input
-          aria-label="reference"
+          aria-label={label}
           value={ref}
           onChange={(event) => { setRef(event.target.value); setRefError(null); }}
           placeholder="Go to e.g. John 3:16"

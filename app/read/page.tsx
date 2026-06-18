@@ -68,7 +68,7 @@ export default async function ReadPage({ searchParams }: { searchParams: SearchP
         targetVerse={targetVerse}
         initialMode={initialMode}
         chapterLabel={`${bookName(book)} ${chapter}`}
-        jumpSlot={<ReaderJumpForm />}
+        jumpSlot={<ReaderJumpForm label="Jump to reference" />}
       />
 
       <ChapterNav prev={neighbors.prev} next={neighbors.next} />

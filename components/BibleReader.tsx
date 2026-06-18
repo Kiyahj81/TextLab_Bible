@@ -246,6 +246,7 @@ export function BibleReader({
           <ContinuousReader
             verses={verses}
             mode={readerMode === "english" ? "english" : "greek"}
+            targetVerse={targetVerse}
             selectedTokenId={selectedTokenId}
             setSelectedTokenId={setSelectedTokenId}
             tokenColorOverride={tokenColorOverride}

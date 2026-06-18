@@ -47,4 +47,12 @@ describe("ContinuousReader", () => {
     // Tokens must be space-separated in the text content, not collapsed ("Ἐνἀρχῇ").
     expect(container.textContent).toContain("Ἐν ἀρχῇ");
   });
+
+  it("rings the target verse number and only the target", () => {
+    const { container } = render(
+      <ContinuousReader verses={verses} mode="greek" targetVerse={2} {...handlers} />
+    );
+    expect(container.querySelector("#verse-2")?.className).toMatch(/ring-accent-400/);
+    expect(container.querySelector("#verse-1")?.className ?? "").not.toMatch(/ring-accent-400/);
+  });
 });

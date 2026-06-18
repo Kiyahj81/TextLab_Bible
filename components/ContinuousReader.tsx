@@ -4,6 +4,12 @@ import { Fragment } from "react";
 import { GreekToken, EnglishWords, type ReaderVerse, type ReaderToken } from "@/components/readerTokens";
 
 const VERSE_NUMBER_CLASS = "oldstyle-nums mr-1 align-super text-sm font-semibold text-slate-500 scroll-mt-24";
+// Accent ring marks the ?verse=N target verse in continuous mode (study mode rings the <article>).
+const VERSE_NUMBER_TARGET = "rounded-sm ring-2 ring-accent-400 ring-offset-2 ring-offset-[var(--background)]";
+
+function verseNumberClass(isTarget: boolean) {
+  return isTarget ? `${VERSE_NUMBER_CLASS} ${VERSE_NUMBER_TARGET}` : VERSE_NUMBER_CLASS;
+}
 
 export function ContinuousReader(props: {
   verses: ReaderVerse[];
@@ -20,8 +26,9 @@ export function ContinuousReader(props: {
   englishColorOverride: Record<string, string | null>;
   onPickEnglish: (verse: ReaderVerse, wordIndex: number, color: string) => void;
   onClearEnglish: (verse: ReaderVerse, wordIndex: number) => void;
+  targetVerse?: number | null;
 }) {
-  const { verses, mode } = props;
+  const { verses, mode, targetVerse } = props;
 
   if (mode === "greek") {
     return (
@@ -29,7 +36,7 @@ export function ContinuousReader(props: {
         {verses.map((verse) => (
           <Fragment key={verse.id}>
             <span className="sr-only">{verse.reference} </span>
-            <span id={`verse-${verse.verse}`} className={VERSE_NUMBER_CLASS} aria-hidden>{verse.verse}</span>
+            <span id={`verse-${verse.verse}`} className={verseNumberClass(verse.verse === targetVerse)} aria-hidden>{verse.verse}</span>
             {verse.tokens.length > 0
               ? verse.tokens.map((token) => {
                   const color = token.id in props.tokenColorOverride ? props.tokenColorOverride[token.id] : token.highlightColor;
@@ -64,7 +71,7 @@ export function ContinuousReader(props: {
       {verses.map((verse) => (
         <Fragment key={verse.id}>
           <span className="sr-only">{verse.reference} </span>
-          <span id={`verse-${verse.verse}`} className={VERSE_NUMBER_CLASS} aria-hidden>{verse.verse}</span>
+          <span id={`verse-${verse.verse}`} className={verseNumberClass(verse.verse === targetVerse)} aria-hidden>{verse.verse}</span>
           {verse.englishVerseId ? (
             <EnglishWords
               verse={verse}

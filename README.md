@@ -10,6 +10,7 @@ Deferred beyond the current scope: OT Hebrew/Aramaic, LXX, Strong's numbers, spe
 
 - **Reader** at `/read`
   - Greek / English / Parallel display modes, persisted per reader via cookie and rendered server-side (no first-paint flash). A chapter masthead and a sticky bar keep your location visible while scrolling.
+  - A Study / Continuous layout toggle (also cookie-backed): Study is the per-verse layout, Continuous flows the passage as prose with superscript verse numbers. Continuous is single-language only — in Parallel it's disabled and falls back to Study. Words stay tappable (morphology + highlighting) in both layouts.
   - Verses use inline verse numbers; the corpus label (SBLGNT / WEB) appears once per chapter as a column header. Single-language modes cap the reading measure for legibility.
   - Greek token popovers with lemma, morphology, gloss, and Louw-Nida domain/subdomain labels when present.
   - English word and Greek token highlighting apply optimistically (no full-page reload). Per-verse notes open on demand.

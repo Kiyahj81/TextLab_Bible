@@ -214,7 +214,7 @@ export function BibleReader({
     return (
       <div className="rounded-md border border-stone-300 bg-white p-6 text-slate-700">
         <p>This passage isn&apos;t available yet.</p>
-        <Link href="/read?book=John&chapter=1" className="mt-2 inline-block font-medium text-accent-700 hover:text-accent-800">
+        <Link href="/read?book=John&chapter=1" className={`mt-2 inline-block font-medium text-accent-700 hover:text-accent-800 ${FOCUS_RING}`}>
           Go to John 1
         </Link>
       </div>

@@ -2,7 +2,7 @@
 "use client";
 
 import { NotebookText } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { NoteList } from "@/components/NoteList";
 import { FOCUS_RING } from "@/lib/ui/focus";
 
@@ -10,6 +10,26 @@ export type DrawerNote = { id: string; title: string | null; body: string; tags:
 
 export function ReaderNotesDrawer({ items, onChanged }: { items: DrawerNote[]; onChanged: () => void }) {
   const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onMouseDown(event: MouseEvent) {
+      const node = containerRef.current;
+      if (node && event.target instanceof Node && !node.contains(event.target)) {
+        setOpen(false);
+      }
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onMouseDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onMouseDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
 
   // UX decision: hide the button entirely when the passage has no notes.
   if (items.length === 0) return null;
@@ -29,7 +49,7 @@ export function ReaderNotesDrawer({ items, onChanged }: { items: DrawerNote[]; o
   }, {});
 
   return (
-    <div className="relative">
+    <div ref={containerRef} className="relative">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}

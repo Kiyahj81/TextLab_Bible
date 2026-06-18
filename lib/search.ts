@@ -333,7 +333,7 @@ export async function getReaderPassage(bookInput = "John", chapter = 1, userId: 
 
   const verseNotes = await prisma.note.findMany({
     where: { ...userScope, verseId: { in: greekVerses.map((v) => v.id) } },
-    select: { id: true, title: true, body: true, tags: true, verseId: true, createdAt: true },
+    select: { id: true, title: true, body: true, tags: true, verseId: true },   // createdAt removed
     orderBy: { createdAt: "asc" }
   });
   const notesByVerse = new Map<string, { id: string; title: string | null; body: string; tags: string[] }[]>();

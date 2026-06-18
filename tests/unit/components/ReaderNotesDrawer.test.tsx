@@ -27,4 +27,30 @@ describe("ReaderNotesDrawer", () => {
     const { queryByRole } = render(<ReaderNotesDrawer items={[]} onChanged={() => {}} />);
     expect(queryByRole("button", { name: /notes/i })).toBeNull();
   });
+
+  it("closes on Escape", () => {
+    const { getByRole, queryByText } = render(<ReaderNotesDrawer items={items} onChanged={() => {}} />);
+    fireEvent.click(getByRole("button", { name: /notes \(2\)/i }));
+    expect(queryByText("verse note")).toBeTruthy();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(queryByText("verse note")).toBeNull();
+  });
+
+  it("closes on an outside click", () => {
+    const { getByRole, queryByText } = render(<ReaderNotesDrawer items={items} onChanged={() => {}} />);
+    fireEvent.click(getByRole("button", { name: /notes \(2\)/i }));
+    expect(queryByText("verse note")).toBeTruthy();
+    fireEvent.mouseDown(document.body);
+    expect(queryByText("verse note")).toBeNull();
+  });
+
+  it("jumps from the verse-reference group too", () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    document.body.innerHTML = '<div id="verse-1"></div>';
+    const { getByRole } = render(<ReaderNotesDrawer items={items} onChanged={() => {}} />);
+    fireEvent.click(getByRole("button", { name: /notes \(2\)/i }));
+    fireEvent.click(getByRole("button", { name: /^go to john 1:1$/i }));
+    expect(scrollIntoView).toHaveBeenCalled();
+  });
 });

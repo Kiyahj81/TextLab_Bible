@@ -130,7 +130,6 @@ export function MorphologyPopover({
           <span
             aria-hidden
             className="greek-text text-3xl font-semibold leading-none text-accent-600"
-            title="Lemma lookup"
           >
             λ
           </span>
@@ -163,7 +162,7 @@ export function MorphologyPopover({
             <dd>
               {sense.domainLabel ?? sense.domainCode}
               {!sense.subdomainLabel && sense.ref ? (
-                <span className="text-slate-400"> ({sense.ref})</span>
+                <span className="text-slate-500"> ({sense.ref})</span>
               ) : null}
             </dd>
             {sense.subdomainLabel ? (
@@ -171,7 +170,7 @@ export function MorphologyPopover({
                 <dt className="text-slate-500">Subdomain</dt>
                 <dd>
                   {sense.subdomainLabel}
-                  {sense.ref ? <span className="text-slate-400"> ({sense.ref})</span> : null}
+                  {sense.ref ? <span className="text-slate-500"> ({sense.ref})</span> : null}
                 </dd>
               </>
             ) : null}

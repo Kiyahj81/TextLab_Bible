@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { NotebookPen } from "lucide-react";
 import type { ReactNode, SubmitEvent } from "react";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ReaderModeToggle } from "@/components/ReaderModeToggle";
 import { ReaderLayoutToggle } from "@/components/ReaderLayoutToggle";
@@ -273,7 +273,7 @@ export function BibleReader({
                               ? tokenColorOverride[token.id]
                               : token.highlightColor;
                           return (
-                            <span key={token.id}>
+                            <Fragment key={token.id}>
                               <GreekToken
                                 token={token}
                                 color={tokenColor ?? null}
@@ -288,7 +288,7 @@ export function BibleReader({
                                 onHighlight={(c) => highlightToken(verse, token, c)}
                                 onClose={() => setSelectedTokenId(null)}
                               />{" "}
-                            </span>
+                            </Fragment>
                           );
                         })
                       : verse.greekText}

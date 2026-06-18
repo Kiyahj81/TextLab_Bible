@@ -25,12 +25,13 @@ const handlers = {
 
 describe("ContinuousReader", () => {
   it("flows Greek verses with superscript numbers and no note editors", () => {
-    const { container, getByRole, queryByPlaceholderText } = render(
+    const { container, getByRole, getByText, queryByPlaceholderText } = render(
       <ContinuousReader verses={verses} mode="greek" {...handlers} />
     );
     expect(getByRole("button", { name: "Ἐν" })).toBeTruthy();
     expect(getByRole("button", { name: "οὗτος" })).toBeTruthy();
     expect(queryByPlaceholderText(/write a note/i)).toBeNull();          // no per-verse editors
     expect(container.querySelector("#verse-2")).toBeTruthy();             // jump anchor present
+    expect(getByText("John 1:1")).toBeTruthy();                           // sr-only verse reference
   });
 });

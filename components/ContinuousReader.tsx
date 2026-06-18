@@ -28,6 +28,7 @@ export function ContinuousReader(props: {
       <div className="greek-text max-w-[68ch] text-[1.45rem] leading-10 text-slate-950">
         {verses.map((verse) => (
           <Fragment key={verse.id}>
+            <span className="sr-only">{verse.reference} </span>
             <span id={`verse-${verse.verse}`} className={VERSE_NUMBER_CLASS} aria-hidden>{verse.verse}</span>
             {verse.tokens.length > 0
               ? verse.tokens.map((token) => {
@@ -60,6 +61,7 @@ export function ContinuousReader(props: {
     <div className="max-w-[68ch] text-xl leading-10 text-slate-950">
       {verses.map((verse) => (
         <Fragment key={verse.id}>
+          <span className="sr-only">{verse.reference} </span>
           <span id={`verse-${verse.verse}`} className={VERSE_NUMBER_CLASS} aria-hidden>{verse.verse}</span>
           {verse.englishVerseId ? (
             <EnglishWords

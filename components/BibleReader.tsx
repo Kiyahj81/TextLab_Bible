@@ -13,6 +13,7 @@ import { writePrefCookie, READER_MODE_COOKIE, READER_LAYOUT_COOKIE, type ReaderM
 import { useAutoDismissMap } from "@/lib/useAutoDismissStatus";
 import { FOCUS_RING, FOCUS_RING_INPUT } from "@/lib/ui/focus";
 import { NoteList } from "@/components/NoteList";
+import { ReaderNotesDrawer } from "@/components/ReaderNotesDrawer";
 
 export function BibleReader({
   verses,
@@ -210,6 +211,13 @@ export function BibleReader({
   const showEnglish = readerMode !== "greek";
   const showBothColumns = showGreek && showEnglish;
 
+  const drawerNotes = verses.flatMap((verse) => [
+    ...verse.notes.map((n) => ({ ...n, reference: verse.reference, verse: verse.verse })),
+    ...verse.tokens.flatMap((t) =>
+      t.notes.map((n) => ({ ...n, reference: `${verse.reference} · ${t.surface}`, verse: verse.verse }))
+    )
+  ]);
+
   return (
     <div className="space-y-8">
       <div className="sticky top-0 z-10 -mx-4 flex flex-wrap items-center justify-between gap-3 border-b border-stone-200 bg-[var(--background)]/90 px-4 py-2 backdrop-blur">
@@ -218,6 +226,7 @@ export function BibleReader({
           {jumpSlot}
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <ReaderNotesDrawer items={drawerNotes} onChanged={() => router.refresh()} />
           <ReaderLayoutToggle layout={effectiveLayout} onChange={changeLayout} continuousDisabled={!continuousAvailable} />
           <ReaderModeToggle mode={readerMode} onChange={changeReaderMode} />
         </div>

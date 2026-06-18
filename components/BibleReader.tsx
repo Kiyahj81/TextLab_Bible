@@ -79,7 +79,7 @@ export function BibleReader({
     if (!node) return;
     const reduce =
       typeof window !== "undefined" &&
-      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      (window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false);
     node.scrollIntoView({ block: "center", behavior: reduce ? "auto" : "smooth" });
   }, [targetVerse]);
 

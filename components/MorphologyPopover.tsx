@@ -142,7 +142,7 @@ export function MorphologyPopover({
         <button
           type="button"
           onClick={onClose}
-          className="rounded-md px-2 py-1 text-sm text-slate-500 hover:bg-stone-100"
+          className={`rounded-md px-2 py-1 text-sm text-slate-500 hover:bg-stone-100 ${FOCUS_RING}`}
         >
           Close
         </button>
@@ -182,7 +182,7 @@ export function MorphologyPopover({
       <div className="mt-4 flex flex-wrap gap-2">
         <Link
           href={lemmaSearchHref}
-          className="inline-flex items-center gap-2 rounded-md bg-accent-700 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-800"
+          className={`inline-flex items-center gap-2 rounded-md bg-accent-700 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-800 ${FOCUS_RING}`}
         >
           <Search size={16} />
           Search lemma

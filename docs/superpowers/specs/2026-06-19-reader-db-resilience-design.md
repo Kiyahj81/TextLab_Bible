@@ -92,10 +92,14 @@ conservative allow-list **evaluated in order**:
 3. **`Prisma.PrismaClientInitializationError`** — `true` only when `errorCode` is `P1001`/`P1002`.
    Non-connection init failures — `P1000` (auth failed), `P1003` (database does not exist),
    `P1010` (access denied), or an init error with no `errorCode` — return `false`.
-4. **Untyped `Error`s only** — fall through to a message match against
-   `/connection.*(closed|reset)|ECONNRESET|terminating connection|server has closed/i` (the Neon
-   pooler-recycle case, which arrives as a `PrismaClientUnknownRequestError` or generic engine
-   error). Non-`Error` values return `false`.
+4. **Reject other typed Prisma errors** — `PrismaClientValidationError` and
+   `PrismaClientRustPanicError` return `false` outright, *before* the message fallback, so a
+   validation/panic error whose message happens to read "connection closed" is never retried.
+5. **Remaining errors → message match** against
+   `/connection.*(closed|reset)|ECONNRESET|terminating connection|server has closed/i`. This is the
+   only place a message is consulted, and it applies to generic engine `Error`s and to
+   `PrismaClientUnknownRequestError` — how a recycled-connection drop can legitimately surface (it
+   is intentionally *not* rejected in step 4). Non-`Error` values return `false`.
 
 Matching Prisma typed errors **strictly by code** (steps 2–3) is what guarantees a query error or
 auth failure is never retried even if its message looks connection-like. Prisma error classes are
@@ -156,9 +160,12 @@ PR and noted here so the gap is deliberate, not forgotten.
     after exactly `maxAttempts` calls);
   - `isTransientConnectionError` truth table: `true` for known-request `P1001`/`P1002`/`P1017`,
     init errors with `errorCode` `P1001`/`P1002`, and a `/connection closed|reset/` message on an
-    untyped `Error`; `false` for a `P1000` (auth) init error, an init error with no `errorCode`, a
-    `P2002` whose message *looks* connection-like (decided by code, not message), a digest-bearing
-    `NEXT_REDIRECT`-style error whose message also matches, a plain `Error`, a raw string, and `null`.
+    untyped `Error` or a `PrismaClientUnknownRequestError`; `false` for a `P1000` (auth) init error,
+    an init error with no `errorCode`, and — even with a message that *looks* connection-like — a
+    `P2002` `PrismaClientKnownRequestError`, a `PrismaClientValidationError`, and a
+    `PrismaClientRustPanicError` (typed errors are decided by class/code, not message); also `false`
+    for a digest-bearing `NEXT_REDIRECT`-style error whose message matches, a plain `Error`, a raw
+    string, and `null`.
   - `withDbRetry` rejects invalid options (`maxAttempts` `NaN`/`Infinity`/`0`; `baseDelayMs` `-1`/`NaN`)
     with a `TypeError` without calling `fn` — proving the bounded guarantee holds.
   - Construct Prisma errors via `new Prisma.PrismaClientKnownRequestError(msg, { code, clientVersion })`

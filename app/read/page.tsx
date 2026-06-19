@@ -16,6 +16,7 @@ import {
   getPassageNeighbors,
   getReaderPassage
 } from "@/lib/search";
+import { withDbRetry } from "@/lib/db-retry";
 import { cookies } from "next/headers";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -44,12 +45,16 @@ export default async function ReadPage({ searchParams }: { searchParams: SearchP
   const book = bookParam ?? "John";
   const chapter = parsePositiveInt(chapterParam) ?? 1;
   const targetVerse = parsePositiveInt(verseParam) ?? null;
-  const [books, passages, verses, neighbors] = await Promise.all([
-    getAvailableReaderBooks(),
-    getAvailablePassages(),
-    getReaderPassage(book, chapter, userId),
-    getPassageNeighbors(book, chapter)
-  ]);
+  // Retry transient Neon connection drops (idle-suspend / pooler recycle) on
+  // these idempotent reads before letting the page fall through to error.tsx.
+  const [books, passages, verses, neighbors] = await withDbRetry(() =>
+    Promise.all([
+      getAvailableReaderBooks(),
+      getAvailablePassages(),
+      getReaderPassage(book, chapter, userId),
+      getPassageNeighbors(book, chapter)
+    ])
+  );
 
   return (
     <div className="space-y-6">

@@ -4,7 +4,7 @@
 
 **Goal:** Make the reader page survive Neon's transient connection drops by retrying its read path and degrading to a graceful "try again" card instead of a full-page crash.
 
-**Architecture:** A small reusable `withDbRetry()` helper retries only transient connection errors (bounded backoff) and wraps the reader page's four-query `Promise.all`. Two React error boundaries — a tailored `app/read/error.tsx` and a generic root `app/error.tsx` — catch anything that still throws. No production query logic changes; the retry is reader-read-path-only.
+**Architecture:** A small reusable `withDbRetry()` helper retries only transient connection errors (bounded backoff) and wraps the reader page's four top-level read operations (`Promise.all`). Two React error boundaries — a tailored `app/read/error.tsx` and a generic root `app/error.tsx` — catch anything that still throws. No production query logic changes; the retry is reader-read-path-only.
 
 **Tech Stack:** Next.js 15 App Router (server components + client `error.tsx` boundaries), Prisma 6 over Neon Postgres, Vitest 4 (`globals: false`) + React Testing Library + jsdom for component tests.
 
@@ -12,8 +12,8 @@ Design spec: `docs/superpowers/specs/2026-06-19-reader-db-resilience-design.md`.
 
 ## Global Constraints
 
-- **Retry budget:** `maxAttempts = 3` (1 try + 2 retries), `baseDelayMs = 100`, exponential backoff `baseDelayMs * 2 ** (attempt - 1)` + jitter (`Math.random() * baseDelayMs`); both tunable via `opts`. ~300 ms worst-case added latency.
-- **Transient allow-list — retry ONLY:** `Prisma.PrismaClientInitializationError`; `Prisma.PrismaClientKnownRequestError` with code `P1001`, `P1002`, or `P1017`; any `Error` whose message matches `/connection.*(closed|reset)|ECONNRESET|terminating connection|server has closed/i`. Everything else (`P2xxx`, validation, plain `Error`, Next's `NEXT_REDIRECT`/`notFound` digest throws) is rethrown immediately — never retried or swallowed.
+- **Retry budget:** `maxAttempts = 3` (1 try + 2 retries), `baseDelayMs = 100`, exponential backoff `baseDelayMs * 2 ** (attempt - 1)` + jitter (`Math.random() * baseDelayMs`); both tunable via `opts`. Worst-case added latency ≤ ~500 ms (≈300 ms fixed backoff over the two waits + up to ~200 ms jitter). `opts` are validated: `maxAttempts` must be a finite integer ≥ 1 and `baseDelayMs` a finite number ≥ 0, else `withDbRetry` throws a `TypeError` (so a bad caller can never produce an unbounded loop).
+- **Transient allow-list — retry ONLY (evaluated in this order):** (1) reject anything carrying a string `digest` (Next's `NEXT_REDIRECT`/`notFound` control-flow throws) — never retried; (2) `Prisma.PrismaClientKnownRequestError` strictly by code `P1001`/`P1002`/`P1017`; (3) `Prisma.PrismaClientInitializationError` strictly by `errorCode` `P1001`/`P1002` (so `P1000` auth, `P1003` no-DB, `P1010` access-denied are NOT retried); (4) only for non-Prisma-typed `Error`s, a message match against `/connection.*(closed|reset)|ECONNRESET|terminating connection|server has closed/i`. A `P2xxx` query error is decided by its code and never reaches the message fallback even if its message looks connection-like; non-`Error` values return `false`.
 - **Retry applied ONLY to the reader read path** (the page-level `Promise.all`). `lib/search.ts` is untouched. No mutation path retries.
 - **Reader error card copy/actions:** heading `Couldn't load this passage`; primary `Try again` button → `reset()`; secondary `Back to John 1` link → `/read?book=John&chapter=1`.
 - **Root error card copy/actions:** heading `Something went wrong`; `Try again` button → `reset()`; `Home` link → `/`.
@@ -44,11 +44,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Prisma } from "@prisma/client";
 import { withDbRetry, isTransientConnectionError } from "@/lib/db-retry";
 
-function knownError(code: string) {
-  return new Prisma.PrismaClientKnownRequestError(`error ${code}`, {
-    code,
-    clientVersion: "test"
-  });
+function knownError(code: string, message = `error ${code}`) {
+  return new Prisma.PrismaClientKnownRequestError(message, { code, clientVersion: "test" });
+}
+
+function initError(errorCode: string | undefined, message = "init failure") {
+  return new Prisma.PrismaClientInitializationError(message, "test", errorCode);
 }
 
 afterEach(() => {
@@ -56,30 +57,41 @@ afterEach(() => {
 });
 
 describe("isTransientConnectionError", () => {
-  it("is true for connection-level Prisma request codes", () => {
+  it("is true for connection-level known-request codes", () => {
     expect(isTransientConnectionError(knownError("P1001"))).toBe(true);
     expect(isTransientConnectionError(knownError("P1002"))).toBe(true);
     expect(isTransientConnectionError(knownError("P1017"))).toBe(true);
   });
 
-  it("is true for a client initialization error", () => {
-    expect(
-      isTransientConnectionError(new Prisma.PrismaClientInitializationError("cannot connect", "test"))
-    ).toBe(true);
+  it("is true for init errors with a transient connection code", () => {
+    expect(isTransientConnectionError(initError("P1001"))).toBe(true);
+    expect(isTransientConnectionError(initError("P1002"))).toBe(true);
   });
 
-  it("is true for connection-closed/reset engine messages", () => {
+  it("is true for connection-closed/reset messages on untyped errors", () => {
     expect(isTransientConnectionError(new Error("the server has closed the connection"))).toBe(true);
     expect(isTransientConnectionError(new Error("Connection reset by peer ECONNRESET"))).toBe(true);
   });
 
-  it("is false for query errors, validation, plain errors, NEXT_REDIRECT, and non-Error values", () => {
-    expect(isTransientConnectionError(knownError("P2002"))).toBe(false);
-    expect(isTransientConnectionError(new Error("some unrelated failure"))).toBe(false);
-    const redirect = Object.assign(new Error("NEXT_REDIRECT"), { digest: "NEXT_REDIRECT;replace;/x;307;" });
+  it("is false for non-transient init errors (P1000 auth, or no code)", () => {
+    expect(isTransientConnectionError(initError("P1000", "authentication failed"))).toBe(false);
+    expect(isTransientConnectionError(initError(undefined))).toBe(false);
+  });
+
+  it("decides Prisma typed errors by code, never by message", () => {
+    // A query error whose message happens to look connection-like must NOT retry.
+    expect(isTransientConnectionError(knownError("P2002", "connection closed"))).toBe(false);
+  });
+
+  it("never retries a digest-bearing control-flow throw, even with a matching message", () => {
+    const redirect = Object.assign(new Error("connection reset during NEXT_REDIRECT"), {
+      digest: "NEXT_REDIRECT;replace;/x;307;"
+    });
     expect(isTransientConnectionError(redirect)).toBe(false);
-    // Only Error instances qualify — a raw string that happens to contain the
-    // message pattern must not be treated as transient.
+  });
+
+  it("is false for plain errors and non-Error values", () => {
+    expect(isTransientConnectionError(new Error("some unrelated failure"))).toBe(false);
     expect(isTransientConnectionError("connection closed")).toBe(false);
     expect(isTransientConnectionError(null)).toBe(false);
   });
@@ -115,6 +127,16 @@ describe("withDbRetry", () => {
     await expect(withDbRetry(fn, { maxAttempts: 3, baseDelayMs: 0 })).rejects.toBe(err);
     expect(fn).toHaveBeenCalledTimes(3);
   });
+
+  it("rejects invalid options without calling fn (keeps the retry bounded)", async () => {
+    const fn = vi.fn().mockResolvedValue("ok");
+    await expect(withDbRetry(fn, { maxAttempts: Number.NaN })).rejects.toBeInstanceOf(TypeError);
+    await expect(withDbRetry(fn, { maxAttempts: Number.POSITIVE_INFINITY })).rejects.toBeInstanceOf(TypeError);
+    await expect(withDbRetry(fn, { maxAttempts: 0 })).rejects.toBeInstanceOf(TypeError);
+    await expect(withDbRetry(fn, { baseDelayMs: -1 })).rejects.toBeInstanceOf(TypeError);
+    await expect(withDbRetry(fn, { baseDelayMs: Number.NaN })).rejects.toBeInstanceOf(TypeError);
+    expect(fn).not.toHaveBeenCalled();
+  });
 });
 ```
 
@@ -130,26 +152,47 @@ Create `lib/db-retry.ts`:
 ```ts
 import { Prisma } from "@prisma/client";
 
-// Connection-level Prisma request codes: P1001 (can't reach DB), P1002
-// (connection timed out), P1017 (server closed the connection).
+// Connection-level codes on a query (KnownRequestError): P1001 (can't reach
+// DB), P1002 (connection timed out), P1017 (server closed the connection).
 const TRANSIENT_REQUEST_CODES = new Set(["P1001", "P1002", "P1017"]);
 
-// Engine/driver errors that arrive as generic/unknown errors when Neon's
-// pooler recycles an idle connection.
+// Connection-level codes at client init (InitializationError): P1001/P1002.
+// Deliberately excludes non-retryable init failures such as P1000 (auth
+// failed), P1003 (database does not exist), and P1010 (access denied).
+const TRANSIENT_INIT_CODES = new Set(["P1001", "P1002"]);
+
+// Driver/engine errors that surface as a generic (non-typed) Error when
+// Neon's pooler recycles an idle connection.
 const TRANSIENT_MESSAGE = /connection.*(closed|reset)|ECONNRESET|terminating connection|server has closed/i;
 
+// Next.js control-flow throws (redirect / notFound) carry a string `digest`.
+// They must propagate untouched — never retried or message-matched.
+function hasStringDigest(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "digest" in err &&
+    typeof (err as { digest?: unknown }).digest === "string"
+  );
+}
+
 /**
- * Conservative allow-list: returns true ONLY for transient connection
- * failures that are safe to retry. Real query errors (P2xxx), validation
- * errors, plain Errors, and Next's NEXT_REDIRECT/notFound control-flow
- * throws all return false so they are rethrown immediately, never swallowed.
+ * Conservative allow-list, evaluated in order: (1) reject framework
+ * control-flow throws; (2) Prisma typed errors are matched strictly by code,
+ * so a query error (P2xxx) or auth failure (P1000) is never retried even if
+ * its message looks connection-like; (3) only untyped Errors fall through to
+ * the connection-drop message check. Returns true ONLY for transient
+ * connection failures that are safe to retry.
  */
 export function isTransientConnectionError(err: unknown): boolean {
-  if (err instanceof Prisma.PrismaClientInitializationError) return true;
-  if (err instanceof Prisma.PrismaClientKnownRequestError && TRANSIENT_REQUEST_CODES.has(err.code)) {
-    return true;
+  if (hasStringDigest(err)) return false;
+  if (err instanceof Prisma.PrismaClientKnownRequestError) {
+    return TRANSIENT_REQUEST_CODES.has(err.code);
   }
-  if (err instanceof Error && TRANSIENT_MESSAGE.test(err.message)) return true;
+  if (err instanceof Prisma.PrismaClientInitializationError) {
+    return err.errorCode !== undefined && TRANSIENT_INIT_CODES.has(err.errorCode);
+  }
+  if (err instanceof Error) return TRANSIENT_MESSAGE.test(err.message);
   return false;
 }
 
@@ -159,8 +202,11 @@ function sleep(ms: number): Promise<void> {
 
 /**
  * Runs `fn`, retrying it on transient connection errors with bounded
- * exponential backoff. Non-transient errors and exhausted retries rethrow
- * the original error untouched. Intended for idempotent reads only.
+ * exponential backoff + jitter. Non-transient errors and exhausted retries
+ * rethrow the original error untouched. Intended for idempotent reads only.
+ *
+ * Invalid options throw a TypeError before `fn` runs, so a bad caller can
+ * never turn the retry loop unbounded.
  */
 export async function withDbRetry<T>(
   fn: () => Promise<T>,
@@ -168,6 +214,13 @@ export async function withDbRetry<T>(
 ): Promise<T> {
   const maxAttempts = opts.maxAttempts ?? 3;
   const baseDelayMs = opts.baseDelayMs ?? 100;
+
+  if (!Number.isInteger(maxAttempts) || maxAttempts < 1) {
+    throw new TypeError(`withDbRetry: maxAttempts must be an integer >= 1, got ${maxAttempts}`);
+  }
+  if (!Number.isFinite(baseDelayMs) || baseDelayMs < 0) {
+    throw new TypeError(`withDbRetry: baseDelayMs must be a finite number >= 0, got ${baseDelayMs}`);
+  }
 
   for (let attempt = 1; ; attempt += 1) {
     try {
@@ -219,7 +272,7 @@ In `app/read/page.tsx`, immediately after the multi-line search import that ends
 import { withDbRetry } from "@/lib/db-retry";
 ```
 
-- [ ] **Step 2: Wrap the four-query Promise.all**
+- [ ] **Step 2: Wrap the four top-level read operations (Promise.all)**
 
 Replace this exact block:
 
@@ -500,10 +553,10 @@ In `docs/security-register.md`, under the `## Open` section, immediately **befor
 | Field | Value |
 | --- | --- |
 | Severity | Low (availability / resilience hardening; not a vulnerability) |
-| Change | New `lib/db-retry.ts` `withDbRetry()` wraps the reader read path (`app/read/page.tsx`'s four-query `Promise.all`) and retries transient Neon connection errors; two React error boundaries — `app/read/error.tsx` (on-brand) and `app/error.tsx` (generic root) — render a graceful "try again" card instead of Next's default crash page. |
+| Change | New `lib/db-retry.ts` `withDbRetry()` wraps the reader read path (`app/read/page.tsx`'s four top-level read operations) and retries transient Neon connection errors; two React error boundaries — `app/read/error.tsx` (on-brand) and `app/error.tsx` (generic root) — render a graceful "try again" card instead of Next's default crash page. |
 | Root cause | Neon serverless compute autosuspends when idle and its connection pooler recycles connections, so the first request after a quiet window can find Prisma's pooled connection already closed and throw a transient connection error (`P1001`/`P1002`/`P1017`/init error/"connection closed") even though the database is healthy. |
 | Status | Accepted — bounded |
-| Mitigation | Retries are bounded: `maxAttempts = 3` with exponential backoff (~300 ms worst-case added latency before giving up), so there is no unbounded-retry resource sink. `isTransientConnectionError` is a conservative allow-list — only connection-level errors are retried; `P2xxx` query errors, validation errors, and Next `NEXT_REDIRECT`/`notFound` control-flow throws are rethrown immediately and never retried or swallowed. The retry is applied only to the reader read path (pure idempotent reads) — no mutation path retries. No new endpoint, dependency, vendor, or trust boundary is introduced. |
+| Mitigation | Retries are bounded: `maxAttempts = 3` with exponential backoff + jitter (≤ ~500 ms worst-case added latency before giving up), and the options are validated (`maxAttempts` a finite integer ≥ 1, `baseDelayMs` finite ≥ 0, else `TypeError`), so a persistent transient error cannot loop unboundedly. `isTransientConnectionError` is a conservative allow-list evaluated in order: control-flow throws (string `digest`) are rejected first; Prisma typed errors are matched strictly by code (so `P2xxx` query errors and `P1000` auth failures are never retried, even with a connection-like message); only untyped `Error`s fall through to the connection-drop message check. The retry is applied only to the reader read path (pure idempotent reads) — no mutation path retries. No new endpoint, dependency, vendor, or trust boundary is introduced. |
 | Owner | Maintainer (kiyahj81) |
 | Opened | 2026-06-19 (DB-resilience PR) |
 | Next review | Re-check if `withDbRetry` is applied to mutation paths or other routes, or if the transient-error allow-list is widened. |

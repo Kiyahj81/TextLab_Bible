@@ -161,10 +161,20 @@ async function run() {
     await signInAsTestUser(page);
     result.interactions.push("Signed in via dev credentials provider.");
 
-    await page.goto(`${appUrl}/read`);
+    // Use the canonical passage URL rather than bare `/read`. Saving a note calls
+    // router.refresh(); on bare `/read` that refresh re-runs the server component,
+    // which now sees the last-passage cookie ReaderLocationMemo just set and
+    // redirect()s to `/read?book=John&chapter=1` — remounting the reader and
+    // discarding the transient "Note saved." status before it can be asserted.
+    // Loading the canonical URL keeps refresh in place (this is also how the app
+    // behaves once a saved passage exists).
+    await page.goto(`${appUrl}/read?book=John&chapter=1`);
     assert((await page.title()).includes("TextLab Bible"), "page title did not match");
-    await page.getByRole("heading", { name: "Reader" }).waitFor();
-    await page.getByRole("heading", { name: "John 1:1", exact: true }).waitFor();
+    // Masthead is an <h1> reading "{book} {chapter}" (ReaderMasthead) — there is
+    // no "Reader" heading. Verse references are no longer headings since Phase C;
+    // each verse is an <article aria-label="{reference}">.
+    await page.getByRole("heading", { level: 1, name: "John" }).waitFor();
+    await page.getByRole("article", { name: "John 1:1", exact: true }).waitFor();
     await screenshot("01-read");
 
     await page.getByRole("button", { name: "λόγος" }).first().click();
@@ -173,13 +183,24 @@ async function run() {
     result.interactions.push("Clicked λόγος token and saw morphology N-NSM popover.");
     await screenshot("02-popover");
 
-    await page.getByRole("button", { name: "Highlight", exact: true }).click();
-    await page.getByText("Highlight saved.").waitFor();
-    result.interactions.push("Highlighted selected token and saw Highlight saved.");
+    // Highlighting is optimistic since Phase B2 — the UI surfaces only failures,
+    // no "Highlight saved." text. Clicking "Highlight" applies the current/default
+    // color; assert persistence via the /api/highlights POST (returns 201) instead.
+    const [highlightResponse] = await Promise.all([
+      page.waitForResponse((r) => r.url().includes("/api/highlights") && r.request().method() === "POST"),
+      page.getByRole("button", { name: "Highlight", exact: true }).click()
+    ]);
+    assert(highlightResponse.ok(), `highlight POST did not succeed (status ${highlightResponse.status()})`);
+    result.interactions.push("Highlighted λόγος token; highlight POST persisted (2xx).");
     await page.getByRole("button", { name: "Close" }).click();
 
-    const john11Article = page.locator("article").filter({ has: page.getByRole("heading", { name: "John 1:1", exact: true }) });
-    await john11Article.getByPlaceholder("Write a brief note").fill("QA acceptance note on John 1:1");
+    // Per-verse notes are collapsed behind a toggle whose accessible name is
+    // "Notes on {reference}" (count-independent, so re-runs stay idempotent even
+    // once the toggle reads "Notes (N)"). Expand it before the add-note form's
+    // "Write a note" textarea exists.
+    const john11Article = page.getByRole("article", { name: "John 1:1", exact: true });
+    await john11Article.getByRole("button", { name: /notes on john 1:1/i }).click();
+    await john11Article.getByPlaceholder("Write a note", { exact: true }).fill("QA acceptance note on John 1:1");
     await john11Article.getByRole("button", { name: "Save note" }).click();
     await page.getByText("Note saved.").waitFor();
     result.interactions.push("Saved a verse note and saw Note saved.");
@@ -272,8 +293,8 @@ async function run() {
     // Mobile context is fresh — needs its own session.
     await signInAsTestUser(mobilePage);
     await mobilePage.goto(`${appUrl}/read`);
-    await mobilePage.getByRole("heading", { name: "Reader" }).waitFor();
-    await mobilePage.getByRole("heading", { name: "John 1:1", exact: true }).waitFor();
+    await mobilePage.getByRole("heading", { level: 1, name: "John" }).waitFor();
+    await mobilePage.getByRole("article", { name: "John 1:1", exact: true }).waitFor();
     const hasHorizontalOverflow = await mobilePage.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
     assert(!hasHorizontalOverflow, "mobile /read page has horizontal overflow");
     const mobileShot = path.join(screenshotsDir, "05-mobile-read.png");

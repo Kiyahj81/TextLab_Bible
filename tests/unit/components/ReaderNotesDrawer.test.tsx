@@ -65,6 +65,21 @@ describe("ReaderNotesDrawer", () => {
     expect(scrollIntoView).toHaveBeenCalled();
   });
 
+  it("closes and does not reopen after the last note is deleted, then re-added", () => {
+    const { getByRole, queryByText, rerender } = render(<ReaderNotesDrawer items={items} onChanged={() => {}} />);
+    fireEvent.click(getByRole("button", { name: /notes \(2\)/i }));
+    expect(queryByText("verse note")).toBeTruthy(); // open
+
+    rerender(<ReaderNotesDrawer items={[]} onChanged={() => {}} />); // last note deleted → hidden
+    expect(queryByText("verse note")).toBeNull();
+
+    rerender(<ReaderNotesDrawer items={items} onChanged={() => {}} />); // notes return (e.g. refresh)
+    expect(queryByText("verse note")).toBeNull(); // stays CLOSED — open was reset
+
+    fireEvent.click(getByRole("button", { name: /notes \(2\)/i })); // re-opening still works
+    expect(queryByText("verse note")).toBeTruthy();
+  });
+
   it("recomputes alignment on viewport resize while open", () => {
     // Trigger in the right half of the (default 1024px) viewport → right-anchored.
     Element.prototype.getBoundingClientRect = vi.fn(() => rectAt(900));

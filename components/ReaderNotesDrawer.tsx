@@ -52,6 +52,14 @@ export function ReaderNotesDrawer({ items, onChanged }: { items: DrawerNote[]; o
     return () => window.removeEventListener("resize", place);
   }, [open]);
 
+  // Reset open when the list empties (e.g. the last note was deleted): the component
+  // stays mounted but hidden, so without this `open` would stay true — re-adding a note
+  // later would render the drawer already-open, and the document/resize listeners (which
+  // key off `open`) would linger while the button is hidden.
+  useEffect(() => {
+    if (items.length === 0) setOpen(false);
+  }, [items.length]);
+
   // UX decision: hide the button entirely when the passage has no notes.
   if (items.length === 0) return null;
 

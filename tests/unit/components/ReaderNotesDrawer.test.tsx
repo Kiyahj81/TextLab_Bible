@@ -9,7 +9,13 @@ const items = [
   { id: "n2", title: null, body: "word note", tags: ["word"], reference: "John 1:1 · λόγος", verse: 1 }
 ];
 
-afterEach(cleanup);
+const originalScrollIntoView = Element.prototype.scrollIntoView;
+
+afterEach(() => {
+  cleanup();
+  Element.prototype.scrollIntoView = originalScrollIntoView;
+  document.body.innerHTML = "";
+});
 
 describe("ReaderNotesDrawer", () => {
   it("opens to reveal passage notes and jumps to a verse", () => {

@@ -2,14 +2,17 @@
 "use client";
 
 import { NotebookText } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { NoteList } from "@/components/NoteList";
 import { FOCUS_RING } from "@/lib/ui/focus";
+
+const useIsomorphicLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 export type DrawerNote = { id: string; title: string | null; body: string; tags: string[]; reference: string; verse: number };
 
 export function ReaderNotesDrawer({ items, onChanged }: { items: DrawerNote[]; onChanged: () => void }) {
   const [open, setOpen] = useState(false);
+  const [align, setAlign] = useState<"left" | "right">("left");
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -29,6 +32,19 @@ export function ReaderNotesDrawer({ items, onChanged }: { items: DrawerNote[]; o
       document.removeEventListener("mousedown", onMouseDown);
       document.removeEventListener("keydown", onKeyDown);
     };
+  }, [open]);
+
+  // Open toward the side with more room so the panel stays on-screen: left-anchored
+  // when the trigger sits in the left half of the viewport (e.g. the sticky bar has
+  // wrapped to a narrow row), right-anchored otherwise (the usual wide-screen case).
+  // Measuring the trigger (not the panel) is alignment-independent, so toggling the
+  // same button never oscillates. max-w caps the panel to the viewport on tiny screens.
+  useIsomorphicLayoutEffect(() => {
+    if (!open) return;
+    const node = containerRef.current;
+    if (!node) return;
+    const rect = node.getBoundingClientRect();
+    setAlign(rect.left + rect.width / 2 < window.innerWidth / 2 ? "left" : "right");
   }, [open]);
 
   // UX decision: hide the button entirely when the passage has no notes.
@@ -60,7 +76,7 @@ export function ReaderNotesDrawer({ items, onChanged }: { items: DrawerNote[]; o
         Notes ({items.length})
       </button>
       {open ? (
-        <div className="absolute right-0 z-20 mt-2 max-h-[70vh] w-80 overflow-auto rounded-md border border-stone-300 bg-white p-3 shadow-xl">
+        <div className={`absolute ${align === "right" ? "right-0" : "left-0"} z-20 mt-2 max-h-[70vh] w-80 max-w-[calc(100vw-2rem)] overflow-auto rounded-md border border-stone-300 bg-white p-3 shadow-xl`}>
           <div className="space-y-4">
             {Object.entries(groups).map(([reference, notes]) => (
               <div key={reference}>

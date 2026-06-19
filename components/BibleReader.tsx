@@ -338,6 +338,7 @@ export function BibleReader({
                 type="button"
                 onClick={() => setOpenNote((c) => ({ ...c, [verse.id]: !c[verse.id] }))}
                 aria-expanded={!!openNote[verse.id]}
+                aria-label={`Notes on ${verse.reference}`}
                 className={`flex items-center gap-2 text-sm font-medium text-slate-700 hover:text-accent-800 ${FOCUS_RING}`}
               >
                 <NotebookPen size={16} />

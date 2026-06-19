@@ -20,23 +20,19 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe("BibleReader verse notes (study layout)", () => {
   it("keeps verse notes collapsed until the toggle is opened", () => {
-    const { getAllByRole, queryByText, getByText } = render(
+    const { getByRole, queryByText, getByText } = render(
       <BibleReader verses={[verse]} initialMode="greek" initialLayout="study" chapterLabel="John 1" />
     );
     expect(queryByText("my verse note")).toBeNull();
-    // Two "Notes (1)" buttons exist: sticky-bar drawer [0] and per-verse toggle [1]
-    const [, verseToggle] = getAllByRole("button", { name: /notes \(1\)/i });
-    fireEvent.click(verseToggle);
+    fireEvent.click(getByRole("button", { name: /notes on john 1:1/i }));
     expect(getByText("my verse note")).toBeTruthy();
   });
 
   it("refreshes the passage after saving a new verse note", async () => {
-    const { getAllByRole, getByPlaceholderText } = render(
+    const { getByRole, getByPlaceholderText, getAllByRole } = render(
       <BibleReader verses={[verse]} initialMode="greek" initialLayout="study" chapterLabel="John 1" />
     );
-    // Two "Notes (1)" buttons exist: sticky-bar drawer [0] and per-verse toggle [1]
-    const [, verseToggle] = getAllByRole("button", { name: /notes \(1\)/i });
-    fireEvent.click(verseToggle);
+    fireEvent.click(getByRole("button", { name: /notes on john 1:1/i }));
     fireEvent.change(getByPlaceholderText("Write a note"), { target: { value: "another note" } });
     fireEvent.click(getAllByRole("button", { name: /^save note$/i })[0]);
     await waitFor(() => expect(refresh).toHaveBeenCalled());

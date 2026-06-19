@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useMemo } from "react";
+import { NotebookPen } from "lucide-react";
 import { EnglishWordPopover } from "@/components/EnglishWordPopover";
 import { MorphologyPopover, type ReaderToken } from "@/components/MorphologyPopover";
 import { FOCUS_RING } from "@/lib/ui/focus";
@@ -22,6 +23,7 @@ export type ReaderVerse = {
   englishVerseId: string | null;
   englishHighlights: EnglishHighlight[];
   tokens: ReaderToken[];
+  notes: { id: string; title: string | null; body: string; tags: string[] }[];
 };
 
 export type EnglishToken = { kind: "word"; value: string; wordIndex: number } | { kind: "space"; value: string };
@@ -66,6 +68,12 @@ export function GreekToken({
         className={`mx-0.5 rounded px-1 py-0.5 transition-colors hover:bg-accent-50 ${FOCUS_RING}`}
       >
         {token.surface}
+        {token.noteCount > 0 ? (
+          <>
+            <NotebookPen size={12} aria-hidden className="ml-0.5 inline align-super text-accent-600" />
+            <span className="sr-only">{token.noteCount === 1 ? " (has a note)" : ` (has ${token.noteCount} notes)`}</span>
+          </>
+        ) : null}
       </button>
       {selected ? (
         <MorphologyPopover

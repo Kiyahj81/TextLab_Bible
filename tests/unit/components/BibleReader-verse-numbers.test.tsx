@@ -12,7 +12,7 @@ afterEach(() => {
 const verse = {
   id: "v1", book: "John", bookName: "John", chapter: 1, verse: 3, reference: "John 1:3",
   greekText: "πάντα", englishText: "All things", englishCorpus: "WEB", englishVerseId: "e1",
-  englishHighlights: [], tokens: []
+  englishHighlights: [], tokens: [], notes: []
 };
 
 describe("BibleReader verse numbering", () => {

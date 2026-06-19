@@ -8,7 +8,7 @@ import { BibleReader } from "@/components/BibleReader";
 const verse = {
   id: "v1", book: "John", bookName: "John", chapter: 1, verse: 1, reference: "John 1:1",
   greekText: "Ἐν", englishText: "In", englishCorpus: "WEB", englishVerseId: "e1",
-  englishHighlights: [], tokens: []
+  englishHighlights: [], tokens: [], notes: []
 };
 
 describe("BibleReader note affordance", () => {
@@ -17,7 +17,7 @@ describe("BibleReader note affordance", () => {
       <BibleReader verses={[verse]} initialMode="greek" chapterLabel="John 1" />
     );
     expect(queryByPlaceholderText(/write a note/i)).toBeNull();
-    fireEvent.click(getByRole("button", { name: /note on john 1:1/i }));
+    fireEvent.click(getByRole("button", { name: /notes on john 1:1/i }));
     expect(queryByPlaceholderText(/write a note/i)).toBeTruthy();
   });
 });

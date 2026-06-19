@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { NotebookPen } from "lucide-react";
+import { NotebookPen, ChevronDown, ChevronRight } from "lucide-react";
 import type { ReactNode, SubmitEvent } from "react";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -12,6 +12,8 @@ import { GreekToken, EnglishWords, type ReaderToken, type ReaderVerse } from "@/
 import { writePrefCookie, READER_MODE_COOKIE, READER_LAYOUT_COOKIE, type ReaderMode, type ReaderLayout } from "@/lib/readerPrefs";
 import { useAutoDismissMap } from "@/lib/useAutoDismissStatus";
 import { FOCUS_RING, FOCUS_RING_INPUT } from "@/lib/ui/focus";
+import { NoteList } from "@/components/NoteList";
+import { ReaderNotesDrawer } from "@/components/ReaderNotesDrawer";
 
 export function BibleReader({
   verses,
@@ -102,6 +104,7 @@ export function BibleReader({
       if (response.ok) {
         setVerseStatus(verse.id, "Note saved.");
         setNoteBodies((current) => ({ ...current, [verse.id]: "" }));
+        router.refresh();
       } else {
         setVerseStatus(verse.id, "Could not save note.");
       }
@@ -208,6 +211,13 @@ export function BibleReader({
   const showEnglish = readerMode !== "greek";
   const showBothColumns = showGreek && showEnglish;
 
+  const drawerNotes = verses.flatMap((verse) => [
+    ...verse.notes.map((n) => ({ ...n, reference: verse.reference, verse: verse.verse })),
+    ...verse.tokens.flatMap((t) =>
+      t.notes.map((n) => ({ ...n, reference: `${verse.reference} · ${t.surface}`, verse: verse.verse }))
+    )
+  ]);
+
   return (
     <div className="space-y-8">
       <div className="sticky top-0 z-10 -mx-4 flex flex-wrap items-center justify-between gap-3 border-b border-stone-200 bg-[var(--background)]/90 px-4 py-2 backdrop-blur">
@@ -216,6 +226,7 @@ export function BibleReader({
           {jumpSlot}
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <ReaderNotesDrawer items={drawerNotes} onChanged={() => router.refresh()} />
           <ReaderLayoutToggle layout={effectiveLayout} onChange={changeLayout} continuousDisabled={!continuousAvailable} />
           <ReaderModeToggle mode={readerMode} onChange={changeReaderMode} />
         </div>
@@ -299,6 +310,7 @@ export function BibleReader({
                                 onDraftChange={(next) => setTokenDraft(token.id, next)}
                                 onHighlight={(c) => highlightToken(verse, token, c)}
                                 onClose={() => setSelectedTokenId(null)}
+                                onNotesChanged={() => router.refresh()}
                               />{" "}
                             </Fragment>
                           );
@@ -326,31 +338,40 @@ export function BibleReader({
                 type="button"
                 onClick={() => setOpenNote((c) => ({ ...c, [verse.id]: !c[verse.id] }))}
                 aria-expanded={!!openNote[verse.id]}
+                aria-label={`Notes on ${verse.reference}`}
                 className={`flex items-center gap-2 text-sm font-medium text-slate-700 hover:text-accent-800 ${FOCUS_RING}`}
               >
                 <NotebookPen size={16} />
-                Note on {verse.reference}
+                Notes{verse.notes.length > 0 ? ` (${verse.notes.length})` : ""}
+                {openNote[verse.id] ? <ChevronDown size={14} aria-hidden /> : <ChevronRight size={14} aria-hidden />}
               </button>
               {openNote[verse.id] ? (
-                <form onSubmit={(event) => addVerseNote(event, verse)} className="mt-3 flex flex-col gap-2">
-                  <textarea
-                    value={noteBodies[verse.id] ?? ""}
-                    onChange={(event) =>
-                      setNoteBodies((current) => ({ ...current, [verse.id]: event.target.value }))
-                    }
-                    className={`min-h-20 w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-accent-600 ${FOCUS_RING_INPUT}`}
-                    placeholder="Write a note"
-                  />
-                  <div className="flex justify-end">
-                    <button
-                      type="submit"
-                      disabled={savingNote[verse.id] || !(noteBodies[verse.id] ?? "").trim()}
-                      className={`rounded-md bg-accent-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-700 disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS_RING}`}
-                    >
-                      Save note
-                    </button>
-                  </div>
-                </form>
+                <>
+                  {verse.notes.length > 0 ? (
+                    <div className="mt-3">
+                      <NoteList notes={verse.notes} onChanged={() => router.refresh()} />
+                    </div>
+                  ) : null}
+                  <form onSubmit={(event) => addVerseNote(event, verse)} className="mt-3 flex flex-col gap-2">
+                    <textarea
+                      value={noteBodies[verse.id] ?? ""}
+                      onChange={(event) =>
+                        setNoteBodies((current) => ({ ...current, [verse.id]: event.target.value }))
+                      }
+                      className={`min-h-20 w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-accent-600 ${FOCUS_RING_INPUT}`}
+                      placeholder="Write a note"
+                    />
+                    <div className="flex justify-end">
+                      <button
+                        type="submit"
+                        disabled={savingNote[verse.id] || !(noteBodies[verse.id] ?? "").trim()}
+                        className={`rounded-md bg-accent-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-700 disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS_RING}`}
+                      >
+                        Save note
+                      </button>
+                    </div>
+                  </form>
+                </>
               ) : null}
               {status[verse.id] ? (
                 <p role="status" aria-live="polite" className="mt-2 text-sm text-slate-600">{status[verse.id]}</p>

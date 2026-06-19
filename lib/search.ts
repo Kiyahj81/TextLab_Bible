@@ -331,6 +331,19 @@ export async function getReaderPassage(bookInput = "John", chapter = 1, userId: 
     : [];
   const domainLabels = new Map(domainLabelRows.map((row) => [row.code, row.label]));
 
+  const verseNotes = await prisma.note.findMany({
+    where: { ...userScope, verseId: { in: greekVerses.map((v) => v.id) } },
+    select: { id: true, title: true, body: true, tags: true, verseId: true },   // createdAt removed
+    orderBy: { createdAt: "asc" }
+  });
+  const notesByVerse = new Map<string, { id: string; title: string | null; body: string; tags: string[] }[]>();
+  for (const n of verseNotes) {
+    if (!n.verseId) continue;
+    const list = notesByVerse.get(n.verseId) ?? [];
+    list.push({ id: n.id, title: n.title, body: n.body, tags: n.tags });
+    notesByVerse.set(n.verseId, list);
+  }
+
   const tokensByVerse = tokens.reduce<Record<number, typeof tokens>>((acc, token) => {
     acc[token.verse] = acc[token.verse] ?? [];
     acc[token.verse].push(token);
@@ -356,6 +369,7 @@ export async function getReaderPassage(bookInput = "John", chapter = 1, userId: 
       englishCorpus: englishVerse?.corpus.abbreviation ?? "WEB",
       englishVerseId: englishVerse?.id ?? null,
       englishHighlights: collectEnglishHighlights(englishVerse?.highlights ?? []),
+      notes: notesByVerse.get(verse.id) ?? [],
       tokens: (tokensByVerse[verse.verse] ?? []).map((token) => ({
         id: token.id,
         book: token.book.osisId,
@@ -370,6 +384,7 @@ export async function getReaderPassage(bookInput = "John", chapter = 1, userId: 
         gloss: token.gloss,
         domains: resolveTokenDomains(token.louwNida, token.lnDomain, domainLabels),
         noteCount: token.notes.length,
+        notes: token.notes.map((n) => ({ id: n.id, title: n.title, body: n.body, tags: n.tags })),
         highlightColor: latestHighlightColor(token.highlights)
       }))
     };

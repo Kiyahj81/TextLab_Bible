@@ -41,10 +41,15 @@ export function ReaderNotesDrawer({ items, onChanged }: { items: DrawerNote[]; o
   // same button never oscillates. max-w caps the panel to the viewport on tiny screens.
   useIsomorphicLayoutEffect(() => {
     if (!open) return;
-    const node = containerRef.current;
-    if (!node) return;
-    const rect = node.getBoundingClientRect();
-    setAlign(rect.left + rect.width / 2 < window.innerWidth / 2 ? "left" : "right");
+    function place() {
+      const node = containerRef.current;
+      if (!node) return;
+      const rect = node.getBoundingClientRect();
+      setAlign(rect.left + rect.width / 2 < window.innerWidth / 2 ? "left" : "right");
+    }
+    place();
+    window.addEventListener("resize", place);
+    return () => window.removeEventListener("resize", place);
   }, [open]);
 
   // UX decision: hide the button entirely when the passage has no notes.

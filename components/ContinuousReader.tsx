@@ -2,6 +2,7 @@
 
 import { Fragment } from "react";
 import { GreekToken, EnglishWords, type ReaderVerse, type ReaderToken } from "@/components/readerTokens";
+import { VerseNotesPopover } from "@/components/VerseNotesPopover";
 
 // Font weight AND text color are applied per-case (see verseNumberClass), NOT here:
 // putting conflicting utilities on one element (font-semibold + font-bold, or
@@ -42,6 +43,9 @@ export function ContinuousReader(props: {
         {verses.map((verse) => (
           <Fragment key={verse.id}>
             <span className="sr-only">{verse.reference} </span>
+            {verse.notes.length > 0 ? (
+              <VerseNotesPopover notes={verse.notes} reference={verse.reference} onChanged={props.onNotesChanged} />
+            ) : null}
             <span id={`verse-${verse.verse}`} className={verseNumberClass(verse.verse === targetVerse)} aria-hidden>{verse.verse}</span>
             {verse.tokens.length > 0
               ? verse.tokens.map((token) => {
@@ -77,6 +81,9 @@ export function ContinuousReader(props: {
       {verses.map((verse) => (
         <Fragment key={verse.id}>
           <span className="sr-only">{verse.reference} </span>
+          {verse.notes.length > 0 ? (
+            <VerseNotesPopover notes={verse.notes} reference={verse.reference} onChanged={props.onNotesChanged} />
+          ) : null}
           <span id={`verse-${verse.verse}`} className={verseNumberClass(verse.verse === targetVerse)} aria-hidden>{verse.verse}</span>
           {verse.englishVerseId ? (
             <EnglishWords

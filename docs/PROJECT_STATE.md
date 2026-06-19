@@ -150,7 +150,7 @@ The assistant route follows a clear retrieval-first contract:
   - `tests/unit/components/AiAssistant-output-safety.test.tsx` — XSS payloads in assistant response render as text, not parsed HTML
   - Plus all earlier suites still in place: highlights, notes, saved-searches, search helpers, import parser, etc.
 - **DB integration suite** (`tests/integration/db-ownership.test.ts`, 7 tests) — real Prisma against the configured PostgreSQL. Covers per-user scoping for notes/highlights/saved-searches/generated-notes/ai-sessions plus the `onDelete: Cascade` FK chain from `User`. Runs via `npm run test:integration` through a separate `vitest.integration.config.ts`; skips itself when `DATABASE_URL` is unset.
-- **Playwright acceptance suite** (`scripts/acceptance-test.js`) — 11 end-to-end interactions including dev-credentials sign-in. Includes a PostgreSQL preflight that fails fast with a clear message when the configured `.env.test` database cannot be reached.
+- **Playwright acceptance suite** (`scripts/acceptance-test.js`) — 13 end-to-end interactions including dev-credentials sign-in, the morphology popover, optimistic token highlighting, per-verse notes, lemma search, and the assistant. Its `/read` selectors track the post–Phase-H reader UI (verse `<article aria-label>`s, the collapsed "Notes on {ref}" toggle). Includes a PostgreSQL preflight that fails fast with a clear message when the configured `.env.test` database cannot be reached.
 
 ### Database
 

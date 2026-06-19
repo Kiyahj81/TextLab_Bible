@@ -28,7 +28,7 @@ describe("BibleReader token notes (study layout)", () => {
     const { getByRole, getByText } = render(
       <BibleReader verses={[verse]} initialMode="greek" initialLayout="study" chapterLabel="John 1" />
     );
-    fireEvent.click(getByRole("button", { name: "Ἐν" }));
+    fireEvent.click(getByRole("button", { name: /^Ἐν/ }));
     expect(getByText("token note body")).toBeTruthy();
   });
 
@@ -36,7 +36,7 @@ describe("BibleReader token notes (study layout)", () => {
     const { getByRole } = render(
       <BibleReader verses={[verse]} initialMode="greek" initialLayout="study" chapterLabel="John 1" />
     );
-    fireEvent.click(getByRole("button", { name: "Ἐν" }));
+    fireEvent.click(getByRole("button", { name: /^Ἐν/ }));
     fireEvent.click(getByRole("button", { name: /delete note/i }));
     await waitFor(() => expect(refresh).toHaveBeenCalled());
     expect(fetch).toHaveBeenCalledWith("/api/notes/tn1", expect.objectContaining({ method: "DELETE" }));

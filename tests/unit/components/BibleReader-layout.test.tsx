@@ -18,13 +18,13 @@ describe("BibleReader layout", () => {
     const { queryByRole } = render(
       <BibleReader verses={[verse]} initialMode="greek" initialLayout="continuous" chapterLabel="John 1" />
     );
-    expect(queryByRole("button", { name: /note on john 1:1/i })).toBeNull();
+    expect(queryByRole("button", { name: /^notes$/i })).toBeNull();
   });
   it("forces study layout in parallel even if continuous was saved", () => {
     const { getByRole } = render(
       <BibleReader verses={[verse]} initialMode="parallel" initialLayout="continuous" chapterLabel="John 1" />
     );
-    expect(getByRole("button", { name: /note on john 1:1/i })).toBeTruthy();
+    expect(getByRole("button", { name: /^notes$/i })).toBeTruthy();
   });
   it("toggle reflects the effective layout in parallel (Continuous disabled + unchecked, Study checked)", () => {
     const { getByRole } = render(

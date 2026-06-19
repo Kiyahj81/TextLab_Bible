@@ -19,20 +19,26 @@ beforeEach(() => { refresh.mockClear(); vi.stubGlobal("fetch", vi.fn(() => Promi
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe("BibleReader verse notes (study layout)", () => {
-  it("renders existing verse notes in study layout", () => {
-    const { getByText } = render(
+  it("keeps verse notes collapsed until the toggle is opened", () => {
+    const { getAllByRole, queryByText, getByText } = render(
       <BibleReader verses={[verse]} initialMode="greek" initialLayout="study" chapterLabel="John 1" />
     );
+    expect(queryByText("my verse note")).toBeNull();
+    // Two "Notes (1)" buttons exist: sticky-bar drawer [0] and per-verse toggle [1]
+    const [, verseToggle] = getAllByRole("button", { name: /notes \(1\)/i });
+    fireEvent.click(verseToggle);
     expect(getByText("my verse note")).toBeTruthy();
   });
 
   it("refreshes the passage after saving a new verse note", async () => {
-    const { getByRole, getByPlaceholderText } = render(
+    const { getAllByRole, getByPlaceholderText } = render(
       <BibleReader verses={[verse]} initialMode="greek" initialLayout="study" chapterLabel="John 1" />
     );
-    fireEvent.click(getByRole("button", { name: /note on john 1:1/i }));
+    // Two "Notes (1)" buttons exist: sticky-bar drawer [0] and per-verse toggle [1]
+    const [, verseToggle] = getAllByRole("button", { name: /notes \(1\)/i });
+    fireEvent.click(verseToggle);
     fireEvent.change(getByPlaceholderText("Write a note"), { target: { value: "another note" } });
-    fireEvent.click(getByRole("button", { name: /^save note$/i }));
+    fireEvent.click(getAllByRole("button", { name: /^save note$/i })[0]);
     await waitFor(() => expect(refresh).toHaveBeenCalled());
   });
 });

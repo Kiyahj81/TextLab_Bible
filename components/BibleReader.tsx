@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { NotebookPen } from "lucide-react";
+import { NotebookPen, ChevronDown, ChevronRight } from "lucide-react";
 import type { ReactNode, SubmitEvent } from "react";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -334,11 +334,6 @@ export function BibleReader({
             </div>
 
             <div className="mt-4 border-t border-stone-200 pt-4">
-              {verse.notes.length > 0 ? (
-                <div className="mb-3">
-                  <NoteList notes={verse.notes} onChanged={() => router.refresh()} />
-                </div>
-              ) : null}
               <button
                 type="button"
                 onClick={() => setOpenNote((c) => ({ ...c, [verse.id]: !c[verse.id] }))}
@@ -346,28 +341,36 @@ export function BibleReader({
                 className={`flex items-center gap-2 text-sm font-medium text-slate-700 hover:text-accent-800 ${FOCUS_RING}`}
               >
                 <NotebookPen size={16} />
-                Note on {verse.reference}
+                Notes{verse.notes.length > 0 ? ` (${verse.notes.length})` : ""}
+                {openNote[verse.id] ? <ChevronDown size={14} aria-hidden /> : <ChevronRight size={14} aria-hidden />}
               </button>
               {openNote[verse.id] ? (
-                <form onSubmit={(event) => addVerseNote(event, verse)} className="mt-3 flex flex-col gap-2">
-                  <textarea
-                    value={noteBodies[verse.id] ?? ""}
-                    onChange={(event) =>
-                      setNoteBodies((current) => ({ ...current, [verse.id]: event.target.value }))
-                    }
-                    className={`min-h-20 w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-accent-600 ${FOCUS_RING_INPUT}`}
-                    placeholder="Write a note"
-                  />
-                  <div className="flex justify-end">
-                    <button
-                      type="submit"
-                      disabled={savingNote[verse.id] || !(noteBodies[verse.id] ?? "").trim()}
-                      className={`rounded-md bg-accent-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-700 disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS_RING}`}
-                    >
-                      Save note
-                    </button>
-                  </div>
-                </form>
+                <>
+                  {verse.notes.length > 0 ? (
+                    <div className="mt-3">
+                      <NoteList notes={verse.notes} onChanged={() => router.refresh()} />
+                    </div>
+                  ) : null}
+                  <form onSubmit={(event) => addVerseNote(event, verse)} className="mt-3 flex flex-col gap-2">
+                    <textarea
+                      value={noteBodies[verse.id] ?? ""}
+                      onChange={(event) =>
+                        setNoteBodies((current) => ({ ...current, [verse.id]: event.target.value }))
+                      }
+                      className={`min-h-20 w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-accent-600 ${FOCUS_RING_INPUT}`}
+                      placeholder="Write a note"
+                    />
+                    <div className="flex justify-end">
+                      <button
+                        type="submit"
+                        disabled={savingNote[verse.id] || !(noteBodies[verse.id] ?? "").trim()}
+                        className={`rounded-md bg-accent-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-700 disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS_RING}`}
+                      >
+                        Save note
+                      </button>
+                    </div>
+                  </form>
+                </>
               ) : null}
               {status[verse.id] ? (
                 <p role="status" aria-live="polite" className="mt-2 text-sm text-slate-600">{status[verse.id]}</p>

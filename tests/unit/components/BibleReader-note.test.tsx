@@ -17,7 +17,7 @@ describe("BibleReader note affordance", () => {
       <BibleReader verses={[verse]} initialMode="greek" chapterLabel="John 1" />
     );
     expect(queryByPlaceholderText(/write a note/i)).toBeNull();
-    fireEvent.click(getByRole("button", { name: /note on john 1:1/i }));
+    fireEvent.click(getByRole("button", { name: /^notes$/i }));
     expect(queryByPlaceholderText(/write a note/i)).toBeTruthy();
   });
 });

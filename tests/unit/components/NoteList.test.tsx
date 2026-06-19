@@ -36,4 +36,27 @@ describe("NoteList", () => {
     expect(init.method).toBe("PATCH");
     expect(JSON.parse(init.body as string)).toEqual({ title: "John 1:1", body: "the Word", tags: ["word"] });
   });
+
+  it("shows an error when a delete fails", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve({ ok: false })));
+    const { getByRole, findByText } = render(<NoteList notes={notes} onChanged={vi.fn()} />);
+    fireEvent.click(getByRole("button", { name: /delete note/i }));
+    expect(await findByText(/could not delete note/i)).toBeTruthy();
+  });
+
+  it("shows a network error when a delete rejects", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new Error("offline"))));
+    const { getByRole, findByText } = render(<NoteList notes={notes} onChanged={vi.fn()} />);
+    fireEvent.click(getByRole("button", { name: /delete note/i }));
+    expect(await findByText(/network error/i)).toBeTruthy();
+  });
+
+  it("shows an error when an edit (PATCH) fails", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve({ ok: false })));
+    const { getByRole, getByDisplayValue, findByText } = render(<NoteList notes={notes} onChanged={vi.fn()} />);
+    fireEvent.click(getByRole("button", { name: /edit note/i }));
+    fireEvent.change(getByDisplayValue("logos = word"), { target: { value: "x" } });
+    fireEvent.click(getByRole("button", { name: /save/i }));
+    expect(await findByText(/could not save note/i)).toBeTruthy();
+  });
 });

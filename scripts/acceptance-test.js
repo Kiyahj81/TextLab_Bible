@@ -164,10 +164,10 @@ async function run() {
     // Use the canonical passage URL rather than bare `/read`. Saving a note calls
     // router.refresh(); on bare `/read` that refresh re-runs the server component,
     // which now sees the last-passage cookie ReaderLocationMemo just set and
-    // redirect()s to `/read?book=John&chapter=1` — remounting the reader and
-    // discarding the transient "Note saved." status before it can be asserted.
-    // Loading the canonical URL keeps refresh in place (this is also how the app
-    // behaves once a saved passage exists).
+    // redirect()s to `/read?book=John&chapter=1`. That navigation remounts
+    // BibleReader and resets its note-status state, so "Note saved." never renders
+    // to assert against. The canonical URL keeps refresh in place (no redirect),
+    // which is also how the app behaves once a saved passage exists.
     await page.goto(`${appUrl}/read?book=John&chapter=1`);
     assert((await page.title()).includes("TextLab Bible"), "page title did not match");
     // Masthead is an <h1> reading "{book} {chapter}" (ReaderMasthead) — there is
@@ -290,7 +290,9 @@ async function run() {
 
     const mobileContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
     const mobilePage = await mobileContext.newPage();
-    // Mobile context is fresh — needs its own session.
+    // Mobile context is fresh — needs its own session. Bare `/read` is fine here
+    // (unlike the desktop flow): no last-passage cookie yet, so no saved-passage
+    // redirect, and this path saves no note, so there is no router.refresh() remount.
     await signInAsTestUser(mobilePage);
     await mobilePage.goto(`${appUrl}/read`);
     await mobilePage.getByRole("heading", { level: 1, name: "John" }).waitFor();

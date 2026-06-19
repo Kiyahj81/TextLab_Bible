@@ -18,6 +18,13 @@ describe("NoteList", () => {
     expect(fetch).toHaveBeenCalledWith("/api/notes/n1", expect.objectContaining({ method: "DELETE" }));
   });
 
+  it("renders note prose in the UI sans font (font-sans on the list)", () => {
+    // jsdom can't compute the cascade; this guards that the list carries font-sans so
+    // note text doesn't inherit a surrounding `.greek-text` serif when shown in a Greek popover.
+    const { getByRole } = render(<NoteList notes={notes} onChanged={vi.fn()} />);
+    expect(getByRole("list").className).toMatch(/\bfont-sans\b/);
+  });
+
   it("edits a note via PATCH, preserving title and tags", async () => {
     const onChanged = vi.fn();
     const { getByRole, getByDisplayValue } = render(<NoteList notes={notes} onChanged={onChanged} />);

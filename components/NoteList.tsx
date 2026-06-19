@@ -47,7 +47,9 @@ export function NoteList({ notes, onChanged }: { notes: Note[]; onChanged: () =>
   if (notes.length === 0) return null;
 
   return (
-    <ul className="space-y-2">
+    // font-sans so note prose always renders in the UI font, never an inherited
+    // context font (e.g. the `.greek-text` serif when shown in a Greek popover).
+    <ul className="space-y-2 font-sans">
       {notes.map((note) => (
         <li key={note.id} className="rounded-md border border-stone-200 bg-white p-3 text-sm">
           {editingId === note.id ? (

@@ -155,7 +155,7 @@ The assistant route follows a clear retrieval-first contract:
 ### Database
 
 - Prisma 6 over PostgreSQL. Current maintainer/dev and test environments use Neon branches (`DATABASE_URL` pooled for runtime, `DIRECT_URL` direct for migrations); local PostgreSQL remains possible if the same migrations are applied.
-- **Connection resilience:** the reader read path (`app/read/page.tsx`) wraps its queries in `withDbRetry` (`lib/db-retry.ts`), which retries transient Neon connection errors (idle-suspend / pooler recycle) with bounded exponential backoff before failing; `app/read/error.tsx` (on-brand) and a root `app/error.tsx` render a graceful "try again" card if a render still fails.
+- **Connection resilience:** the reader read path (`app/read/page.tsx`) wraps both its auth/session read (`requirePageAuth()`) and its four passage queries in `withDbRetry` (`lib/db-retry.ts`), which retries transient Neon connection errors (idle-suspend / pooler recycle) with bounded exponential backoff before failing; `app/read/error.tsx` (on-brand) and a root `app/error.tsx` render a graceful "try again" card if a render still fails.
 - 14 migrations on disk:
   - `0_init` — baseline reflecting pre-rename schema
   - `20260521162527_assistant_message_metadata` — `AiMessage.citations → metadata`

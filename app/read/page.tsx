@@ -24,7 +24,12 @@ type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 export const dynamic = "force-dynamic";
 
 export default async function ReadPage({ searchParams }: { searchParams: SearchParams }) {
-  const userId = await requirePageAuth();
+  // Retry the auth/session read too: requirePageAuth() -> auth() runs the
+  // sessionCallback's prisma.user.findUnique (revocation watermark), the FIRST
+  // DB read on the page and the most likely to hit a stale Neon connection
+  // after idle. Its redirect-on-unauthenticated throw carries a NEXT_REDIRECT
+  // digest, so withDbRetry rethrows it immediately and never retries it.
+  const userId = await withDbRetry(() => requirePageAuth());
   const params = await searchParams;
   const cookieStore = await cookies();
   const initialMode = parseReaderMode(cookieStore.get(READER_MODE_COOKIE)?.value) ?? "parallel";

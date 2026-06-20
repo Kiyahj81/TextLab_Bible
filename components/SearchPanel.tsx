@@ -302,7 +302,7 @@ export function SearchPanel({
       <form className="space-y-3 rounded-md border border-stone-300 bg-white p-4 shadow-sm xl:sticky xl:top-0 xl:z-10" action="/search">
         {/* Row 1 — search mode, with the book/chapter scope pulled up alongside it */}
         <div className="flex flex-wrap items-end gap-3">
-          <fieldset className="shrink-0">
+          <fieldset>
             <legend className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mode</legend>
             <div className="mt-1 inline-flex flex-wrap rounded-md border border-stone-300 bg-stone-100 p-0.5">
               {MODES.map((m) => (

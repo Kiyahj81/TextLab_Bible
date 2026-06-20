@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseNotesSort, parseReferenceFilter } from "@/lib/notes-filter";
+import { noteCanonicalKey, parseNotesSort, parseReferenceFilter } from "@/lib/notes-filter";
 
 describe("parseNotesSort", () => {
   it("defaults to 'recent' for unknown / empty input", () => {
@@ -40,5 +40,37 @@ describe("parseReferenceFilter", () => {
 
   it("falls through to the raw token when the book is unknown (substring fallback)", () => {
     expect(parseReferenceFilter("Jo")).toEqual({ book: "Jo", chapter: undefined });
+  });
+});
+
+describe("noteCanonicalKey", () => {
+  it("derives the key from a verse-attached note", () => {
+    expect(noteCanonicalKey({ book: { order: 43 }, chapter: 1, verse: 1 }, null)).toEqual({
+      refBookOrder: 43,
+      refChapter: 1,
+      refVerse: 1
+    });
+  });
+
+  it("derives the key from a token-attached note", () => {
+    expect(noteCanonicalKey(null, { book: { order: 43 }, chapter: 2, verse: 16 })).toEqual({
+      refBookOrder: 43,
+      refChapter: 2,
+      refVerse: 16
+    });
+  });
+
+  it("prefers the verse when both relations are present", () => {
+    expect(
+      noteCanonicalKey({ book: { order: 43 }, chapter: 1, verse: 1 }, { book: { order: 99 }, chapter: 9, verse: 9 })
+    ).toEqual({ refBookOrder: 43, refChapter: 1, refVerse: 1 });
+  });
+
+  it("returns nulls when neither relation is present", () => {
+    expect(noteCanonicalKey(null, null)).toEqual({
+      refBookOrder: null,
+      refChapter: null,
+      refVerse: null
+    });
   });
 });

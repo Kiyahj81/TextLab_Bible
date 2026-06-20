@@ -62,14 +62,18 @@ export default async function NotesPage({ searchParams }: { searchParams: Search
 
   const where: Prisma.NoteWhereInput = { AND: conditions };
 
+  // Canonical order reads the denormalized refBookOrder/refChapter/refVerse keys
+  // (copied from the attached verse/token at creation), so the database can order
+  // and paginate it directly — verse- and token-attached notes interleave by
+  // reference. Notes without a reference sort last (nulls last).
   const orderBy: Prisma.NoteOrderByWithRelationInput[] =
     sort === "title"
       ? [{ title: "asc" }, { updatedAt: "desc" }]
       : sort === "canonical"
         ? [
-            { verse: { book: { order: "asc" } } },
-            { verse: { chapter: "asc" } },
-            { verse: { verse: "asc" } },
+            { refBookOrder: { sort: "asc", nulls: "last" } },
+            { refChapter: { sort: "asc", nulls: "last" } },
+            { refVerse: { sort: "asc", nulls: "last" } },
             { updatedAt: "desc" }
           ]
         : [{ updatedAt: "desc" }];

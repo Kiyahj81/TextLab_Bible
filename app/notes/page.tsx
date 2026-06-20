@@ -3,7 +3,7 @@ import { DismissibleIntro } from "@/components/DismissibleIntro";
 import { NotesPanel, NoteRow } from "@/components/NotesPanel";
 import { requirePageAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { parseNotesSort, parseReferenceFilter } from "@/lib/notes-filter";
+import { parseNotesSort, parseReferenceFilter, sortNotesCanonically } from "@/lib/notes-filter";
 import { parsePositiveInt } from "@/lib/params";
 import { formatReference } from "@/lib/references";
 import { introCookieName } from "@/lib/readerPrefs";
@@ -62,32 +62,41 @@ export default async function NotesPage({ searchParams }: { searchParams: Search
 
   const where: Prisma.NoteWhereInput = { AND: conditions };
 
-  const orderBy: Prisma.NoteOrderByWithRelationInput[] =
-    sort === "title"
-      ? [{ title: "asc" }, { updatedAt: "desc" }]
-      : sort === "canonical"
-        ? [
-            { verse: { book: { order: "asc" } } },
-            { verse: { chapter: "asc" } },
-            { verse: { verse: "asc" } },
-            { updatedAt: "desc" }
-          ]
-        : [{ updatedAt: "desc" }];
+  const include = {
+    verse: { include: { book: true } },
+    token: { include: { book: true } }
+  } satisfies Prisma.NoteInclude;
 
-  const total = await prisma.note.count({ where });
-  const pageCount = Math.ceil(total / pageSize);
-  const page = Math.min(requestedPage, Math.max(pageCount, 1));
+  let total: number;
+  let pageCount: number;
+  let page: number;
+  let notes: Prisma.NoteGetPayload<{ include: typeof include }>[];
 
-  const notes = await prisma.note.findMany({
-    where,
-    include: {
-      verse: { include: { book: true } },
-      token: { include: { book: true } }
-    },
-    orderBy,
-    skip: (page - 1) * pageSize,
-    take: pageSize
-  });
+  if (sort === "canonical") {
+    // A note's canonical position lives on either its verse or its token relation,
+    // and Prisma's orderBy can't COALESCE across the two (token-attached notes would
+    // sort by a NULL verse key and collapse to the end). Order — and therefore
+    // paginate — in application code so both kinds interleave by reference.
+    const all = await prisma.note.findMany({ where, include });
+    const ordered = sortNotesCanonically(all);
+    total = ordered.length;
+    pageCount = Math.ceil(total / pageSize);
+    page = Math.min(requestedPage, Math.max(pageCount, 1));
+    notes = ordered.slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize);
+  } else {
+    const orderBy: Prisma.NoteOrderByWithRelationInput[] =
+      sort === "title" ? [{ title: "asc" }, { updatedAt: "desc" }] : [{ updatedAt: "desc" }];
+    total = await prisma.note.count({ where });
+    pageCount = Math.ceil(total / pageSize);
+    page = Math.min(requestedPage, Math.max(pageCount, 1));
+    notes = await prisma.note.findMany({
+      where,
+      include,
+      orderBy,
+      skip: (page - 1) * pageSize,
+      take: pageSize
+    });
+  }
 
   const rows: NoteRow[] = notes.map((note) => {
     const source = note.verse ?? note.token;

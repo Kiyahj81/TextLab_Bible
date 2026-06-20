@@ -139,7 +139,7 @@ export function NotesPanel({
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 rounded-md border border-stone-300 bg-white p-4 shadow-sm sm:grid-cols-2 md:grid-cols-4">
+      <div className="grid gap-3 rounded-md border border-stone-300 bg-white p-4 shadow-sm sm:grid-cols-2 md:grid-cols-4 xl:sticky xl:top-0 xl:z-10">
         <label className="space-y-1">
           <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Keyword</span>
           <input

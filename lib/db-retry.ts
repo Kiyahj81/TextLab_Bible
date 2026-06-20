@@ -10,8 +10,10 @@ const TRANSIENT_REQUEST_CODES = new Set(["P1001", "P1002", "P1017"]);
 const TRANSIENT_INIT_CODES = new Set(["P1001", "P1002"]);
 
 // Driver/engine errors that surface as a generic (non-typed) Error when
-// Neon's pooler recycles an idle connection.
-const TRANSIENT_MESSAGE = /connection.*(closed|reset)|ECONNRESET|terminating connection|server has closed/i;
+// Neon's pooler recycles an idle connection. Includes "Connection terminated
+// unexpectedly" (the node-postgres pool-drop message) for any path that uses a
+// JS driver adapter.
+const TRANSIENT_MESSAGE = /connection.*(closed|reset|terminated)|ECONNRESET|terminating connection|server has closed/i;
 
 // Next.js control-flow throws (redirect / notFound) carry a string `digest`.
 // They must propagate untouched — never retried or message-matched.

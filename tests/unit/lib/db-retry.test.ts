@@ -26,9 +26,11 @@ describe("isTransientConnectionError", () => {
     expect(isTransientConnectionError(initError("P1002"))).toBe(true);
   });
 
-  it("is true for connection-closed/reset messages on untyped or unknown-request errors", () => {
+  it("is true for connection-closed/reset/terminated messages on untyped or unknown-request errors", () => {
     expect(isTransientConnectionError(new Error("the server has closed the connection"))).toBe(true);
     expect(isTransientConnectionError(new Error("Connection reset by peer ECONNRESET"))).toBe(true);
+    // node-postgres pool-drop message (driver-adapter path).
+    expect(isTransientConnectionError(new Error("Connection terminated unexpectedly"))).toBe(true);
     // A recycled connection can surface as an UnknownRequestError — still eligible.
     expect(
       isTransientConnectionError(

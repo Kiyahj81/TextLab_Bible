@@ -99,7 +99,7 @@ conservative allow-list **evaluated in order**:
    `PrismaClientRustPanicError` return `false` outright, *before* the message fallback, so a
    validation/panic error whose message happens to read "connection closed" is never retried.
 5. **Remaining errors → message match** against
-   `/connection.*(closed|reset)|ECONNRESET|terminating connection|server has closed/i`. This is the
+   `/connection.*(closed|reset|terminated)|ECONNRESET|terminating connection|server has closed/i`. This is the
    only place a message is consulted, and it applies to generic engine `Error`s and to
    `PrismaClientUnknownRequestError` — how a recycled-connection drop can legitimately surface (it
    is intentionally *not* rejected in step 4). Non-`Error` values return `false`.
@@ -174,7 +174,7 @@ PR and noted here so the gap is deliberate, not forgotten.
   - exhausts `maxAttempts` on a persistent transient error (fn always throws `P1001` → rethrows
     after exactly `maxAttempts` calls);
   - `isTransientConnectionError` truth table: `true` for known-request `P1001`/`P1002`/`P1017`,
-    init errors with `errorCode` `P1001`/`P1002`, and a `/connection closed|reset/` message on an
+    init errors with `errorCode` `P1001`/`P1002`, and a `/connection closed|reset|terminated/` message on an
     untyped `Error` or a `PrismaClientUnknownRequestError`; `false` for a `P1000` (auth) init error,
     an init error with no `errorCode`, and — even with a message that *looks* connection-like — a
     `P2002` `PrismaClientKnownRequestError`, a `PrismaClientValidationError`, and a

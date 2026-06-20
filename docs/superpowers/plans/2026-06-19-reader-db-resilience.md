@@ -13,7 +13,7 @@ Design spec: `docs/superpowers/specs/2026-06-19-reader-db-resilience-design.md`.
 ## Global Constraints
 
 - **Retry budget:** `maxAttempts = 3` (1 try + 2 retries), `baseDelayMs = 100`, exponential backoff `baseDelayMs * 2 ** (attempt - 1)` + jitter (`Math.random() * baseDelayMs`); both tunable via `opts`. Worst-case added latency ≤ ~500 ms (≈300 ms fixed backoff over the two waits + up to ~200 ms jitter). `opts` are validated: `maxAttempts` must be a finite integer ≥ 1 and `baseDelayMs` a finite number ≥ 0, else `withDbRetry` throws a `TypeError` (so a bad caller can never produce an unbounded loop).
-- **Transient allow-list — retry ONLY (evaluated in this order):** (1) reject anything carrying a string `digest` (Next's `NEXT_REDIRECT`/`notFound` control-flow throws) — never retried; (2) `Prisma.PrismaClientKnownRequestError` strictly by code `P1001`/`P1002`/`P1017`; (3) `Prisma.PrismaClientInitializationError` strictly by `errorCode` `P1001`/`P1002` (so `P1000` auth, `P1003` no-DB, `P1010` access-denied are NOT retried); (4) reject other typed Prisma errors (`PrismaClientValidationError`, `PrismaClientRustPanicError`) outright, then message-match the remaining `Error`s — generic engine errors and `PrismaClientUnknownRequestError` (how a recycled connection can surface) — against `/connection.*(closed|reset)|ECONNRESET|terminating connection|server has closed/i`. A `P2xxx` query error (or a validation/panic error) is decided by its class/code and never reaches the message fallback even if its message looks connection-like; non-`Error` values return `false`.
+- **Transient allow-list — retry ONLY (evaluated in this order):** (1) reject anything carrying a string `digest` (Next's `NEXT_REDIRECT`/`notFound` control-flow throws) — never retried; (2) `Prisma.PrismaClientKnownRequestError` strictly by code `P1001`/`P1002`/`P1017`; (3) `Prisma.PrismaClientInitializationError` strictly by `errorCode` `P1001`/`P1002` (so `P1000` auth, `P1003` no-DB, `P1010` access-denied are NOT retried); (4) reject other typed Prisma errors (`PrismaClientValidationError`, `PrismaClientRustPanicError`) outright, then message-match the remaining `Error`s — generic engine errors and `PrismaClientUnknownRequestError` (how a recycled connection can surface) — against `/connection.*(closed|reset|terminated)|ECONNRESET|terminating connection|server has closed/i`. A `P2xxx` query error (or a validation/panic error) is decided by its class/code and never reaches the message fallback even if its message looks connection-like; non-`Error` values return `false`.
 - **Retry applied ONLY to the reader read path** (the auth/session read via `requirePageAuth()` plus the page-level `Promise.all`). `lib/search.ts` is untouched. No mutation path retries.
 - **Reader error card copy/actions:** heading `Couldn't load this passage`; primary `Try again` button → `reset()`; secondary `Back to John 1` link → `/read?book=John&chapter=1`.
 - **Root error card copy/actions:** heading `Something went wrong`; `Try again` button → `reset()`; `Home` link → `/`.
@@ -68,9 +68,11 @@ describe("isTransientConnectionError", () => {
     expect(isTransientConnectionError(initError("P1002"))).toBe(true);
   });
 
-  it("is true for connection-closed/reset messages on untyped or unknown-request errors", () => {
+  it("is true for connection-closed/reset/terminated messages on untyped or unknown-request errors", () => {
     expect(isTransientConnectionError(new Error("the server has closed the connection"))).toBe(true);
     expect(isTransientConnectionError(new Error("Connection reset by peer ECONNRESET"))).toBe(true);
+    // node-postgres pool-drop message (driver-adapter path).
+    expect(isTransientConnectionError(new Error("Connection terminated unexpectedly"))).toBe(true);
     // A recycled connection can surface as an UnknownRequestError — still eligible.
     expect(
       isTransientConnectionError(
@@ -177,8 +179,10 @@ const TRANSIENT_REQUEST_CODES = new Set(["P1001", "P1002", "P1017"]);
 const TRANSIENT_INIT_CODES = new Set(["P1001", "P1002"]);
 
 // Driver/engine errors that surface as a generic (non-typed) Error when
-// Neon's pooler recycles an idle connection.
-const TRANSIENT_MESSAGE = /connection.*(closed|reset)|ECONNRESET|terminating connection|server has closed/i;
+// Neon's pooler recycles an idle connection. Includes "Connection terminated
+// unexpectedly" (the node-postgres pool-drop message) for any path that uses a
+// JS driver adapter.
+const TRANSIENT_MESSAGE = /connection.*(closed|reset|terminated)|ECONNRESET|terminating connection|server has closed/i;
 
 // Next.js control-flow throws (redirect / notFound) carry a string `digest`.
 // They must propagate untouched — never retried or message-matched.

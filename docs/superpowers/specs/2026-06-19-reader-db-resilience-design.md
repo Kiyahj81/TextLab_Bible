@@ -25,11 +25,14 @@ This is the pre-authorized "DB-resilience PR" (Option 1) queued after the reader
   `/search`, `/notes`, and the assistant retrieval path can adopt it in later PRs without
   re-architecting. (Rejected: app-wide application now — larger diff/blast radius; an
   inline reader-only guard with no reusable helper — nothing reusable.)
-- **Retry placement — wrap the page-level `Promise.all`.** One call site in
-  `app/read/page.tsx`; `lib/search.ts` stays untouched. On a (rare) transient failure all
-  four idempotent reads re-run, which is cheap. (Rejected: wrapping each of the four reader
-  query functions in `lib/search.ts` — four edit sites in the search layer and nesting
-  around `getReaderPassage`'s own `Promise.all`, for little gain since retries are rare.)
+- **Retry placement — wrap the page-level `Promise.all` (and the auth read).** The four passage
+  reads are wrapped at one call site in `app/read/page.tsx`; `lib/search.ts` stays untouched. On a
+  (rare) transient failure all four idempotent reads re-run, which is cheap. **(Updated during PR
+  review: the auth/session read via `requirePageAuth()` is wrapped too — see Component 2 — because
+  it is the first DB read on the page; Codex correctly flagged that the original "`Promise.all`-only"
+  scope left the most idle-exposed read uncovered.)** (Rejected: wrapping each of the four reader
+  query functions in `lib/search.ts` — four edit sites in the search layer and nesting around
+  `getReaderPassage`'s own `Promise.all`, for little gain since retries are rare.)
 - **Error-boundary breadth — reader + root.** Add `app/read/error.tsx` (tailored, on-brand)
   **and** a generic `app/error.tsx` that catches crashes on every other route segment too,
   closing the app-wide gap that any route currently crashes ungracefully. (Rejected:
@@ -105,13 +108,24 @@ Matching Prisma typed errors **strictly by code** (steps 2–3) is what guarante
 auth failure is never retried even if its message looks connection-like. Prisma error classes are
 reached via `import { Prisma } from "@prisma/client"` and `instanceof`.
 
-### 2. `app/read/page.tsx` (one-line wrap)
+### 2. `app/read/page.tsx` (retry the auth read + the passage reads)
 
-Wrap the existing four top-level read operations (`Promise.all`) — the only change to this file:
+Two DB-touch points on the page are wrapped. **(The auth/session wrap was added during PR review —
+Codex correctly noted the original design covered only the `Promise.all`.)**
+
+First, the auth/session read: `requirePageAuth()` runs `auth()`, whose `sessionCallback` does a
+`prisma.user.findUnique` for the revocation watermark. This is the **first** DB read on the page
+and the one most likely to hit a stale Neon connection after idle, so it is retried too:
 
 ```ts
 import { withDbRetry } from "@/lib/db-retry";
 // ...
+const userId = await withDbRetry(() => requirePageAuth());
+```
+
+Then the four passage reads:
+
+```ts
 const [books, passages, verses, neighbors] = await withDbRetry(() =>
   Promise.all([
     getAvailableReaderBooks(),
@@ -122,9 +136,10 @@ const [books, passages, verses, neighbors] = await withDbRetry(() =>
 );
 ```
 
-The bare-URL `redirect()` runs **before** this block, so it is unaffected. (Belt-and-suspenders:
-even if a `NEXT_REDIRECT` were thrown inside the wrapped fn, `isTransientConnectionError` returns
-`false` for it, so it rethrows immediately.) `lib/search.ts` is untouched.
+`requirePageAuth()`'s redirect-on-unauthenticated throw carries a `NEXT_REDIRECT` digest, which
+`isTransientConnectionError` rejects first — so the redirect always propagates immediately and is
+never retried. The bare-URL `redirect()` that sits between the two wraps is likewise unaffected.
+`lib/search.ts` is untouched.
 
 ### 3. `app/read/error.tsx` (new, client component)
 
@@ -212,9 +227,10 @@ Add one **Low-severity** availability/resilience row under `## Open`, in the fil
 
 - `withDbRetry` retries transient connection errors up to the configured budget and rethrows all
   other errors immediately, proven by `tests/unit/lib/db-retry.test.ts`.
-- `/read` no longer crashes the page on a single transient connection error (the retry absorbs it);
-  if retries are exhausted (or any other render error occurs), `app/read/error.tsx` renders the
-  on-brand card with a working **Try again** and **Back to John 1**.
+- `/read` no longer crashes the page on a single transient connection error (the retry absorbs it on
+  both the auth/session read and the four passage reads); if retries are exhausted (or any other
+  render error occurs), `app/read/error.tsx` renders the on-brand card with a working **Try again**
+  and **Back to John 1**.
 - Any other route that throws renders `app/error.tsx` instead of the default error page.
 - `npm run verify` is green (lint + tsc + build + unit tests). `docs/security-register.md` and
   `docs/PROJECT_STATE.md` updated.

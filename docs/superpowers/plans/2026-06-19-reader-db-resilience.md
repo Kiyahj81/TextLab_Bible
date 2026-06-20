@@ -4,7 +4,7 @@
 
 **Goal:** Make the reader page survive Neon's transient connection drops by retrying its read path and degrading to a graceful "try again" card instead of a full-page crash.
 
-**Architecture:** A small reusable `withDbRetry()` helper retries only transient connection errors (bounded backoff) and wraps the reader page's four top-level read operations (`Promise.all`). Two React error boundaries — a tailored `app/read/error.tsx` and a generic root `app/error.tsx` — catch anything that still throws. No production query logic changes; the retry is reader-read-path-only.
+**Architecture:** A small reusable `withDbRetry()` helper retries only transient connection errors (bounded backoff) and wraps the reader page's DB reads — the auth/session read (`requirePageAuth()`) and the four top-level passage reads (`Promise.all`). Two React error boundaries — a tailored `app/read/error.tsx` and a generic root `app/error.tsx` — catch anything that still throws. No production query logic changes; the retry is reader-read-path-only. (The auth-read wrap was added during PR review — the original plan covered only the `Promise.all`.)
 
 **Tech Stack:** Next.js 15 App Router (server components + client `error.tsx` boundaries), Prisma 6 over Neon Postgres, Vitest 4 (`globals: false`) + React Testing Library + jsdom for component tests.
 
@@ -14,7 +14,7 @@ Design spec: `docs/superpowers/specs/2026-06-19-reader-db-resilience-design.md`.
 
 - **Retry budget:** `maxAttempts = 3` (1 try + 2 retries), `baseDelayMs = 100`, exponential backoff `baseDelayMs * 2 ** (attempt - 1)` + jitter (`Math.random() * baseDelayMs`); both tunable via `opts`. Worst-case added latency ≤ ~500 ms (≈300 ms fixed backoff over the two waits + up to ~200 ms jitter). `opts` are validated: `maxAttempts` must be a finite integer ≥ 1 and `baseDelayMs` a finite number ≥ 0, else `withDbRetry` throws a `TypeError` (so a bad caller can never produce an unbounded loop).
 - **Transient allow-list — retry ONLY (evaluated in this order):** (1) reject anything carrying a string `digest` (Next's `NEXT_REDIRECT`/`notFound` control-flow throws) — never retried; (2) `Prisma.PrismaClientKnownRequestError` strictly by code `P1001`/`P1002`/`P1017`; (3) `Prisma.PrismaClientInitializationError` strictly by `errorCode` `P1001`/`P1002` (so `P1000` auth, `P1003` no-DB, `P1010` access-denied are NOT retried); (4) reject other typed Prisma errors (`PrismaClientValidationError`, `PrismaClientRustPanicError`) outright, then message-match the remaining `Error`s — generic engine errors and `PrismaClientUnknownRequestError` (how a recycled connection can surface) — against `/connection.*(closed|reset)|ECONNRESET|terminating connection|server has closed/i`. A `P2xxx` query error (or a validation/panic error) is decided by its class/code and never reaches the message fallback even if its message looks connection-like; non-`Error` values return `false`.
-- **Retry applied ONLY to the reader read path** (the page-level `Promise.all`). `lib/search.ts` is untouched. No mutation path retries.
+- **Retry applied ONLY to the reader read path** (the auth/session read via `requirePageAuth()` plus the page-level `Promise.all`). `lib/search.ts` is untouched. No mutation path retries.
 - **Reader error card copy/actions:** heading `Couldn't load this passage`; primary `Try again` button → `reset()`; secondary `Back to John 1` link → `/read?book=John&chapter=1`.
 - **Root error card copy/actions:** heading `Something went wrong`; `Try again` button → `reset()`; `Home` link → `/`.
 - **Test conventions:** Vitest `globals: false` — import `{ describe, it, expect, vi, beforeEach, afterEach }` from `"vitest"`. Component tests: `// @vitest-environment jsdom` as the file's first line, `@/` import alias, `afterEach(cleanup)`, NO jest-dom (plain truthy/attribute assertions only).
@@ -327,6 +327,22 @@ with:
   );
 ```
 
+- [ ] **Step 2b: Also wrap the auth/session read** (added during PR review — the original plan covered only the `Promise.all`)
+
+Replace:
+
+```ts
+  const userId = await requirePageAuth();
+```
+
+with:
+
+```ts
+  const userId = await withDbRetry(() => requirePageAuth());
+```
+
+`requirePageAuth()` runs `auth()`, whose `sessionCallback` does a `prisma.user.findUnique` for the revocation watermark — the **first** DB read on the page and the most exposed to an idle Neon drop. Its redirect-on-unauthenticated throw carries a `NEXT_REDIRECT` digest, which the predicate rejects first, so the redirect still propagates immediately and is never retried.
+
 - [ ] **Step 3: Type-check**
 
 Run: `npx tsc --noEmit --pretty false`
@@ -580,7 +596,7 @@ In `docs/security-register.md`, under the `## Open` section, immediately **befor
 | Field | Value |
 | --- | --- |
 | Severity | Low (availability / resilience hardening; not a vulnerability) |
-| Change | New `lib/db-retry.ts` `withDbRetry()` wraps the reader read path (`app/read/page.tsx`'s four top-level read operations) and retries transient Neon connection errors; two React error boundaries — `app/read/error.tsx` (on-brand) and `app/error.tsx` (generic root) — render a graceful "try again" card instead of Next's default crash page. |
+| Change | New `lib/db-retry.ts` `withDbRetry()` wraps the reader read path (`app/read/page.tsx`'s auth/session read via `requirePageAuth()` plus its four top-level passage reads) and retries transient Neon connection errors; two React error boundaries — `app/read/error.tsx` (on-brand) and `app/error.tsx` (generic root) — render a graceful "try again" card instead of Next's default crash page. |
 | Root cause | Neon serverless compute autosuspends when idle and its connection pooler recycles connections, so the first request after a quiet window can find Prisma's pooled connection already closed and throw a transient connection error (`P1001`/`P1002`/`P1017`/init error/"connection closed") even though the database is healthy. |
 | Status | Accepted — bounded |
 | Mitigation | Retries are bounded: `maxAttempts = 3` with exponential backoff + jitter (≤ ~500 ms worst-case added latency before giving up), and the options are validated (`maxAttempts` a finite integer ≥ 1, `baseDelayMs` finite ≥ 0, else `TypeError`), so a persistent transient error cannot loop unboundedly. `isTransientConnectionError` is a conservative allow-list evaluated in order: control-flow throws (string `digest`) are rejected first; Prisma typed errors are matched strictly by code (so `P2xxx` query errors and `P1000` auth failures are never retried, even with a connection-like message); other typed Prisma errors (`PrismaClientValidationError`, `PrismaClientRustPanicError`) are rejected before a message is consulted, and only the remaining errors — generic engine errors plus `PrismaClientUnknownRequestError` — fall through to the connection-drop message check. The retry is applied only to the reader read path (pure idempotent reads) — no mutation path retries. No new endpoint, dependency, vendor, or trust boundary is introduced. |

@@ -155,6 +155,19 @@ sprint and at every Next.js minor upgrade. Cross-check each open row.
 | Owner | Maintainer (kiyahj81) |
 | Opened | 2026-06-17 (Phase A — Read page first-load stability) |
 
+### Reader read-path DB retry + error boundaries (Neon transient-connection resilience)
+
+| Field | Value |
+| --- | --- |
+| Severity | Low (availability / resilience hardening; not a vulnerability) |
+| Change | New `lib/db-retry.ts` `withDbRetry()` wraps the reader read path (`app/read/page.tsx`'s auth/session read via `requirePageAuth()` plus its four top-level passage reads) and retries transient Neon connection errors; two React error boundaries — `app/read/error.tsx` (on-brand) and `app/error.tsx` (generic root) — render a graceful "try again" card instead of Next's default crash page. |
+| Root cause | Neon serverless compute autosuspends when idle and its connection pooler recycles connections, so the first request after a quiet window can find Prisma's pooled connection already closed and throw a transient connection error (`P1001`/`P1002`/`P1017`/init error/"connection closed") even though the database is healthy. |
+| Status | Accepted — bounded |
+| Mitigation | Retries are bounded: `maxAttempts = 3` with exponential backoff + jitter (≤ ~500 ms worst-case added latency before giving up), and the options are validated (`maxAttempts` a finite integer ≥ 1, `baseDelayMs` finite ≥ 0, else `TypeError`), so a persistent transient error cannot loop unboundedly. `isTransientConnectionError` is a conservative allow-list evaluated in order: control-flow throws (string `digest`) are rejected first; Prisma typed errors are matched strictly by code (so `P2xxx` query errors and `P1000` auth failures are never retried, even with a connection-like message); other typed Prisma errors (`PrismaClientValidationError`, `PrismaClientRustPanicError`) are rejected before a message is consulted, and only the remaining errors — generic engine errors plus `PrismaClientUnknownRequestError` — fall through to the connection-drop message check. The retry is applied only to the reader read path (pure idempotent reads) — no mutation path retries. No new endpoint, dependency, vendor, or trust boundary is introduced. |
+| Owner | Maintainer (kiyahj81) |
+| Opened | 2026-06-19 (DB-resilience PR) |
+| Next review | Re-check if `withDbRetry` is applied to mutation paths or other routes, or if the transient-error allow-list is widened. |
+
 ## Tooling notes
 
 - `npm audit` requires network access to the npm registry. If the

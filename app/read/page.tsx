@@ -16,6 +16,7 @@ import {
   getPassageNeighbors,
   getReaderPassage
 } from "@/lib/search";
+import { withDbRetry } from "@/lib/db-retry";
 import { cookies } from "next/headers";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -23,7 +24,12 @@ type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 export const dynamic = "force-dynamic";
 
 export default async function ReadPage({ searchParams }: { searchParams: SearchParams }) {
-  const userId = await requirePageAuth();
+  // Retry the auth/session read too: requirePageAuth() -> auth() runs the
+  // sessionCallback's prisma.user.findUnique (revocation watermark), the FIRST
+  // DB read on the page and the most likely to hit a stale Neon connection
+  // after idle. Its redirect-on-unauthenticated throw carries a NEXT_REDIRECT
+  // digest, so withDbRetry rethrows it immediately and never retries it.
+  const userId = await withDbRetry(() => requirePageAuth());
   const params = await searchParams;
   const cookieStore = await cookies();
   const initialMode = parseReaderMode(cookieStore.get(READER_MODE_COOKIE)?.value) ?? "parallel";
@@ -44,12 +50,16 @@ export default async function ReadPage({ searchParams }: { searchParams: SearchP
   const book = bookParam ?? "John";
   const chapter = parsePositiveInt(chapterParam) ?? 1;
   const targetVerse = parsePositiveInt(verseParam) ?? null;
-  const [books, passages, verses, neighbors] = await Promise.all([
-    getAvailableReaderBooks(),
-    getAvailablePassages(),
-    getReaderPassage(book, chapter, userId),
-    getPassageNeighbors(book, chapter)
-  ]);
+  // Retry transient Neon connection drops (idle-suspend / pooler recycle) on
+  // these idempotent reads before letting the page fall through to error.tsx.
+  const [books, passages, verses, neighbors] = await withDbRetry(() =>
+    Promise.all([
+      getAvailableReaderBooks(),
+      getAvailablePassages(),
+      getReaderPassage(book, chapter, userId),
+      getPassageNeighbors(book, chapter)
+    ])
+  );
 
   return (
     <div className="space-y-6">

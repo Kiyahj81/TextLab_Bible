@@ -70,8 +70,8 @@ describe("POST /api/notes", () => {
     expect(res.status).toBe(400);
   });
 
-  it("creates a note when verseId resolves", async () => {
-    prismaMock.verse.findUnique.mockResolvedValue({ id: "v1" });
+  it("creates a note when verseId resolves and denormalizes its canonical sort key", async () => {
+    prismaMock.verse.findUnique.mockResolvedValue({ chapter: 1, verse: 1, book: { order: 43 } });
     prismaMock.note.create.mockResolvedValue({ id: "n1" });
 
     const res = await POST(jsonRequest("http://test/api/notes", "POST", {
@@ -82,6 +82,29 @@ describe("POST /api/notes", () => {
 
     expect(res.status).toBe(201);
     expect(prismaMock.note.create).toHaveBeenCalledTimes(1);
+    expect(prismaMock.note.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ refBookOrder: 43, refChapter: 1, refVerse: 1 })
+      })
+    );
+  });
+
+  it("denormalizes the canonical sort key from a resolved tokenId", async () => {
+    prismaMock.token.findUnique.mockResolvedValue({ chapter: 2, verse: 16, book: { order: 43 } });
+    prismaMock.note.create.mockResolvedValue({ id: "n2" });
+
+    const res = await POST(jsonRequest("http://test/api/notes", "POST", {
+      tokenId: "t1",
+      body: "hello",
+      tags: ["w"]
+    }));
+
+    expect(res.status).toBe(201);
+    expect(prismaMock.note.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ refBookOrder: 43, refChapter: 2, refVerse: 16 })
+      })
+    );
   });
 });
 

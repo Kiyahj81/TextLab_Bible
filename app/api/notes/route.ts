@@ -2,9 +2,13 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { parseTags } from "@/lib/references";
+import { noteCanonicalKey } from "@/lib/notes-filter";
 import { requireAuth } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/http/security";
 import { jsonError, readJsonLimited, validateBody } from "@/lib/http/validation";
+
+// Fetch just the fields needed to denormalize a note's canonical sort key.
+const refSelect = { chapter: true, verse: true, book: { select: { order: true } } } as const;
 
 const MAX_NOTE_BODY = 10_000;
 const MAX_NOTE_TITLE = 200;
@@ -64,14 +68,16 @@ export async function POST(request: Request) {
 
   const { body, title, verseId, tokenId, tags: rawTags } = valid.data;
 
+  let verseRef = null;
   if (verseId) {
-    const verse = await prisma.verse.findUnique({ where: { id: verseId }, select: { id: true } });
-    if (!verse) return jsonError("verseId not found.", 400);
+    verseRef = await prisma.verse.findUnique({ where: { id: verseId }, select: refSelect });
+    if (!verseRef) return jsonError("verseId not found.", 400);
   }
 
+  let tokenRef = null;
   if (tokenId) {
-    const token = await prisma.token.findUnique({ where: { id: tokenId }, select: { id: true } });
-    if (!token) return jsonError("tokenId not found.", 400);
+    tokenRef = await prisma.token.findUnique({ where: { id: tokenId }, select: refSelect });
+    if (!tokenRef) return jsonError("tokenId not found.", 400);
   }
 
   const tags = Array.isArray(rawTags)
@@ -86,7 +92,10 @@ export async function POST(request: Request) {
         tokenId,
         title,
         body,
-        tags
+        tags,
+        // Denormalize the canonical sort key so the notes list can order by it
+        // in the database (see lib/notes-filter.noteCanonicalKey).
+        ...noteCanonicalKey(verseRef, tokenRef)
       }
     });
 

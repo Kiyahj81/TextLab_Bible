@@ -128,6 +128,13 @@ model Note {
   title     String?
   body      String
   tags      String[]
+  // Denormalized canonical sort keys, copied from the attached verse/token at
+  // creation so the DB can order canonically without COALESCE-ing across the
+  // verse/token relations (which Prisma's orderBy can't express). The
+  // association is immutable after creation, so these never drift.
+  refBookOrder Int?
+  refChapter   Int?
+  refVerse     Int?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -136,6 +143,7 @@ model Note {
   token Token? @relation(fields: [tokenId], references: [id])
 
   @@index([userId, updatedAt])
+  @@index([userId, refBookOrder, refChapter, refVerse])
 }
 
 model SavedSearch {

@@ -156,7 +156,7 @@ The assistant route follows a clear retrieval-first contract:
 
 - Prisma 6 over PostgreSQL. Current maintainer/dev and test environments use Neon branches (`DATABASE_URL` pooled for runtime, `DIRECT_URL` direct for migrations); local PostgreSQL remains possible if the same migrations are applied.
 - **Connection resilience:** the reader read path (`app/read/page.tsx`) wraps both its auth/session read (`requirePageAuth()`) and its four passage queries in `withDbRetry` (`lib/db-retry.ts`), which retries transient Neon connection errors (idle-suspend / pooler recycle) with bounded exponential backoff before failing; `app/read/error.tsx` (on-brand) and a root `app/error.tsx` render a graceful "try again" card if a render still fails.
-- 14 migrations on disk:
+- 15 migrations on disk:
   - `0_init` — baseline reflecting pre-rename schema
   - `20260521162527_assistant_message_metadata` — `AiMessage.citations → metadata`
   - `20260522193249_token_lemma_index` — composite `(corpusId, bookId, partOfSpeech, lemma)` for `getTopLemmas`
@@ -171,6 +171,7 @@ The assistant route follows a clear retrieval-first contract:
   - `20260611120000_saved_search_domain_filters` — `SavedSearch` gained nullable `domain` / `subdomain` / `ln` columns and `query` became optional, so domain (Louw-Nida) searches save and round-trip like the other three modes (handwritten; applied via `migrate deploy` to the dev and shared test/eval Neon branches).
   - `20260613120000_english_stem_fts` — `bible_english` immutable config (unaccent + english_stem); `Verse.textSearchEn` generated tsvector + `Verse_textSearchEn_idx` GIN index. English (WEB) keyword search stems via Snowball (`love` matches `loves`/`loved`/`loving`); Greek keeps `bible_simple` whole-lexeme (handwritten; applied via `migrate deploy` to the dev/prod and test/eval Neon branches).
   - `20260613130000_english_stem_no_stopwords` — swaps `bible_english`'s `english_stem` dictionary for a custom Snowball dictionary `english_stem_nostop` (no stopword list) and rebuilds `Verse.textSearchEn` + its GIN index. English keyword search now matches every word (e.g. `just`, `no`, `own`), still stemmed; stopword filtering moves entirely to the Assistant's `STOP_WORDS` (handwritten; applied via `migrate deploy` to the dev/prod and test/eval Neon branches).
+  - `20260620120000_add_note_canonical_sort_keys` — `Note` gains denormalized `refBookOrder` / `refChapter` / `refVerse` (nullable Int) + composite index `(userId, refBookOrder, refChapter, refVerse)`, backfilled from each note's attached verse/token. Lets the notes list's **Canonical** sort order in the database across both verse- and token-attached notes (Prisma's `orderBy` can't `COALESCE` across the two relations); keys are written once at note creation via `noteCanonicalKey()` and never drift since the association is immutable (handwritten; applied via `migrate deploy` to the dev/prod and test/eval Neon branches).
 
 ### Tech stack
 

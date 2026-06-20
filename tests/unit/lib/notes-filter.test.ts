@@ -1,20 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseNotesSort, parseReferenceFilter, sortNotesCanonically } from "@/lib/notes-filter";
-
-type TestNote = {
-  id: string;
-  updatedAt: Date;
-  verse: { book: { order: number }; chapter: number; verse: number } | null;
-  token: { book: { order: number }; chapter: number; verse: number } | null;
-};
-
-function verseNote(id: string, order: number, chapter: number, verse: number, updatedAt = "2026-01-01"): TestNote {
-  return { id, updatedAt: new Date(updatedAt), verse: { book: { order }, chapter, verse }, token: null };
-}
-
-function tokenNote(id: string, order: number, chapter: number, verse: number, updatedAt = "2026-01-01"): TestNote {
-  return { id, updatedAt: new Date(updatedAt), verse: null, token: { book: { order }, chapter, verse } };
-}
+import { noteCanonicalKey, parseNotesSort, parseReferenceFilter } from "@/lib/notes-filter";
 
 describe("parseNotesSort", () => {
   it("defaults to 'recent' for unknown / empty input", () => {
@@ -58,48 +43,34 @@ describe("parseReferenceFilter", () => {
   });
 });
 
-describe("sortNotesCanonically", () => {
-  it("orders token-attached notes by their own reference, not by recency", () => {
-    // John 1:2 was edited more recently than John 1:1, but canonical order must
-    // still place 1:1 first. (Bug #1: token notes fell back to updatedAt desc.)
-    const notes = [
-      tokenNote("john-1-2", 43, 1, 2, "2026-06-10"),
-      tokenNote("john-1-1", 43, 1, 1, "2026-01-01")
-    ];
-    expect(sortNotesCanonically(notes).map((n) => n.id)).toEqual(["john-1-1", "john-1-2"]);
+describe("noteCanonicalKey", () => {
+  it("derives the key from a verse-attached note", () => {
+    expect(noteCanonicalKey({ book: { order: 43 }, chapter: 1, verse: 1 }, null)).toEqual({
+      refBookOrder: 43,
+      refChapter: 1,
+      refVerse: 1
+    });
   });
 
-  it("interleaves token- and verse-attached notes by effective reference", () => {
-    // John (book 43) token notes must precede Rom (45) / 1Cor (46) verse notes.
-    // (Bug #2: token notes collapsed to the end, looking like a tag-first sort.)
-    const notes = [
-      verseNote("rom-1-18", 45, 1, 18),
-      verseNote("1cor-15-17", 46, 15, 17),
-      tokenNote("john-1-1", 43, 1, 1),
-      tokenNote("john-2-16", 43, 2, 16),
-      tokenNote("john-1-2", 43, 1, 2)
-    ];
-    expect(sortNotesCanonically(notes).map((n) => n.id)).toEqual([
-      "john-1-1",
-      "john-1-2",
-      "john-2-16",
-      "rom-1-18",
-      "1cor-15-17"
-    ]);
+  it("derives the key from a token-attached note", () => {
+    expect(noteCanonicalKey(null, { book: { order: 43 }, chapter: 2, verse: 16 })).toEqual({
+      refBookOrder: 43,
+      refChapter: 2,
+      refVerse: 16
+    });
   });
 
-  it("breaks ties on the same reference by most-recently updated", () => {
-    const notes = [
-      tokenNote("older", 43, 1, 1, "2026-01-01"),
-      verseNote("newer", 43, 1, 1, "2026-06-10")
-    ];
-    expect(sortNotesCanonically(notes).map((n) => n.id)).toEqual(["newer", "older"]);
+  it("prefers the verse when both relations are present", () => {
+    expect(
+      noteCanonicalKey({ book: { order: 43 }, chapter: 1, verse: 1 }, { book: { order: 99 }, chapter: 9, verse: 9 })
+    ).toEqual({ refBookOrder: 43, refChapter: 1, refVerse: 1 });
   });
 
-  it("does not mutate the input array", () => {
-    const notes = [tokenNote("b", 43, 1, 2), tokenNote("a", 43, 1, 1)];
-    const before = notes.map((n) => n.id);
-    sortNotesCanonically(notes);
-    expect(notes.map((n) => n.id)).toEqual(before);
+  it("returns nulls when neither relation is present", () => {
+    expect(noteCanonicalKey(null, null)).toEqual({
+      refBookOrder: null,
+      refChapter: null,
+      refVerse: null
+    });
   });
 });

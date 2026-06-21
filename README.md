@@ -30,8 +30,10 @@ Deferred beyond the current scope: OT Hebrew/Aramaic, LXX, Strong's numbers, spe
   - Shows structured citations and retrieval trace entries.
   - Supports live OpenAI synthesis when configured, deterministic local fallback when not configured, and user-confirmed scholarly-model escalation.
   - Applies the Grounding / Silence Protocol before returning or storing an answer.
+  - Labelled controls throughout; save/error status and copy confirmations announce through accessible live regions.
 - **Notes** at `/notes`
   - User-scoped notes, generated study notes, tags, reference filters, search, sorting, pagination, and Markdown export.
+  - Editable note fields are labelled, and save/result-count feedback announces through accessible live regions.
 - **Authentication**
   - Protected app pages redirect to `/signin`.
   - Auth.js v5 uses JWT sessions with a DB-backed revocation watermark.

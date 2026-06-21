@@ -10,6 +10,7 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["tests/unit/**/*.test.{ts,tsx}"],
+    setupFiles: ["./vitest.setup.ts"],
     globals: false,
     pool: "threads",
     server: {

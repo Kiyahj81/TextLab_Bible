@@ -199,8 +199,11 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
     <div className="grid gap-8 md:grid-cols-[minmax(0,1fr)_220px] lg:grid-cols-[minmax(0,1fr)_240px]">
       <section className="space-y-4">
         <form onSubmit={submit} className="rounded-md border border-stone-300 bg-white p-4 shadow-sm">
-          <label className="text-sm font-semibold text-slate-950">Question</label>
+          <label htmlFor="assistant-question" className="text-sm font-semibold text-slate-950">
+            Question
+          </label>
           <textarea
+            id="assistant-question"
             value={prompt}
             onChange={(event) => setPrompt(event.target.value)}
             placeholder={SAMPLE_PROMPT}
@@ -225,7 +228,7 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
               Try an example
             </button>
           </div>
-          {error ? <p className="mt-2 text-sm text-red-700">{error}</p> : null}
+          {error ? <p role="alert" className="mt-2 text-sm text-red-700">{error}</p> : null}
         </form>
 
         {loading && !answerVisible ? <AnswerSkeleton /> : null}
@@ -323,7 +326,9 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
                 </button>
               </div>
             ) : null}
-            {saveStatus ? <p className="mb-3 text-sm text-slate-600">{saveStatus}</p> : null}
+            <p role="status" aria-live="polite" className="mb-3 text-sm text-slate-600 empty:hidden">
+              {saveStatus ?? ""}
+            </p>
             {!restoredView && response && response.grounded === false ? (
               <div className="mb-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
                 <strong>Withheld — insufficient evidence.</strong> TextLab could not verify the drafted
@@ -344,6 +349,7 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
             <h2 className="font-semibold text-slate-950">Markdown</h2>
             <textarea
               readOnly
+              aria-label="Generated markdown"
               value={markdownText}
               className="mt-3 min-h-72 w-full rounded-md border border-stone-300 p-3 font-mono text-sm text-slate-700"
             />
@@ -367,6 +373,7 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
               </button>
             ) : null}
           </div>
+          <span role="status" aria-live="polite" className="sr-only">{copyStatus ?? ""}</span>
           <div className="mt-3 space-y-2 text-sm text-slate-700">
             {!restoredView && response?.toolTrace.length ? (
               response.toolTrace.map((entry, index) => (
@@ -400,6 +407,7 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
               </button>
             ) : null}
           </div>
+          <span role="status" aria-live="polite" className="sr-only">{copyCitationsStatus ?? ""}</span>
           <div className="mt-3 divide-y divide-stone-200 text-sm text-slate-700">
             {!restoredView && response?.citations.length ? (
               response.citations.map((citation, index) => (

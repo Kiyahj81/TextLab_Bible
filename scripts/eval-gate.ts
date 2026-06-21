@@ -9,12 +9,22 @@ import { goldenSetSchema, type QueryType } from "@/eval/dataset/schema";
 import { runDeterministic, type RunResult } from "@/eval/runner";
 import { evaluateGate } from "@/eval/gate";
 import { TYPE_GATES } from "@/eval/thresholds";
+import { prisma } from "@/lib/db";
+import { withDbRetry } from "@/lib/db-retry";
 
 function meanBy(rows: RunResult[], pick: (r: RunResult) => number): number {
   return rows.length === 0 ? 1 : rows.reduce((a, r) => a + pick(r), 0) / rows.length;
 }
 
 async function main() {
+  // Wake the (possibly auto-suspended) Neon branch before the measured loop so a
+  // cold-start connection drop (P1017) can't fail the gate for reasons unrelated
+  // to the change under test. The retry lives here, never inside the measured
+  // loop. More patient than the read-path default (more attempts, longer
+  // backoff) since the gate is a CI batch job — better to wait a few seconds for
+  // the branch to wake than to flake.
+  await withDbRetry(() => prisma.$queryRaw`SELECT 1`, { maxAttempts: 5, baseDelayMs: 300 });
+
   const items = goldenSetSchema.parse(goldenSet);
   const results: RunResult[] = [];
   for (const item of items) results.push(await runDeterministic(item));

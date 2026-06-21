@@ -184,7 +184,7 @@ export function NotesPanel({
         </label>
       </div>
 
-      <p className="text-sm text-slate-600">
+      <p role="status" aria-live="polite" className="text-sm text-slate-600">
         {total === 0
           ? "No notes match the current filters."
           : `${total} note${total === 1 ? "" : "s"}${pageCount > 1 ? `, page ${page} of ${pageCount}` : ""}`}
@@ -219,7 +219,7 @@ export function NotesPanel({
                   disabled={pending[note.id]}
                   className="inline-flex items-center gap-2 rounded-md bg-accent-700 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <Save size={16} />
+                  <Save size={16} aria-hidden />
                   Save
                 </button>
                 <button
@@ -228,12 +228,13 @@ export function NotesPanel({
                   disabled={pending[note.id]}
                   className="inline-flex items-center gap-2 rounded-md border border-stone-300 px-3 py-2 text-sm font-medium text-slate-700 hover:border-red-400 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <Trash2 size={16} />
+                  <Trash2 size={16} aria-hidden />
                   Delete
                 </button>
               </div>
             </div>
             <input
+              aria-label="Note title"
               value={note.title ?? ""}
               onChange={(event) =>
                 setRows((current) =>
@@ -244,6 +245,7 @@ export function NotesPanel({
               placeholder="Title"
             />
             <textarea
+              aria-label="Note body"
               value={note.body}
               onChange={(event) =>
                 setRows((current) =>
@@ -252,7 +254,11 @@ export function NotesPanel({
               }
               className="mt-3 min-h-28 max-h-72 w-full overflow-auto rounded-md border border-stone-300 p-3 text-sm outline-none focus:border-accent-600"
             />
-            {status[note.id] ? <p className="mt-2 text-sm text-slate-600">{status[note.id]}</p> : null}
+            {status[note.id] ? (
+              <p role="status" aria-live="polite" className="mt-2 text-sm text-slate-600">
+                {status[note.id]}
+              </p>
+            ) : null}
           </article>
         ))}
         {rows.length === 0 ? (

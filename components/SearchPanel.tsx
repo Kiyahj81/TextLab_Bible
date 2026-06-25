@@ -6,35 +6,15 @@ import { useEffect, useState } from "react";
 import { decodeMorphCode } from "@/lib/morphology";
 import type { DomainOptions } from "@/lib/search";
 import { bookName } from "@/lib/references";
-import { useAutoDismissMap, useAutoDismissString } from "@/lib/useAutoDismissStatus";
 import { normalizeSearchMode } from "@/lib/searchMode";
 import { MODES, MODE_HINTS, SHOW_ENGLISH_KEY } from "@/components/search/constants";
 import type { SearchPanelResult, SavedSearchRow, SearchBookOption } from "@/components/search/types";
 import { searchHref } from "@/components/search/searchHref";
 import { ReferenceLink, HighlightedText, KeywordHighlight } from "@/components/search/highlight";
+import { useSavedSearches } from "@/components/search/useSavedSearches";
 
 export type { SearchPanelResult, SavedSearchRow, SearchBookOption } from "@/components/search/types";
 export { KeywordHighlight } from "@/components/search/highlight";
-
-function domainSaveLabel(
-  domainOptions: DomainOptions,
-  filter: { domain: string; subdomain: string; ln: string }
-): string {
-  let raw: string;
-  if (filter.ln) {
-    raw = `domain: LN ${filter.ln}`;
-  } else if (filter.subdomain) {
-    const parent = filter.subdomain.slice(0, 3);
-    const sub = domainOptions.subdomainsByDomain[parent]?.find((s) => s.code === filter.subdomain);
-    raw = sub ? `domain: ${sub.label}` : `domain: ${filter.subdomain}`;
-  } else {
-    const d = domainOptions.domains.find((entry) => entry.code === filter.domain);
-    raw = d ? `domain: ${d.number} — ${d.label}` : `domain: ${filter.domain}`;
-  }
-  // The saved-searches API caps labels at 100 chars; a few Louw-Nida subdomain
-  // labels exceed that and would 400 the save.
-  return raw.length > 100 ? `${raw.slice(0, 99)}…` : raw;
-}
 
 function buildExampleSearches(domainOptions: DomainOptions): { label: string; href: string }[] {
   const examples = [
@@ -97,26 +77,17 @@ export function SearchPanel({
   const [selectedDomain, setSelectedDomain] = useState(domain);
   const [selectedSubdomain, setSelectedSubdomain] = useState(subdomain);
   const [lnValue, setLnValue] = useState(ln);
-  const [saveStatus, setSaveStatus] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(savedSearches);
-  const [pending, setPending] = useState<Record<string, boolean>>({});
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [itemStatus, setItemStatus] = useState<Record<string, string>>({});
   const [showEnglish, setShowEnglish] = useState(false);
+
+  const savedApi = useSavedSearches(savedSearches, {
+    mode, query, book, chapter, matchMode, domain, subdomain, ln, domainOptions
+  });
 
   useEffect(() => {
     if (window.localStorage.getItem(SHOW_ENGLISH_KEY) === "1") {
       setShowEnglish(true);
     }
   }, []);
-
-  useAutoDismissString(saveStatus, setSaveStatus);
-  useAutoDismissMap(itemStatus, setItemStatus);
-
-  function setRowStatus(id: string, message: string | null) {
-    setItemStatus((current) => ({ ...current, [id]: message ?? "" }));
-  }
 
   // ln has precedence over subdomain/domain in resolveDomainFilter, so a stale ln (e.g. from
   // ?ln=33.55) would silently override a freshly chosen domain/subdomain. Clear ln whenever the
@@ -130,102 +101,6 @@ export function SearchPanel({
   function onSubdomainChange(value: string) {
     setSelectedSubdomain(value);
     setLnValue("");
-  }
-
-  async function saveSearch() {
-    const executedMode = normalizeSearchMode(mode);
-    const isDomain = executedMode === "domain";
-    if (isDomain ? !(domain || subdomain || ln) : !query.trim()) return;
-    if (saving) return;
-
-    setSaving(true);
-    setSaveStatus("Saving...");
-    try {
-      const response = await fetch("/api/saved-searches", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          isDomain
-            ? {
-                mode: executedMode,
-                label: domainSaveLabel(domainOptions, { domain, subdomain, ln }),
-                ...(domain ? { domain } : {}),
-                ...(subdomain ? { subdomain } : {}),
-                ...(ln ? { ln } : {}),
-                ...(book ? { book } : {}),
-                ...(chapter ? { chapter: Number(chapter) } : {})
-              }
-            : {
-                mode: executedMode,
-                query,
-                // Omit empty optional fields — the server schema rejects empty
-                // strings on coerced-number / enum fields (chapter, matchMode).
-                ...(book ? { book } : {}),
-                ...(chapter ? { chapter: Number(chapter) } : {}),
-                ...(executedMode === "morphology" && matchMode ? { matchMode } : {})
-              }
-        )
-      });
-
-      if (!response.ok) {
-        setSaveStatus("Could not save search.");
-        return;
-      }
-
-      const body = await response.json();
-      setSaved((current) => [body.savedSearch, ...current].slice(0, 25));
-      setSaveStatus("Search saved.");
-    } catch {
-      setSaveStatus("Network error. Try again.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function deleteSavedSearch(id: string) {
-    if (pending[id]) return;
-    setPending((current) => ({ ...current, [id]: true }));
-    try {
-      const response = await fetch(`/api/saved-searches/${id}`, { method: "DELETE" });
-      if (response.ok) {
-        setSaved((current) => current.filter((row) => row.id !== id));
-        return;
-      }
-      const message = response.status === 404 ? "Already removed." : "Could not delete.";
-      setRowStatus(id, message);
-    } catch {
-      setRowStatus(id, "Network error.");
-    } finally {
-      setPending((current) => ({ ...current, [id]: false }));
-    }
-  }
-
-  async function renameSavedSearch(id: string, newLabel: string) {
-    const label = newLabel.trim();
-    if (!label) {
-      setEditingId(null);
-      return;
-    }
-    if (pending[id]) return;
-    setPending((current) => ({ ...current, [id]: true }));
-    try {
-      const response = await fetch(`/api/saved-searches/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ label })
-      });
-      if (response.ok) {
-        setSaved((current) => current.map((row) => (row.id === id ? { ...row, label } : row)));
-        setEditingId(null);
-        return;
-      }
-      const message = response.status === 404 ? "Already removed." : "Could not rename.";
-      setRowStatus(id, message);
-    } catch {
-      setRowStatus(id, "Network error.");
-    } finally {
-      setPending((current) => ({ ...current, [id]: false }));
-    }
   }
 
   const previousPage = Math.max(page - 1, 1);
@@ -454,8 +329,8 @@ export function SearchPanel({
             <div className="mt-3 flex flex-wrap items-center gap-3">
               <button
                 type="button"
-                onClick={saveSearch}
-                disabled={saving}
+                onClick={savedApi.saveSearch}
+                disabled={savedApi.saving}
                 className="inline-flex items-center gap-2 rounded-md border border-stone-300 px-3 py-2 text-sm font-medium text-slate-700 hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <BookmarkPlus size={16} />
@@ -464,7 +339,7 @@ export function SearchPanel({
             </div>
           ) : null}
           <span role="status" aria-live="polite" className="text-sm text-slate-600">
-            {saveStatus ?? ""}
+            {savedApi.saveStatus ?? ""}
           </span>
         </div>
         <div className="divide-y divide-stone-200">
@@ -579,23 +454,23 @@ export function SearchPanel({
       <aside className="border-l-2 border-accent-200 pl-4 xl:sticky xl:top-6 xl:self-start">
         <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Saved searches</h2>
         <div className="mt-3 divide-y divide-stone-200">
-          {saved.map((item) => (
+          {savedApi.saved.map((item) => (
             <div key={item.id} className="py-3 text-sm">
-              {editingId === item.id ? (
+              {savedApi.editingId === item.id ? (
                 <input
                   autoFocus
                   aria-label="Saved search name"
                   defaultValue={item.label}
-                  onBlur={(event) => renameSavedSearch(item.id, event.target.value)}
+                  onBlur={(event) => savedApi.renameSavedSearch(item.id, event.target.value)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter") {
                       event.preventDefault();
-                      renameSavedSearch(item.id, event.currentTarget.value);
+                      savedApi.renameSavedSearch(item.id, event.currentTarget.value);
                     } else if (event.key === "Escape") {
-                      setEditingId(null);
+                      savedApi.setEditingId(null);
                     }
                   }}
-                  disabled={pending[item.id]}
+                  disabled={savedApi.pending[item.id]}
                   className="w-full rounded-md border border-stone-300 px-2 py-1 text-sm outline-none focus:border-accent-600 disabled:opacity-50"
                 />
               ) : (
@@ -623,8 +498,8 @@ export function SearchPanel({
               <div className="mt-2 flex items-center gap-3 text-xs text-slate-500">
                 <button
                   type="button"
-                  onClick={() => setEditingId(editingId === item.id ? null : item.id)}
-                  disabled={pending[item.id]}
+                  onClick={() => savedApi.setEditingId(savedApi.editingId === item.id ? null : item.id)}
+                  disabled={savedApi.pending[item.id]}
                   className="inline-flex items-center gap-1 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Pencil size={12} aria-hidden />
@@ -632,20 +507,20 @@ export function SearchPanel({
                 </button>
                 <button
                   type="button"
-                  onClick={() => deleteSavedSearch(item.id)}
-                  disabled={pending[item.id]}
+                  onClick={() => savedApi.deleteSavedSearch(item.id)}
+                  disabled={savedApi.pending[item.id]}
                   className="inline-flex items-center gap-1 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Trash2 size={12} aria-hidden />
                   Delete
                 </button>
                 <span role="status" aria-live="polite" className="ml-auto text-slate-500">
-                  {itemStatus[item.id] ?? ""}
+                  {savedApi.itemStatus[item.id] ?? ""}
                 </span>
               </div>
             </div>
           ))}
-          {saved.length === 0 ? <p className="text-sm text-slate-600">No saved searches yet.</p> : null}
+          {savedApi.saved.length === 0 ? <p className="text-sm text-slate-600">No saved searches yet.</p> : null}
         </div>
       </aside>
     </div>

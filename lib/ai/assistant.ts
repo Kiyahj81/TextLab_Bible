@@ -8,6 +8,8 @@ import {
   routeAssistantPrompt
 } from "@/lib/ai/modelRouter";
 import { detectBookFromPrompt, extractSignals } from "@/lib/ai/signals";
+import type { AssistantCitation } from "@/lib/ai/contracts";
+export type { AssistantCitation } from "@/lib/ai/contracts";
 import { type EvidencePacket, runRetrievalPlan } from "@/lib/ai/retrievalPlanner";
 import {
   appendAlignmentNotes,
@@ -19,17 +21,6 @@ import { verifyGrounding, type GroundingReport } from "@/lib/ai/grounding";
 import { type ToolTraceEntry } from "@/lib/ai/toolTrace";
 
 export { detectBookFromPrompt };
-
-export type AssistantCitation = {
-  reference: string;
-  corpus: string;
-  searchQuery: string;
-  toolName?: string;
-  book?: string;
-  chapter?: number;
-  verse?: number;
-  tokenId?: string;
-};
 
 export type AssistantAnswer = {
   answer: string;

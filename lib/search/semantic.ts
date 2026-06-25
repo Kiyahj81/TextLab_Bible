@@ -18,8 +18,15 @@ export async function embedQuery(text: string): Promise<number[] | null> {
   const client = getOpenAi();
   const input = text.trim();
   if (!client || !input) return null;
-  const res = await client.embeddings.create({ model: EMBEDDING_MODEL, input });
-  return res.data[0]?.embedding ?? null;
+  // A timeout or transient API error rejects here; fall back to null so
+  // searchSemanticDetailed degrades to its disabled path instead of throwing,
+  // matching the no-client and reranker fallbacks.
+  try {
+    const res = await client.embeddings.create({ model: EMBEDDING_MODEL, input });
+    return res.data[0]?.embedding ?? null;
+  } catch {
+    return null;
+  }
 }
 
 type SemanticRow = { osisId: string; chapter: number; verse: number; text: string };

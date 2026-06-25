@@ -42,9 +42,15 @@ export async function filterToSblSpine(
 }
 
 export function normalizePagination(input: PaginationInput) {
-  const page = Number.isFinite(input.page) && input.page && input.page > 0 ? Math.floor(input.page) : 1;
+  // Math.max(1, ...) AFTER the floor: a fractional value in (0, 1) passes the
+  // `> 0` check but floors to 0, which would make paginationResult's pageCount
+  // Infinity and drive LIMIT 0 queries. Clamp the floored result up to 1.
+  const page =
+    Number.isFinite(input.page) && input.page && input.page > 0 ? Math.max(1, Math.floor(input.page)) : 1;
   const requestedPageSize =
-    Number.isFinite(input.pageSize) && input.pageSize && input.pageSize > 0 ? Math.floor(input.pageSize) : 25;
+    Number.isFinite(input.pageSize) && input.pageSize && input.pageSize > 0
+      ? Math.max(1, Math.floor(input.pageSize))
+      : 25;
 
   return {
     page,

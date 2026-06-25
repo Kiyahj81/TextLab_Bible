@@ -28,15 +28,16 @@ describe("@/lib/search public surface", () => {
   });
 
   it("preserves the public type exports (compile-time guard)", () => {
-    // `assertType`'s parameter tuple references every public type, so removing any
-    // one from @/lib/search breaks `tsc --noEmit`. Types are erased at runtime, so
-    // they cannot be asserted in the runtime block above. `_args` is `_`-prefixed
-    // for no-unused-vars; `assertType` is consumed by the expect below.
-    const assertType = (..._args: [
+    // The tuple of public types lives in `assertType`'s declared type, so removing
+    // any one from @/lib/search breaks `tsc --noEmit`. Types are erased at runtime,
+    // so this guard is compile-time only; the runtime body just hosts the assertion.
+    // `assertType` is a used binding with no unused parameter, so it needs no
+    // eslint no-unused-vars exception.
+    const assertType: (args: [
       SearchPagination, Citation, PassageNeighbor,
       SemanticRerankStatus, SemanticRerankTrace, SemanticSearchDetailedResult,
       DomainFilter, DomainOption, DomainOptions
-    ]) => undefined;
+    ]) => undefined = () => undefined;
     expect(typeof assertType).toBe("function");
   });
 });

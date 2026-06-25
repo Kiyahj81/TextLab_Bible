@@ -8,6 +8,10 @@ import { rerankCandidates } from "@/lib/search/rerank";
 import { resolveTokenDomains } from "@/lib/louwNida";
 import { normalizeMorphCodeQuery } from "@/lib/morphology";
 import { parseHeadlineSegments, HEADLINE_OPTIONS } from "@/lib/search-highlight";
+import {
+  spineKey, filterToSblSpine, normalizePagination, paginationResult, hydrateTokens,
+  type PaginationInput, type HydratedToken
+} from "@/lib/search/shared";
 
 export {
   EMBEDDING_MODEL,
@@ -16,6 +20,9 @@ export {
   formatVectorLiteral
 } from "@/lib/search/semanticIndex";
 
+export { spineKey, filterToSblSpine } from "@/lib/search/shared";
+export type { SearchPagination, Citation } from "@/lib/search/shared";
+
 type PassageInput = {
   corpus: "SBLGNT" | "WEB";
   book: string;
@@ -23,46 +30,6 @@ type PassageInput = {
   verseStart: number;
   verseEnd?: number;
 };
-
-type PaginationInput = {
-  page?: number;
-  pageSize?: number;
-};
-
-export type SearchPagination = {
-  page: number;
-  pageSize: number;
-  total: number;
-  pageCount: number;
-};
-
-export type Citation = {
-  corpus: string;
-  reference: string;
-  searchQuery?: string;
-  tokenId?: string;
-};
-
-export function spineKey(book: string, chapter: number, verse: number): string {
-  return `${book}|${chapter}|${verse}`;
-}
-
-// Given candidate references, return the set of spineKeys that EXIST in SBLGNT.
-// Used to drop WEB-only verses (e.g. Acts 8:37) before they reach synthesis, so a
-// cited reference can never be unresolvable on the citation spine.
-export async function filterToSblSpine(
-  refs: { book: string; chapter: number; verse: number }[]
-): Promise<Set<string>> {
-  if (refs.length === 0) return new Set();
-  const rows = await prisma.verse.findMany({
-    where: {
-      corpus: { abbreviation: "SBLGNT" },
-      OR: refs.map((r) => ({ book: { osisId: r.book }, chapter: r.chapter, verse: r.verse }))
-    },
-    select: { chapter: true, verse: true, book: { select: { osisId: true } } }
-  });
-  return new Set(rows.map((r) => spineKey(r.book.osisId, r.chapter, r.verse)));
-}
 
 export async function embedQuery(text: string): Promise<number[] | null> {
   const client = getOpenAi();
@@ -847,72 +814,3 @@ export async function getLouwNidaDomainOptions(): Promise<DomainOptions> {
   return { domains, subdomainsByDomain };
 }
 
-function normalizePagination(input: PaginationInput) {
-  const page = Number.isFinite(input.page) && input.page && input.page > 0 ? Math.floor(input.page) : 1;
-  const requestedPageSize =
-    Number.isFinite(input.pageSize) && input.pageSize && input.pageSize > 0 ? Math.floor(input.pageSize) : 25;
-
-  return {
-    page,
-    pageSize: Math.min(requestedPageSize, 100)
-  };
-}
-
-function paginationResult(pagination: { page: number; pageSize: number }, total: number): SearchPagination {
-  return {
-    ...pagination,
-    total,
-    pageCount: Math.ceil(total / pagination.pageSize)
-  };
-}
-
-type HydratedToken = {
-  id: string;
-  surface: string;
-  lemma: string | null;
-  morphCode: string | null;
-  chapter: number;
-  verse: number;
-  book: { id: string; osisId: string };
-  corpus: { abbreviation: string };
-};
-
-async function hydrateTokens(tokens: HydratedToken[], withEnglish = false) {
-  if (tokens.length === 0) return [];
-
-  const bookIds = Array.from(new Set(tokens.map((t) => t.book.id)));
-  const corpora = Array.from(new Set(tokens.map((t) => t.corpus.abbreviation)));
-  // When withEnglish is true, include WEB in the corpus list so the existing
-  // verse.findMany fetches both Greek and English rows in one query.
-  const corporaToFetch = withEnglish && !corpora.includes("WEB") ? [...corpora, "WEB"] : corpora;
-
-  const verses = await prisma.verse.findMany({
-    where: {
-      corpus: { abbreviation: { in: corporaToFetch } },
-      bookId: { in: bookIds },
-      OR: tokens.map((t) => ({ bookId: t.book.id, chapter: t.chapter, verse: t.verse }))
-    },
-    select: { bookId: true, chapter: true, verse: true, text: true, corpus: { select: { abbreviation: true } } }
-  });
-
-  const key = (bookId: string, chapter: number, verse: number, corpus: string) =>
-    `${corpus}|${bookId}|${chapter}|${verse}`;
-
-  const verseText = new Map<string, string>();
-  for (const v of verses) {
-    verseText.set(key(v.bookId, v.chapter, v.verse, v.corpus.abbreviation), v.text);
-  }
-
-  return tokens.map((token) => ({
-    tokenId: token.id,
-    corpus: token.corpus.abbreviation,
-    reference: formatReference(token.book.osisId, token.chapter, token.verse),
-    surface: token.surface,
-    lemma: token.lemma ?? "",
-    morphCode: token.morphCode ?? "",
-    verseText: verseText.get(key(token.book.id, token.chapter, token.verse, token.corpus.abbreviation)) ?? "",
-    ...(withEnglish
-      ? { englishText: verseText.get(key(token.book.id, token.chapter, token.verse, "WEB")) }
-      : {})
-  }));
-}

@@ -2,41 +2,19 @@
 
 import Link from "next/link";
 import { BookmarkPlus, Pencil, Search, Trash2, X } from "lucide-react";
-import { Fragment, useEffect, useState } from "react";
-import { splitWithMatches, type HighlightSegment } from "@/lib/search-highlight";
+import { useEffect, useState } from "react";
 import { decodeMorphCode } from "@/lib/morphology";
 import type { DomainOptions } from "@/lib/search";
-import { bookName, readerHref } from "@/lib/references";
+import { bookName } from "@/lib/references";
 import { useAutoDismissMap, useAutoDismissString } from "@/lib/useAutoDismissStatus";
 import { normalizeSearchMode } from "@/lib/searchMode";
+import { MODES, MODE_HINTS, SHOW_ENGLISH_KEY } from "@/components/search/constants";
+import type { SearchPanelResult, SavedSearchRow, SearchBookOption } from "@/components/search/types";
+import { searchHref } from "@/components/search/searchHref";
+import { ReferenceLink, HighlightedText, KeywordHighlight } from "@/components/search/highlight";
 
-const SHOW_ENGLISH_KEY = "textlab:search:show-english";
-
-const MODES = [
-  { value: "keyword", label: "Keyword" },
-  { value: "lemma", label: "Lemma" },
-  { value: "morphology", label: "Morphology" },
-  { value: "domain", label: "Domain" }
-] as const;
-
-const MODE_HINTS: Record<string, { placeholder: string; hint: string }> = {
-  keyword: {
-    placeholder: 'e.g. righteousness, "born again"',
-    hint: "Searches verse text in every corpus. Use quotes for exact phrases and a leading - to exclude a word."
-  },
-  lemma: {
-    placeholder: "e.g. λόγος, ἀγάπη, πίστις",
-    hint: "Finds every inflected form of a Greek dictionary headword (case-insensitive)."
-  },
-  morphology: {
-    placeholder: "e.g. N-NSM, V-3PAI-S",
-    hint: "MorphGNT parsing codes. Switch Morph match to Prefix to broaden (e.g. V-3PAI)."
-  },
-  domain: {
-    placeholder: "e.g. 33.55",
-    hint: "Louw–Nida semantic domains. Pick a domain, narrow by subdomain, or enter an exact LN reference."
-  }
-};
+export type { SearchPanelResult, SavedSearchRow, SearchBookOption } from "@/components/search/types";
+export { KeywordHighlight } from "@/components/search/highlight";
 
 function domainSaveLabel(
   domainOptions: DomainOptions,
@@ -73,45 +51,6 @@ function buildExampleSearches(domainOptions: DomainOptions): { label: string; hr
   }
   return examples;
 }
-
-export type SearchPanelResult =
-  | {
-      kind: "keyword";
-      corpus: string;
-      reference: string;
-      text: string;
-      onSpine?: boolean;
-      englishText?: string;
-      highlightSegments?: HighlightSegment[];
-    }
-  | {
-      kind: "token";
-      corpus: string;
-      reference: string;
-      surface: string;
-      lemma: string;
-      morphCode: string;
-      verseText: string;
-      englishText?: string;
-    };
-
-export type SavedSearchRow = {
-  id: string;
-  label: string;
-  mode: string;
-  query: string | null;
-  book: string | null;
-  chapter: number | null;
-  matchMode: string | null;
-  domain?: string | null;
-  subdomain?: string | null;
-  ln?: string | null;
-};
-
-export type SearchBookOption = {
-  osisId: string;
-  label: string;
-};
 
 export function SearchPanel({
   mode,
@@ -713,110 +652,3 @@ export function SearchPanel({
   );
 }
 
-function ReferenceLink({ reference, linkable = true }: { reference: string; linkable?: boolean }) {
-  const className = "oldstyle-nums font-display text-base font-semibold text-slate-900";
-  const href = readerHref(reference);
-  if (!href || !linkable) return <span className={className}>{reference}</span>;
-  return (
-    <Link
-      href={href}
-      title="Open in reader"
-      className={`${className} underline-offset-4 transition-colors hover:text-accent-700 hover:underline`}
-    >
-      {reference}
-    </Link>
-  );
-}
-
-function HighlightedText({ text, match }: { text: string; match: string }) {
-  const segments = splitWithMatches(text, match);
-  return (
-    <>
-      {segments.map((segment, index) =>
-        segment.kind === "match" ? (
-          <mark
-            key={index}
-            className="rounded-sm bg-amber-200/80 px-0.5 font-semibold text-slate-950"
-          >
-            {segment.value}
-          </mark>
-        ) : (
-          <Fragment key={index}>{segment.value}</Fragment>
-        )
-      )}
-    </>
-  );
-}
-
-export function KeywordHighlight({
-  segments,
-  text,
-  query
-}: {
-  segments?: HighlightSegment[];
-  text: string;
-  query: string;
-}) {
-  // Stem-aware path: render the ts_headline segments the server produced.
-  if (segments && segments.length > 0) {
-    return (
-      <>
-        {segments.map((segment, index) =>
-          segment.kind === "match" ? (
-            <mark
-              key={index}
-              className="rounded-sm bg-amber-200/80 px-0.5 font-semibold text-slate-950"
-            >
-              {segment.value}
-            </mark>
-          ) : (
-            <Fragment key={index}>{segment.value}</Fragment>
-          )
-        )}
-      </>
-    );
-  }
-  // Fallback: literal-substring highlight of the raw query, matching the prior
-  // behavior for any keyword result that lacks segments.
-  return <HighlightedText text={text} match={query} />;
-}
-
-function searchHref({
-  mode,
-  query,
-  book,
-  chapter,
-  matchMode,
-  domain,
-  subdomain,
-  ln,
-  page,
-  pageSize
-}: {
-  mode: string;
-  query: string;
-  book: string;
-  chapter: string;
-  matchMode: string;
-  domain?: string;
-  subdomain?: string;
-  ln?: string;
-  page: number;
-  pageSize: number;
-}) {
-  const params = new URLSearchParams({ mode, page: String(page), pageSize: String(pageSize) });
-
-  if (mode === "domain") {
-    if (domain) params.set("domain", domain);
-    if (subdomain) params.set("subdomain", subdomain);
-    if (ln) params.set("ln", ln);
-  } else {
-    params.set("q", query);
-    if (mode === "morphology") params.set("matchMode", matchMode);
-  }
-
-  if (book) params.set("book", book);
-  if (chapter) params.set("chapter", chapter);
-
-  return `/search?${params.toString()}`;
-}

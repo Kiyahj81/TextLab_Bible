@@ -6,9 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Documentation maintenance (do this after major changes)
 
-Check the following files: README.md and /docs/PROJECT_STATE.md to ensure that they are up to date after major changes to this project. For README.md, ensure that it reads as one coherent and unified document that anyone new to the project can understand. Maintain the current structure and format, but update the content to be accurate and up to date. For PROJECT_STATE.md, ensure that it is up to date with the latest changes to the project.
+Check the following files: README.md and docs/PROJECT_STATE.md to ensure that they are up to date after major changes to this project. For README.md, ensure that it reads as one coherent and unified document that anyone new to the project can understand. Maintain the current structure and format, but update the content to be accurate and up to date. For PROJECT_STATE.md, ensure that it is up to date with the latest changes to the project.
 
-Check /docs/security-register.md for known security advisories, exceptions, and outstanding hardening debt. Add new ones as discovered. Update whenever an advisory is accepted, mitigated, or closed.
+Check docs/security-register.md for known security advisories, exceptions, and outstanding hardening debt. Add new ones as discovered. Update whenever an advisory is accepted, mitigated, or closed.
 
 ## Project overview
 
@@ -60,7 +60,7 @@ npm run test:unit -- tests/unit/lib/ai/grounding.test.ts -t "SBLGNT"
 npx vitest run tests/unit/lib/search-keyword.test.ts
 ```
 
-Integration tests run through a separate config and require a reachable `.env.test` DB (they self-skip if `DATABASE_URL` is unset):
+Integration tests run through a separate config and require a reachable `.env.test` DB; some also need API keys (e.g. `semantic-search.test.ts` gates on `OPENAI_API_KEY`, and its rerank blocks on `AI_GATEWAY_API_KEY`). Each suite self-skips when its required env vars are unset:
 
 ```bash
 npm run test:integration -- louw-nida

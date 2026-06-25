@@ -14,7 +14,7 @@ vi.mock("@/lib/ai/openaiClient", () => ({ getOpenAi: getOpenAiMock }));
 const { rerankCandidatesMock } = vi.hoisted(() => ({ rerankCandidatesMock: vi.fn() }));
 vi.mock("@/lib/search/rerank", () => ({ rerankCandidates: rerankCandidatesMock }));
 
-import { EMBEDDING_MODEL, embeddingTextHash, formatVectorLiteral, spineKey, filterToSblSpine } from "@/lib/search";
+import { EMBEDDING_MODEL, embeddingTextHash, formatVectorLiteral, spineKey, filterToSblSpine, embedQuery } from "@/lib/search";
 
 beforeEach(() => vi.resetAllMocks());
 
@@ -281,5 +281,26 @@ describe("searchSemantic", () => {
 
     expect(rerankCandidatesMock.mock.calls[0][0].candidates.length).toBe(30);
     expect(rerankCandidatesMock.mock.calls[0][0].topN).toBe(5);
+  });
+});
+
+describe("embedQuery", () => {
+  it("returns null when the embeddings API rejects (timeout / transient error)", async () => {
+    // Regression (#51): a rejected embeddings.create() bubbled out of embedQuery
+    // before searchSemanticDetailed could return its disabled fallback.
+    getOpenAiMock.mockReturnValue({
+      embeddings: { create: vi.fn().mockRejectedValue(new Error("ETIMEDOUT")) }
+    });
+    await expect(embedQuery("reconciliation")).resolves.toBeNull();
+  });
+
+  it("returns the embedding vector on success", async () => {
+    getOpenAiMock.mockReturnValue(fakeClient([0.1, 0.2, 0.3]));
+    await expect(embedQuery("reconciliation")).resolves.toEqual([0.1, 0.2, 0.3]);
+  });
+
+  it("returns null without calling the API when there is no client", async () => {
+    getOpenAiMock.mockReturnValue(null);
+    await expect(embedQuery("reconciliation")).resolves.toBeNull();
   });
 });

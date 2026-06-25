@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> For cross-agent repository guidance, see [AGENTS.md](AGENTS.md); this file adds Claude Code-specific expanded context.
+
 ## Documentation maintenance (do this after major changes)
 
 Check the following files: README.md and /docs/PROJECT_STATE.md to ensure that they are up to date after major changes to this project. For README.md, ensure that it reads as one coherent and unified document that anyone new to the project can understand. Maintain the current structure and format, but update the content to be accurate and up to date. For PROJECT_STATE.md, ensure that it is up to date with the latest changes to the project.

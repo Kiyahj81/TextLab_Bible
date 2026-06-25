@@ -49,11 +49,17 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
   // concurrently WITH the search query below, then await at point of use.
   const domainOptionsPromise = getLouwNidaDomainOptions();
   const booksPromise = getAvailableReaderBooks();
-  const savedSearchesPromise = prisma.savedSearch.findMany({
-    where: { userId },
-    orderBy: { updatedAt: "desc" },
-    take: 25
-  });
+  // `savedSearch.findMany` returns a lazy PrismaPromise; wrap it in a native
+  // promise so the two observers below (allSettled + the final Promise.all) can't
+  // re-trigger the query on any Prisma version. (The other two are async functions,
+  // already native promises.)
+  const savedSearchesPromise = Promise.resolve(
+    prisma.savedSearch.findMany({
+      where: { userId },
+      orderBy: { updatedAt: "desc" },
+      take: 25
+    })
+  );
 
   // Passive observer: if the search branch below throws before we reach the
   // awaits, these eagerly-started promises would otherwise reject "unhandled".

@@ -1,4 +1,4 @@
-import type { AssistantCitation } from "@/lib/ai/assistant";
+import type { AssistantCitation } from "@/lib/ai/contracts";
 import type { RoutingDecision } from "@/lib/ai/modelRouter";
 import type { EvidencePacket } from "@/lib/ai/retrievalPlanner";
 import type { GroundingClaim, GroundingReport } from "@/lib/ai/grounding";

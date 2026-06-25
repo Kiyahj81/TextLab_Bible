@@ -1,4 +1,4 @@
-import type { AssistantCitation } from "@/lib/ai/assistant";
+import type { AssistantCitation } from "@/lib/ai/contracts";
 import { type ToolTraceEntry } from "@/lib/ai/toolTrace";
 import { ENGLISH_TO_GREEK_LEMMA, type DomainQuerySignal, type ParsedReference, type Signals } from "@/lib/ai/signals";
 import {

@@ -45,7 +45,27 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
   let hasSearch = false;
   let searchLabel = "";
 
-  const domainOptions = await getLouwNidaDomainOptions();
+  // Independent of the search and of each other — start them now so they run
+  // concurrently WITH the search query below, then await at point of use.
+  const domainOptionsPromise = getLouwNidaDomainOptions();
+  const booksPromise = getAvailableReaderBooks();
+  // `savedSearch.findMany` returns a lazy PrismaPromise; wrap it in a native
+  // promise so the two observers below (allSettled + the final Promise.all) can't
+  // re-trigger the query on any Prisma version. (The other two are async functions,
+  // already native promises.)
+  const savedSearchesPromise = Promise.resolve(
+    prisma.savedSearch.findMany({
+      where: { userId },
+      orderBy: { updatedAt: "desc" },
+      take: 25
+    })
+  );
+
+  // Passive observer: if the search branch below throws before we reach the
+  // awaits, these eagerly-started promises would otherwise reject "unhandled".
+  // allSettled attaches a handler to each WITHOUT swallowing them — the real
+  // `await Promise.all(...)` on the success path still surfaces any genuine rejection.
+  void Promise.allSettled([domainOptionsPromise, booksPromise, savedSearchesPromise]);
 
   // Helper: fetch with requestedPage; if the result's pageCount is smaller,
   // clamp to the last valid page and refetch so we never render an empty offset.
@@ -79,7 +99,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
     pageCount = search.pagination.pageCount;
     results = search.results.map((result) => ({ kind: "token" as const, ...result }));
     hasSearch = true;
-    searchLabel = domainSearchLabel(search.filter, domainOptions) + scopeSuffix(book, parsedChapter);
+    searchLabel = domainSearchLabel(search.filter, await domainOptionsPromise) + scopeSuffix(book, parsedChapter);
     page = clampedPage;
   } else if (query.trim()) {
     if (mode === "lemma") {
@@ -120,13 +140,10 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
     searchLabel = querySearchLabel(mode, query, book, parsedChapter);
   }
 
-  const [books, savedSearches] = await Promise.all([
-    getAvailableReaderBooks(),
-    prisma.savedSearch.findMany({
-      where: { userId },
-      orderBy: { updatedAt: "desc" },
-      take: 25
-    })
+  const [domainOptions, books, savedSearches] = await Promise.all([
+    domainOptionsPromise,
+    booksPromise,
+    savedSearchesPromise
   ]);
 
   return (

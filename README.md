@@ -46,9 +46,9 @@ The root route redirects to `/read`.
 | Layer | Primary files | Notes |
 | --- | --- | --- |
 | App routes | `app/read`, `app/search`, `app/assistant`, `app/notes`, `app/signin`, `app/api/*` | Next.js App Router surfaces and server endpoints. |
-| Reader/search data | `lib/search.ts`, `lib/bible.ts`, `lib/louwNida.ts`, `lib/references.ts`, `lib/searchLabel.ts`, `lib/morphology.ts` | Canonical passage, token, search, domain, and reference helpers, plus the `readerHref` link builder, result-label formatting, and the morphology-code decoder/normalizer. |
+| Reader/search data | `lib/search.ts` (facade over `lib/search/{shared,reader,keyword,tokens,domain}.ts`), `lib/louwNida.ts`, `lib/references.ts`, `lib/searchLabel.ts`, `lib/morphology.ts` | Canonical passage, token, keyword, lemma/morphology, domain, and reference helpers (the search logic lives in the `lib/search/*` modules), plus the `readerHref` link builder, result-label formatting, and the morphology-code decoder/normalizer. |
 | Assistant orchestration | `lib/ai/assistant.ts`, `lib/ai/signals.ts`, `lib/ai/retrievalPlanner.ts`, `lib/ai/synthesis.ts`, `lib/ai/grounding.ts` | Deterministic-first assistant pipeline and grounding checks. |
-| Semantic retrieval | `lib/search/semantic.ts`, `lib/search/rerank.ts`, `scripts/embed-verses.ts` | pgvector embeddings, hybrid RRF retrieval, and optional Voyage rerank through Vercel AI Gateway. |
+| Semantic retrieval | `lib/search/semantic.ts`, `lib/search/semanticIndex.ts`, `lib/search/rrf.ts`, `lib/search/rerank.ts`, `scripts/embed-verses.ts` | pgvector embeddings, hybrid RRF retrieval, and optional Voyage rerank through Vercel AI Gateway. |
 | Persistence | `prisma/schema.prisma`, `prisma/migrations/*` | PostgreSQL schema, handwritten FTS/vector migrations, Auth.js adapter tables, notes, saved searches, assistant history, import runs. |
 | Evaluation | `eval/*`, `scripts/eval-gate.ts`, `scripts/eval-report.ts`, `.github/workflows/*` | Deterministic gate and weekly hybrid faithfulness report. |
 

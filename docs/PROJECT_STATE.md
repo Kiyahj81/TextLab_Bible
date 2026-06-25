@@ -229,7 +229,7 @@ Surfaced while calibrating the eval gate (see Milestone 3 Phase 6 above):
 
 ### Branch coverage at 66.53% (gate at 65%)
 
-The lines/statements/functions thresholds are at 80/80/75 with comfortable headroom. Branches are tighter and will need targeted tests in `lib/ai/assistant.ts` and `lib/search.ts` before raising the branch gate above 70.
+The lines/statements/functions thresholds are at 80/80/75 with comfortable headroom. Branches are tighter and will need targeted tests in `lib/ai/assistant.ts` and the extracted `lib/search/*` modules (`lib/search.ts` is now a re-export facade with no branches of its own) before raising the branch gate above 70.
 
 ### Deferred from the 2026-05-21 code review
 

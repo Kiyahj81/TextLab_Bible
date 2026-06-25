@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Split the 918-line `lib/search.ts` into five focused modules behind a re-export facade, with zero behavior change and the entire existing test suite staying green.
+**Goal:** Split the 918-line `lib/search.ts` into six focused modules behind a re-export facade, with zero behavior change and the entire existing test suite staying green.
 
 **Architecture:** `lib/search.ts` becomes a thin barrel (`export *` from six new files in `lib/search/`). Each public function moves verbatim into the module that owns its responsibility — reader/passage, keyword, tokens, domain, semantic, and a shared-contract module for spine/pagination/hydration primitives. All 26 current importers (app routes, AI pipeline, every search test) import unchanged because the facade preserves the exact public surface.
 

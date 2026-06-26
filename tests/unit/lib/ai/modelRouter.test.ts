@@ -7,6 +7,7 @@ import {
   recommendScholarlyUpgrade,
   routeAssistantPrompt
 } from "@/lib/ai/modelRouter";
+import { extractSignals } from "@/lib/ai/signals";
 
 beforeEach(() => {
   vi.unstubAllEnvs();
@@ -39,14 +40,22 @@ describe("routeAssistantPrompt", () => {
 });
 
 describe("recommendScholarlyUpgrade", () => {
-  it("returns undefined for ordinary prompts", () => {
-    expect(recommendScholarlyUpgrade("What does love mean?")).toBeUndefined();
+  const rec = (p: string) => recommendScholarlyUpgrade(p, extractSignals(p));
+
+  it("returns undefined for a simple lookup", () => {
+    expect(rec("What does John 1:1 say?")).toBeUndefined();
   });
 
-  it("returns an upgrade for scholarly prompts", () => {
-    const upgrade = recommendScholarlyUpgrade("I need a deep synthesis with theological nuance");
-    expect(upgrade?.modelRole).toBe("scholarly");
-    expect(typeof upgrade?.model).toBe("string");
+  it("recommends scholarly for cross-book tension questions", () => {
+    expect(rec("How do Paul in Romans and James reconcile faith and works?")?.modelRole).toBe("scholarly");
+  });
+
+  it("recommends scholarly for a comparison prompt", () => {
+    expect(rec("Compare δικαιοσύνη in Romans and Galatians")?.modelRole).toBe("scholarly");
+  });
+
+  it("still honors an explicit scholarly cue", () => {
+    expect(rec("Give a deep synthesis of atonement")?.modelRole).toBe("scholarly");
   });
 });
 

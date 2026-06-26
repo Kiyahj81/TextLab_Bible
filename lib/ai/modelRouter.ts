@@ -1,3 +1,5 @@
+import type { Signals } from "@/lib/ai/signals";
+
 export type AssistantMode = "live" | "fallback";
 export type ModelRole = "default" | "scholarly";
 
@@ -75,31 +77,27 @@ export function routeAssistantPrompt(prompt: string, escalate = false): RoutingD
   };
 }
 
-export function recommendScholarlyUpgrade(prompt: string): RecommendedUpgrade | undefined {
-  const normalized = prompt.toLowerCase();
-  const scholarlySignals = [
-    "scholarly",
-    "theological nuance",
-    "cross-text",
-    "cross text",
-    "ambiguity",
-    "ambiguous",
-    "long-chain",
-    "large-content",
-    "research quality",
-    "research-quality",
-    "deep synthesis",
-    "complex theological",
-    "interpretive options"
-  ];
+const SCHOLARLY_CUE_RE =
+  /\b(scholarly|deep synthesis|theological nuance|interpretive options|reconcile|reconciliation between|tension|paradox|harmoniz)/i;
+const HOW_CAN_BOTH_RE = /\bhow (can|do|does)\b[\s\S]{0,60}\band\b/i;
 
-  if (!scholarlySignals.some((signal) => normalized.includes(signal))) {
-    return undefined;
-  }
+export function recommendScholarlyUpgrade(prompt: string, signals?: Signals): RecommendedUpgrade | undefined {
+  const distinctBooks = new Set((signals?.references ?? []).map((r) => r.book)).size;
+  const topicCount = signals?.topicWords.length ?? 0;
+  const longPrompt = prompt.trim().split(/\s+/).length > 30;
 
+  const complex =
+    signals?.intent === "comparison" ||
+    distinctBooks >= 2 ||
+    SCHOLARLY_CUE_RE.test(prompt) ||
+    HOW_CAN_BOTH_RE.test(prompt) ||
+    topicCount >= 3 ||
+    longPrompt;
+
+  if (!complex) return undefined;
   return {
     modelRole: "scholarly",
     model: getModelForRole("scholarly"),
-    reason: "This prompt appears to ask for deeper scholarly synthesis; confirm before using the scholarly model."
+    reason: "This question looks like it needs deeper, cross-text synthesis; confirm before using the scholarly model."
   };
 }

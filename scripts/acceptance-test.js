@@ -221,12 +221,12 @@ async function run() {
     await page.getByRole("heading", { name: "Assistant", exact: true }).waitFor();
     await page.locator("textarea").first().fill("Show me every use of λόγος in John 1 and summarize the pattern.");
     await page.getByRole("button", { name: "Ask assistant" }).click();
-    // Paradigm C deterministic-first answer: three-section text whose evidence
-    // block reports the lemma hit count from the retrieval planner. The planner
-    // scopes "λόγος in John 1" to the named chapter, so the search returns the 4
+    // Deterministic fallback (grounded-core shape): header "Grounded evidence TextLab
+    // retrieved for …" followed by lemma hit rows. The retrieval planner scopes
+    // "λόγος in John 1" to the named chapter, so the search returns the 4
     // chapter-1 occurrences (three in 1:1, one in 1:14) — not the 40 across the
     // whole book — and 1:14 ("the Word became flesh") is now surfaced.
-    const answerPre = page.locator("pre").filter({ hasText: "Textual observations:" });
+    const answerPre = page.locator("pre").filter({ hasText: "Grounded evidence TextLab retrieved" });
     await answerPre.waitFor({ timeout: 30000 });
     await answerPre.filter({ hasText: "4 hit(s)" }).waitFor();
     await answerPre.filter({ hasText: "John 1:14" }).waitFor();
@@ -271,7 +271,7 @@ async function run() {
 
     // Phase 4a semantic path, issued LAST so it cannot race the λόγος export above.
     // Await the topical prompt's OWN /api/assistant response — not a stale
-    // "Textual observations:" left rendered from the λόγος answer — so this proves the
+    // "Grounded evidence TextLab retrieved" left rendered from the λόγος answer — so this proves the
     // request actually executed the planner (incl. the gated semantic call). When
     // OPENAI_API_KEY is unset the planner gracefully no-ops to deterministic retrieval,
     // but the route still returns 200, so the check holds in both modes.

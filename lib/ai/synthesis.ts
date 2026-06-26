@@ -2,6 +2,7 @@ import type { AssistantCitation } from "@/lib/ai/contracts";
 import type { RoutingDecision } from "@/lib/ai/modelRouter";
 import type { EvidencePacket } from "@/lib/ai/retrievalPlanner";
 import type { GroundingClaim, GroundingReport } from "@/lib/ai/grounding";
+import type { Intent } from "@/lib/ai/signals";
 import { getMaxOutputTokens, getTemperature } from "@/lib/ai/modelRouter";
 import { getOpenAi } from "@/lib/ai/openaiClient";
 import { type ToolTraceEntry } from "@/lib/ai/toolTrace";
@@ -22,10 +23,22 @@ If a critical piece of context is missing — for example, the surrounding
 verses of a key passage — you may call the getPassage tool. Otherwise, write
 the answer directly.
 
-Structure the answer in three sections:
-1. Textual observations
-2. Interpretive suggestion
-3. Application/reflection
+Write a grounded core from the retrieved evidence first: what the text says, plus
+lexical/grammatical observations supported by the provided morphology, glosses, and
+Louw-Nida domains. You may then add a section headed "Going further" with interpretation
+or application — but ONLY when the question invites it, and every such statement must
+explicitly build on a stated observation from the core. Do not make leaps disconnected
+from the evidence.
+
+Grounding rules:
+- Use ONLY the retrieved evidence. No cross-references or doctrine that are not in the
+  retrieved evidence. Connecting retrieved passages is encouraged; importing unretrieved
+  ones is not.
+- Do not overclaim from metadata: a Louw-Nida domain label is a broad orienting category,
+  not proof; a gloss is one context-limited English aid — say "the gloss given is …",
+  not "the word means …".
+- Mention only morphology/gloss/domain fields actually present in the evidence; never
+  infer or invent them.
 
 DO NOT include hashtags (#) in responses.
 
@@ -59,6 +72,25 @@ fragments. Do not smooth, normalize, or paraphrase Greek quotes.
 
 Never invent lexicon entries, manuscript evidence, or scholarly
 citations.`;
+
+const INTENT_SHAPE_GUIDANCE: Record<Intent, string> = {
+  "morphology":
+    "Shape: concise and technical. Lead with the parse/forms. No application or reflection.",
+  "passage-study":
+    "Shape: medium. State what the passage says with its key grounded lexical observations, then the meaning. Add 'Going further' only if the question asks for significance/application.",
+  "word-study":
+    "Shape: medium. Survey the occurrences and their senses from the evidence. Rarely add 'Going further'.",
+  "topic-survey":
+    "Shape: medium. Present the retrieved passages and the thread connecting THEM (no imported passages). Add 'Going further' if the question invites it.",
+  "comparison":
+    "Shape: medium. Compare side by side; assert only contrasts the evidence supports. Add 'Going further' if invited.",
+  "general":
+    "Shape: scale to the question. Brief for a lookup; fuller for an open question. Add 'Going further' only if invited."
+};
+
+export function buildSynthesisInstructions(intent: Intent = "general"): string {
+  return `${SYNTHESIS_SYSTEM_PROMPT}\n\nFor this question:\n${INTENT_SHAPE_GUIDANCE[intent]}`;
+}
 
 const REFINEMENT_TOOL = {
   type: "function" as const,
@@ -125,6 +157,7 @@ type SynthesisInput = {
   prompt: string;
   evidence: EvidencePacket;
   routing: RoutingDecision;
+  intent?: Intent;
 };
 
 function buildUserPayload(prompt: string, evidence: EvidencePacket): string {
@@ -211,7 +244,8 @@ export async function synthesizeWithRefinement(input: SynthesisInput): Promise<S
   const client = getOpenAi();
   if (!client) return null;
 
-  const { prompt, evidence, routing } = input;
+  const { prompt, evidence, routing, intent = "general" } = input;
+  const instructions = buildSynthesisInstructions(intent);
   const citations: AssistantCitation[] = [...evidence.citations];
   const toolTrace: ToolTraceEntry[] = [...evidence.toolTrace];
 
@@ -221,7 +255,7 @@ export async function synthesizeWithRefinement(input: SynthesisInput): Promise<S
 
   const first = await client.responses.create({
     model: routing.modelUsed,
-    instructions: SYNTHESIS_SYSTEM_PROMPT,
+    instructions: instructions,
     max_output_tokens: getMaxOutputTokens(),
     temperature: getTemperature(),
     tools: [REFINEMENT_TOOL],
@@ -251,7 +285,7 @@ export async function synthesizeWithRefinement(input: SynthesisInput): Promise<S
 
   const second = await client.responses.create({
     model: routing.modelUsed,
-    instructions: SYNTHESIS_SYSTEM_PROMPT,
+    instructions: instructions,
     max_output_tokens: getMaxOutputTokens(),
     temperature: getTemperature(),
     text: { format: SYNTHESIS_OUTPUT_FORMAT },

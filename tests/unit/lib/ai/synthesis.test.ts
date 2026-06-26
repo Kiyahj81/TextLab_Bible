@@ -337,6 +337,22 @@ describe("buildRefusalAnswer", () => {
   });
 });
 
+describe("buildSynthesisInstructions", () => {
+  it("states the grounded-core / going-further derivation rule and retrieved-only guardrail", async () => {
+    const { buildSynthesisInstructions } = await import("@/lib/ai/synthesis");
+    const text = buildSynthesisInstructions("passage-study");
+    expect(text).toContain("grounded core");
+    expect(text).toContain("Going further");
+    expect(text).toContain("retrieved evidence");           // retrieved-only synthesis
+    expect(text).not.toContain("Structure the answer in three sections");
+  });
+
+  it("tells morphology answers to stay technical with no application", async () => {
+    const { buildSynthesisInstructions } = await import("@/lib/ai/synthesis");
+    expect(buildSynthesisInstructions("morphology").toLowerCase()).toContain("no application");
+  });
+});
+
 describe("appendAlignmentNotes", () => {
   it("returns the answer unchanged when no verdict carries a caveat", async () => {
     const { appendAlignmentNotes } = await import("@/lib/ai/synthesis");

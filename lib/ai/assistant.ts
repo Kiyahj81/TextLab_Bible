@@ -55,7 +55,7 @@ export async function answerBibleQuestion(
   }
 
   try {
-    const result = await synthesizeWithRefinement({ prompt, evidence, routing });
+    const result = await synthesizeWithRefinement({ prompt, evidence, routing, intent: signals.intent });
     if (!result) {
       return fallbackAnswer(prompt, evidence, routing);
     }

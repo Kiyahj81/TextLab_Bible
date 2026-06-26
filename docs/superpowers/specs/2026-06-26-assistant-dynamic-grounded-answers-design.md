@@ -132,8 +132,8 @@ Under each verse, emit a per-token annotation line, e.g.:
 
 ```
 - John 1:1, SBLGNT: Ἐν ἀρχῇ ἦν ὁ λόγος…
-    λόγος · λόγος · noun nominative singular masculine · "word" · Communication (33)
-    ἦν · εἰμί · verb imperfect active indicative, 3rd person singular · "was" · State (13)
+    λόγος · λόγος · noun — nominative singular masculine · "word" · Communication (33)
+    ἦν · εἰμί · verb — imperfect active indicative, 3rd person singular · "was" · State (13)
 ```
 
 Constraints:
@@ -269,13 +269,13 @@ These pin the intent of the shapes; final wording is the model's. Priority shape
 **Passage-study — "What does John 1:14 mean?"** (grounded core; no application unless asked)
 > John 1:14 says the Word **became flesh** — **σάρξ** ("flesh") — and **ἐσκήνωσεν** ("dwelt,"
 > lit. "tabernacled") among us, and that we beheld his **δόξα** ("glory"), full of **χάρις**
-> ("grace") and **ἀλήθεια** ("truth"). The aorist **ἐγένετο** ("became") marks a real entry
-> into human existence rather than mere appearance.
+> ("grace") and **ἀλήθεια** ("truth"). The verbs **ἐγένετο** ("became") and **ἐσκήνωσεν**
+> ("dwelt") are both aorist, per the provided morphology.
 >
 > **Going further** *(included only because "what does it mean" invites it)*: Because the text
-> pairs "became flesh" with "dwelt among us," the verse presents the incarnation as God taking
-> up residence with his people — an inference that rests on σὰρξ ἐγένετο and ἐσκήνωσεν above, not
-> on outside doctrine.
+> says the Word "became (ἐγένετο) flesh" and "dwelt (ἐσκήνωσεν) among us," the verse presents the
+> incarnation as God taking up real residence in human existence — an inference resting on those
+> two glossed aorist verbs above, not on outside doctrine.
 
 **Topic-survey — "Verses about reconciliation."** (synthesize the *retrieved* set only)
 > Across the retrieved passages, reconciliation centers on **καταλλαγή / καταλλάσσω**: Rom 5:10–11

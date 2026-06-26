@@ -30,22 +30,23 @@
 ## Task 1: Pure token-annotation formatter
 
 **Files:**
-- Create: `lib/ai/passageEvidence.ts`
+- Create: `lib/search/passageTokens.ts` (the `PassageToken` / `PassageTokenRow` data types — defined in the search layer so the AI formatter depends on search, never the reverse)
+- Create: `lib/ai/passageEvidence.ts` (the formatter)
 - Test: `tests/unit/lib/ai/passageEvidence.test.ts`
 
 **Interfaces:**
-- Consumes: `decodeMorphCode` from `@/lib/morphology` (returns `string | null`).
+- Consumes: `decodeMorphCode` from `@/lib/morphology` (returns `string | null`); `PassageToken` from `@/lib/search/passageTokens`.
 - Produces:
-  - `type PassageToken = { surface: string; lemma: string | null; morphCode: string | null; partOfSpeech: string | null; gloss: string | null; domainLabel: string | null }`
-  - `formatTokenAnnotations(tokens: PassageToken[], opts?: { contentOnly?: boolean; targetLemmas?: ReadonlySet<string> }): string[]` — one indented annotation line per kept token.
-  - `ANNOTATION_SKIP_POS` constant.
+  - In `lib/search/passageTokens.ts`: `type PassageToken = { surface: string; lemma: string | null; morphCode: string | null; partOfSpeech: string | null; gloss: string | null; domainLabel: string | null }` and `type PassageTokenRow = PassageToken & { verse: number; wordIndex: number }` (the row Task 2's query returns).
+  - In `lib/ai/passageEvidence.ts`: `formatTokenAnnotations(tokens: PassageToken[], opts?: { contentOnly?: boolean; targetLemmas?: ReadonlySet<string> }): string[]` (one indented annotation line per kept token) and the `ANNOTATION_SKIP_POS` constant.
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
 // tests/unit/lib/ai/passageEvidence.test.ts
 import { describe, expect, it } from "vitest";
-import { formatTokenAnnotations, type PassageToken } from "@/lib/ai/passageEvidence";
+import { formatTokenAnnotations } from "@/lib/ai/passageEvidence";
+import type { PassageToken } from "@/lib/search/passageTokens";
 
 const tok = (over: Partial<PassageToken>): PassageToken => ({
   surface: "λόγος", lemma: "λόγος", morphCode: "N-NSM",
@@ -55,7 +56,7 @@ const tok = (over: Partial<PassageToken>): PassageToken => ({
 describe("formatTokenAnnotations", () => {
   it("renders surface · lemma · decoded morph · gloss · domain", () => {
     const [line] = formatTokenAnnotations([tok({})]);
-    expect(line).toBe('    λόγος · λόγος · noun nominative singular masculine · "word" · Communication (33)');
+    expect(line).toBe('    λόγος · λόγος · noun — nominative singular masculine · "word" · Communication (33)');
   });
 
   it("omits absent fields rather than placeholdering them", () => {
@@ -95,9 +96,8 @@ Expected: FAIL — `Cannot find module "@/lib/ai/passageEvidence"`.
 - [ ] **Step 3: Write the minimal implementation**
 
 ```ts
-// lib/ai/passageEvidence.ts
-import { decodeMorphCode } from "@/lib/morphology";
-
+// lib/search/passageTokens.ts — data types live in the search layer so the AI
+// formatter depends on search, not the reverse.
 export type PassageToken = {
   surface: string;
   lemma: string | null;
@@ -106,6 +106,13 @@ export type PassageToken = {
   gloss: string | null;
   domainLabel: string | null;
 };
+export type PassageTokenRow = PassageToken & { verse: number; wordIndex: number };
+```
+
+```ts
+// lib/ai/passageEvidence.ts
+import { decodeMorphCode } from "@/lib/morphology";
+import type { PassageToken } from "@/lib/search/passageTokens";
 
 // Skip articles, conjunctions, and particles by default. These are the stored
 // 2-char Token.partOfSpeech values (see lib/morphology.ts POS_LABELS).
@@ -146,8 +153,8 @@ Expected: PASS (5 tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add lib/ai/passageEvidence.ts tests/unit/lib/ai/passageEvidence.test.ts
-git commit -m "feat(assistant): pure token-annotation formatter for passage evidence" -m "Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
+git add lib/search/passageTokens.ts lib/ai/passageEvidence.ts tests/unit/lib/ai/passageEvidence.test.ts
+git commit -m "feat(assistant): passage-token types + annotation formatter" -m "Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
 
 ---
@@ -155,13 +162,13 @@ git commit -m "feat(assistant): pure token-annotation formatter for passage evid
 ## Task 2: `getPassageTokens` query (SBLGNT, verse-range)
 
 **Files:**
-- Modify: `lib/search/reader.ts` (add `getPassageTokens`)
-- Modify: `lib/search.ts` (re-export `getPassageTokens`)
+- Modify: `lib/search/passageTokens.ts` (add `getPassageTokens` to the file Task 1 created)
+- Modify: `lib/search.ts` (re-export `getPassageTokens` + the two types)
 - Test: `tests/integration/passage-tokens.test.ts`
 
 **Interfaces:**
-- Consumes: Prisma `token` / `louwNidaDomain` models; `normalizeBook` from `@/lib/references`; `PassageToken` from Task 1.
-- Produces: `getPassageTokens(input: { book: string; chapter: number; verseStart: number; verseEnd: number }): Promise<PassageTokenRow[]>` where `type PassageTokenRow = PassageToken & { verse: number; wordIndex: number }`, ordered by `verse` then `wordIndex`.
+- Consumes: Prisma `token` / `louwNidaDomain` models; `normalizeBook` from `@/lib/references`; `PassageToken` / `PassageTokenRow` from `@/lib/search/passageTokens` (Task 1).
+- Produces: `getPassageTokens(input: { book: string; chapter: number; verseStart: number; verseEnd: number }): Promise<PassageTokenRow[]>`, ordered by `verse` then `wordIndex`.
 
 - [ ] **Step 1: Write the failing integration test**
 
@@ -193,12 +200,12 @@ Expected: FAIL — `getPassageTokens` is not exported.
 
 - [ ] **Step 3: Write the implementation**
 
-Add to `lib/search/reader.ts` (reuse the domain-label resolution already used by `getReaderPassage`):
+Add to `lib/search/passageTokens.ts` (the types are already there from Task 1; add the imports + the query; reuse the domain-label resolution pattern from `getReaderPassage`):
 
 ```ts
-import type { PassageToken } from "@/lib/ai/passageEvidence";
-
-export type PassageTokenRow = PassageToken & { verse: number; wordIndex: number };
+// add at the top of lib/search/passageTokens.ts
+import { prisma } from "@/lib/db";
+import { normalizeBook } from "@/lib/references";
 
 // Enriched SBLGNT tokens for a verse range — a trimmed getReaderPassage token path
 // with no user notes/highlights, for the assistant's evidence block.
@@ -250,10 +257,10 @@ export async function getPassageTokens(input: {
 }
 ```
 
-Add the re-export in `lib/search.ts` next to the other reader exports:
+Add the re-export in `lib/search.ts` next to the other search exports:
 
 ```ts
-export { getPassageTokens, type PassageTokenRow } from "@/lib/search/reader";
+export { getPassageTokens, type PassageToken, type PassageTokenRow } from "@/lib/search/passageTokens";
 ```
 
 - [ ] **Step 4: Run the test to verify it passes**
@@ -265,7 +272,7 @@ Also run: `npx tsc --noEmit --pretty false` → no errors.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add lib/search/reader.ts lib/search.ts tests/integration/passage-tokens.test.ts
+git add lib/search/passageTokens.ts lib/search.ts tests/integration/passage-tokens.test.ts
 git commit -m "feat(search): getPassageTokens enriched verse-range token fetch" -m "Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
 
@@ -279,7 +286,7 @@ git commit -m "feat(search): getPassageTokens enriched verse-range token fetch" 
 
 **Interfaces:**
 - Consumes: `getPassageTokens` (Task 2), `formatTokenAnnotations` (Task 1), `Signals.intent` + `Signals.greekWords`.
-- Produces: enriched `formattedEvidence` for SBLGNT passages — annotation lines beneath each verse line. Enrichment is gated: SBLGNT corpus **and** single-chapter **and** ≤ 25 fetched verses **and** within the first `MAX_ENRICHED_PASSAGES` passages of the plan (deterministic, race-free).
+- Produces: enriched `formattedEvidence` for SBLGNT passages — annotation lines beneath each verse line. Per-passage gate: SBLGNT corpus **and** single-chapter **and** ≤ 25 fetched verses. Whole-packet bound: a **char budget** (`maxEnrichChars()`, default 18 000, env-overridable via `TEXTLAB_MAX_ENRICH_CHARS`) applied deterministically in plan order in `runRetrievalPlan` after all calls settle — each eligible passage keeps its annotations only while cumulative enrichment chars stay under budget; passages past it keep their verse-text-only section (degrade, never drop). The budget sits well under `MAX_EVIDENCE_CHARS` (58 000) so enrichment never evicts base evidence in `assembleEvidence`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -296,7 +303,7 @@ it("annotates a ≤25-verse SBLGNT passage with per-token morphology/gloss", asy
   ]);
   const signals = extractSignals("Show John 1:1");
   const packet = await runRetrievalPlan(signals, "Show John 1:1", false);
-  expect(packet.formattedEvidence).toContain('λόγος · λόγος · noun nominative singular masculine · "word"');
+  expect(packet.formattedEvidence).toContain('λόγος · λόγος · noun — nominative singular masculine · "word"');
 });
 
 it("does NOT annotate a >25-verse passage", async () => {
@@ -307,9 +314,26 @@ it("does NOT annotate a >25-verse passage", async () => {
   await runRetrievalPlan(signals, "Show John 1", false);
   expect(getPassageTokens).not.toHaveBeenCalled();
 });
+
+it("degrades later passages to verse-text-only once the enrichment char budget is spent", async () => {
+  vi.stubEnv("TEXTLAB_MAX_ENRICH_CHARS", "120"); // only the first passage's annotation fits
+  getPassage.mockImplementation(async ({ book, corpus }: { book: string; corpus: "SBLGNT" | "WEB" }) => ({
+    corpus,
+    references: [{ book, chapter: 1, verse: 1, reference: `${book} 1:1`, text: "Ἐν ἀρχῇ ἦν ὁ λόγος" }]
+  }));
+  getPassageTokens.mockResolvedValue([
+    { surface: "λόγος", lemma: "λόγος", morphCode: "N-NSM", partOfSpeech: "N-", gloss: "word", domainLabel: "Communication (33)", verse: 1, wordIndex: 4 }
+  ]);
+  const signals = extractSignals("Compare John 1:1 and Mark 1:1");
+  const packet = await runRetrievalPlan(signals, "Compare John 1:1 and Mark 1:1", false);
+  expect(packet.formattedEvidence).toContain("John 1:1");   // both passages still present
+  expect(packet.formattedEvidence).toContain("Mark 1:1");
+  const annotated = packet.formattedEvidence.split("noun — nominative singular masculine").length - 1;
+  expect(annotated).toBe(1);                                // only the first was enriched (budget spent)
+});
 ```
 
-Add `getPassageTokens` to the existing `vi.mock("@/lib/search", …)` hoisted mock object at the top of the file, and `getPassageTokens.mockReset()` in `beforeEach`.
+Add `getPassageTokens` to the existing `vi.mock("@/lib/search", …)` hoisted mock object at the top of the file, and `getPassageTokens.mockReset()` in `beforeEach`. Ensure the suite also calls `vi.unstubAllEnvs()` in `afterEach` (the degrade test stubs `TEXTLAB_MAX_ENRICH_CHARS`).
 
 - [ ] **Step 2: Run the test to verify it fails**
 
@@ -326,17 +350,38 @@ import { getPassageTokens, /* …existing… */ } from "@/lib/search";
 import { formatTokenAnnotations } from "@/lib/ai/passageEvidence";
 
 // near the other bound constants
-const MAX_ENRICH_VERSES = 25;        // matches the project "long passage" threshold
-const MAX_ENRICHED_PASSAGES = 3;     // deterministic total-enrichment budget (plan order)
+const MAX_ENRICH_VERSES = 25; // matches the project "long passage" threshold
+
+// Whole-packet char budget for per-token annotations. Kept well under
+// MAX_EVIDENCE_CHARS (58 000) so enrichment never evicts base evidence in
+// assembleEvidence. Env-overridable so a test can force the degrade path.
+function maxEnrichChars(): number {
+  const raw = Number.parseInt(process.env.TEXTLAB_MAX_ENRICH_CHARS?.trim() ?? "", 10);
+  return Number.isFinite(raw) && raw >= 0 ? raw : 18_000;
+}
 ```
 
-Change `passageCall` to accept enrichment context and interleave annotation lines:
+Add the optional enrichment fields to the `CallResult` type:
+
+```ts
+type CallResult = {
+  citations: AssistantCitation[];
+  section: string;            // verse-text-only (base)
+  traces: ToolTraceEntry[];
+  enrichedSection?: string;   // SBLGNT passage with per-token annotations (≤25 verses, single chapter)
+  enrichChars?: number;       // extra chars vs the base section
+};
+```
+
+Change `passageCall` to BUILD both a base and (when eligible) an enriched section. It does NOT
+decide the budget — `runRetrievalPlan` does, after all calls settle, so the decision is
+deterministic and race-free:
 
 ```ts
 function passageCall(
   corpus: "SBLGNT" | "WEB",
   ref: ParsedReference,
-  enrich: { enabled: boolean; contentOnly: boolean; targetLemmas: ReadonlySet<string> }
+  enrich: { contentOnly: boolean; targetLemmas: ReadonlySet<string> }
 ): PlannedCall {
   const segments = passageSegments(ref);
   const crossChapter = ref.chapterEnd !== undefined && ref.chapterEnd !== ref.chapter;
@@ -347,54 +392,82 @@ function passageCall(
     run: async () => {
       // …unchanged fetch loop producing `all`, `shown`, `citations`, `traces`, `truncatedByCeiling`…
 
-      // Enrich only a small, single-chapter SBLGNT passage; deterministic + race-free.
-      const canEnrich =
-        corpus === "SBLGNT" && enrich.enabled && !crossChapter && all.length > 0 && all.length <= MAX_ENRICH_VERSES;
-      const annotationsByVerse = new Map<number, string[]>();
-      if (canEnrich) {
-        const first = shown[0].verse;
-        const last = shown[shown.length - 1].verse;
-        const tokens = await getPassageTokens({ book: ref.book, chapter: ref.chapter, verseStart: first, verseEnd: last });
-        for (const t of tokens) {
-          const [line] = formatTokenAnnotations([t], { contentOnly: enrich.contentOnly, targetLemmas: enrich.targetLemmas });
-          if (!line) continue;
-          const list = annotationsByVerse.get(t.verse) ?? [];
-          list.push(line);
-          annotationsByVerse.set(t.verse, list);
-        }
-      }
+      const heading = `getPassage(${label}, ${corpus})`;
+      const buildSection = (lines: string[]) =>
+        truncatedByCeiling
+          ? `### ${heading}\n${lines.join("\n")}\n…(truncated at ${MAX_PASSAGE_LINES}-line ceiling; request a narrower range for the full passage)`
+          : sectionBlock(heading, lines, all.length);
 
-      const lines = shown.flatMap((r) => {
+      const baseLines = shown.map((r) => `- ${r.reference}, ${corpus}: ${r.text}`);
+      const section = buildSection(baseLines);
+
+      // Only a small, single-chapter SBLGNT passage is eligible to enrich.
+      const canEnrich =
+        corpus === "SBLGNT" && !crossChapter && all.length > 0 && all.length <= MAX_ENRICH_VERSES;
+      if (!canEnrich) return { citations, section, traces };
+
+      const tokens = await getPassageTokens({
+        book: ref.book, chapter: ref.chapter, verseStart: shown[0].verse, verseEnd: shown[shown.length - 1].verse
+      });
+      const annotationsByVerse = new Map<number, string[]>();
+      for (const t of tokens) {
+        const [line] = formatTokenAnnotations([t], { contentOnly: enrich.contentOnly, targetLemmas: enrich.targetLemmas });
+        if (!line) continue;
+        const list = annotationsByVerse.get(t.verse) ?? [];
+        list.push(line);
+        annotationsByVerse.set(t.verse, list);
+      }
+      const enrichedLines = shown.flatMap((r) => {
         const base = `- ${r.reference}, ${corpus}: ${r.text}`;
         const ann = annotationsByVerse.get(r.verse) ?? [];
         return ann.length ? [base, ...ann] : [base];
       });
-
-      const heading = `getPassage(${label}, ${corpus})`;
-      const section = truncatedByCeiling
-        ? `### ${heading}\n${lines.join("\n")}\n…(truncated at ${MAX_PASSAGE_LINES}-line ceiling; request a narrower range for the full passage)`
-        : sectionBlock(heading, lines, all.length);
-      return { citations, section, traces };
+      const enrichedSection = buildSection(enrichedLines);
+      return { citations, section, traces, enrichedSection, enrichChars: enrichedSection.length - section.length };
     }
   };
 }
 ```
 
-In `buildPlan`, pass the deterministic budget + intent context as each SBLGNT passage is added:
+In `buildPlan`, pass only the intent context (no count budget — the char budget lives in
+`runRetrievalPlan`):
 
 ```ts
 const targetLemmas = new Set(signals.greekWords);
 const contentOnly = signals.intent !== "morphology";
-let enrichedPassages = 0;
 for (const ref of signals.references) {
-  const enabled = enrichedPassages < MAX_ENRICHED_PASSAGES;
-  add(passageCall("SBLGNT", ref, { enabled, contentOnly, targetLemmas }));
-  if (enabled) enrichedPassages++;
-  add(passageCall("WEB", ref, { enabled: false, contentOnly, targetLemmas }));
+  add(passageCall("SBLGNT", ref, { contentOnly, targetLemmas }));
+  add(passageCall("WEB", ref, { contentOnly, targetLemmas })); // WEB never enriches (canEnrich requires SBLGNT)
 }
 ```
 
 (Remove the old `for (const ref …) { add(passageCall("SBLGNT", ref)); add(passageCall("WEB", ref)); }` loop.)
+
+In `runRetrievalPlan`, choose the enriched vs base section per the deterministic char budget while
+consuming settled results (this replaces the existing `settled.forEach(…)` body that pushed
+`result.value.section` directly):
+
+```ts
+const settled = await Promise.allSettled(plan.map((call) => call.run()));
+const ENRICH_BUDGET = maxEnrichChars();
+let enrichSpent = 0;
+settled.forEach((result, index) => {
+  if (result.status === "fulfilled") {
+    citations.push(...result.value.citations);
+    toolTrace.push(...result.value.traces);
+    const { section, enrichedSection, enrichChars = 0 } = result.value;
+    if (enrichedSection && enrichSpent + enrichChars <= ENRICH_BUDGET) {
+      sections.push(enrichedSection);
+      enrichSpent += enrichChars; // later passages degrade to verse-text-only once spent
+    } else if (section) {
+      sections.push(section);
+    }
+  } else {
+    const message = result.reason instanceof Error ? result.reason.message : "Unknown error";
+    toolTrace.push({ ...plan[index].errorTrace, error: message });
+  }
+});
+```
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
@@ -435,7 +508,7 @@ it("decodes the morph code and appends the gloss on lemma evidence", async () =>
   });
   const signals = extractSignals("How is λόγος used?");
   const packet = await runRetrievalPlan(signals, "How is λόγος used?", false);
-  expect(packet.formattedEvidence).toContain("noun nominative singular masculine");
+  expect(packet.formattedEvidence).toContain("noun — nominative singular masculine");
   expect(packet.formattedEvidence).toContain('"word"');
 });
 ```
@@ -802,6 +875,7 @@ git commit -m "feat(assistant): signal-based scholarly detection" -m "Co-Authore
 - Modify: `lib/ai/modelRouter.ts` (`routeAssistantPrompt` options)
 - Modify: `lib/ai/assistant.ts` (`answerBibleQuestion` threads signals + `autoEscalate`)
 - Modify: `app/api/assistant/route.ts` (accept `autoEscalate`)
+- Modify: `eval/runner.ts` (the OTHER runtime caller of `routeAssistantPrompt` — update to the options signature and pass `intent`)
 - Test: `tests/unit/lib/ai/modelRouter.test.ts`, `tests/unit/lib/ai/assistant.test.ts`, `tests/unit/api/assistant-route.test.ts`
 
 **Interfaces:**
@@ -915,6 +989,16 @@ const { prompt, sessionId: requestedSessionId = "", escalate = false, autoEscala
 const answer = await answerBibleQuestion(prompt, { escalate, autoEscalate });
 ```
 
+In `eval/runner.ts` (the only other runtime caller of `routeAssistantPrompt` — without this the build breaks on the old boolean arg, and the 2A report would measure the old default shape). Update the call and pass `intent` (`extractSignals` is already imported there for `runOnce`):
+
+```ts
+// was: const routing = routeAssistantPrompt(item.question, false);
+const intent = extractSignals(item.question).intent;
+const routing = routeAssistantPrompt(item.question);          // no auto-escalation in the eval
+synthesisModel = routing.modelUsed;
+const synth = await synthesizeWithRefinement({ prompt: item.question, evidence, routing, intent });
+```
+
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `npm run test:unit -- modelRouter assistant assistant-route`
@@ -924,7 +1008,7 @@ Run: `npm run lint` and `npx tsc --noEmit --pretty false` → clean.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add lib/ai/modelRouter.ts lib/ai/assistant.ts app/api/assistant/route.ts tests/unit/lib/ai/modelRouter.test.ts tests/unit/lib/ai/assistant.test.ts tests/unit/api/assistant-route.test.ts
+git add lib/ai/modelRouter.ts lib/ai/assistant.ts app/api/assistant/route.ts eval/runner.ts tests/unit/lib/ai/modelRouter.test.ts tests/unit/lib/ai/assistant.test.ts tests/unit/api/assistant-route.test.ts
 git commit -m "feat(assistant): opt-in first-pass scholarly auto-escalation" -m "Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
 
@@ -1082,9 +1166,9 @@ git commit -m "docs(eval): Stage 1 2A faithfulness before/after snapshot" -m "Co
 
 ## Self-Review (author's check against the spec)
 
-**Spec coverage:** Component 1 → Tasks 1–4; Component 2 → Task 5; Component 3 (prose contract) → Task 5 (the `Going further` heading + derivation rule live in the prompt); Component 4 → Task 6; Component 5 → Tasks 7–9; Measurement 2A → Task 10; guardrails (retrieved-only, anti-overclaim, missing-data) → Task 5 prompt; total enrichment budget → Task 3 (`MAX_ENRICHED_PASSAGES`); content-word bypass → Tasks 1 + 3; test-impact sweep → Task 8 + Final verification.
+**Spec coverage:** Component 1 → Tasks 1–4; Component 2 → Task 5; Component 3 (prose contract) → Task 5 (the `Going further` heading + derivation rule live in the prompt); Component 4 → Task 6; Component 5 → Tasks 7–9; Measurement 2A → Task 10; guardrails (retrieved-only, anti-overclaim, missing-data) → Task 5 prompt; total enrichment budget → Task 3 (deterministic char budget `maxEnrichChars()`, degrade-not-drop); content-word bypass → Tasks 1 + 3; test-impact sweep → Task 8 + Final verification.
 
-**Deferred-to-plan items now pinned:** annotation format (Task 1), POS stoplist + bypass (Task 1/3), total-budget mechanism (Task 3 — deterministic first-N-passages), token ordering (Task 2 — verse then wordIndex), escalation precedence (Task 8).
+**Deferred-to-plan items now pinned:** annotation format (Task 1), POS stoplist + bypass (Task 1/3), total-budget mechanism (Task 3 — char-aware budget applied in plan order, composes with `MAX_EVIDENCE_CHARS`), token ordering (Task 2 — verse then wordIndex), escalation precedence (Task 8).
 
 **Type consistency:** `PassageToken` defined in Task 1, consumed unchanged in Tasks 2–3; `getPassageTokens`/`PassageTokenRow` defined in Task 2, consumed in Task 3; `recommendScholarlyUpgrade(prompt, signals?)` defined in Task 7, consumed in Task 8; `routeAssistantPrompt(prompt, options)` defined in Task 8 and used by `answerBibleQuestion`; `buildSynthesisInstructions(intent)` defined in Task 5 used by `synthesizeWithRefinement`. `gloss` added to `HydratedToken` (Task 4) is consumed by the planner evidence lines in the same task.
 

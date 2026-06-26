@@ -211,7 +211,7 @@ spec at `docs/superpowers/specs/2026-06-26-assistant-dynamic-grounded-answers-de
 evidence enrichment (per-token morphology/gloss/Louw-Nida into `formattedEvidence` for passages
 ≤25 verses), intent-shaped synthesis with a derivation-chain rule (grounded core → optional
 labeled "Going further" that must build on a stated observation), core-only deterministic
-fallback, and signal-based scholarly routing with opt-in auto-escalate (R-B). Measured by a
+fallback, and signal-based scholarly routing with opt-in auto-escalate (R-B). **This is proposed Stage 1 work: until it lands, the existing guardrail below still holds — scholarly use stays manual and user-initiated; Stage 1 then adds a default-off user preference for first-pass scholarly routing on complex questions, never automatic without that opt-in.** Measured by a
 manual **2A** faithfulness snapshot on the unchanged judge, then a **2B** split metric
 (exegetical faithfulness vs. inference-grounded rate). **Stage 2** (deferred-but-prepared):
 structured `core[]` / `goingFurther[]` answer with `derivesFrom` links, machine-checkable

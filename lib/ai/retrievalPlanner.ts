@@ -162,6 +162,20 @@ function maxEnrichChars(): number {
   return Number.isFinite(raw) && raw >= 0 ? raw : 18_000;
 }
 
+// Reserve room for every base section — joined with the same "\n\n" separators
+// assembleEvidence inserts (and counts) — before admitting per-token annotations,
+// so enrichment can never push a later base section past the evidence cap (the
+// "degrade, never drop" contract). Falls to 0 when base alone fills the budget.
+// Exported for unit testing the boundary arithmetic.
+export function enrichmentBudget(
+  baseSections: string[],
+  maxEnrich = maxEnrichChars(),
+  maxEvidence = MAX_EVIDENCE_CHARS
+): number {
+  const reservedBase = baseSections.length > 0 ? baseSections.join("\n\n").length : 0;
+  return Math.max(0, Math.min(maxEnrich, maxEvidence - reservedBase));
+}
+
 // "to end of chapter" upper bound (no NT chapter exceeds this).
 const PASSAGE_CHAPTER_END = 200;
 // How many leading empty chapters to probe before giving up. Lets an out-of-range
@@ -643,15 +657,12 @@ export async function runRetrievalPlan(
   const sections: string[] = [];
 
   const settled = await Promise.allSettled(plan.map((call) => call.run()));
-  // Reserve room for every base section first: enrichment may consume only the
-  // headroom between the total base size and MAX_EVIDENCE_CHARS, so admitting
-  // annotations can never push a later base section past assembleEvidence's cap
-  // (the "degrade, never drop" contract). Falls to 0 when base alone fills the budget.
-  const totalBaseChars = settled.reduce(
-    (sum, r) => (r.status === "fulfilled" && r.value.section ? sum + r.value.section.length : sum),
-    0
+  // Reserve room for every base section (separators included) before admitting
+  // annotations, so enrichment can never evict a later base section.
+  const baseSections = settled.flatMap((r) =>
+    r.status === "fulfilled" && r.value.section ? [r.value.section] : []
   );
-  const ENRICH_BUDGET = Math.max(0, Math.min(maxEnrichChars(), MAX_EVIDENCE_CHARS - totalBaseChars));
+  const ENRICH_BUDGET = enrichmentBudget(baseSections);
   let enrichSpent = 0;
   settled.forEach((result, index) => {
     if (result.status === "fulfilled") {

@@ -32,7 +32,7 @@ vi.mock("@/lib/search", () => ({
   SEMANTIC_INDEX_CORPUS: "WEB"
 }));
 
-import { runRetrievalPlan, shouldRunSemantic } from "@/lib/ai/retrievalPlanner";
+import { runRetrievalPlan, shouldRunSemantic, enrichmentBudget } from "@/lib/ai/retrievalPlanner";
 
 const emptySignals: Signals = {
   references: [],
@@ -742,6 +742,26 @@ describe("runRetrievalPlan", () => {
     const packet = await runRetrievalPlan(signals, "How is λόγος used?", false);
     expect(packet.formattedEvidence).toContain("noun — nominative singular masculine");
     expect(packet.formattedEvidence).toContain('"word"');
+  });
+});
+
+describe("enrichmentBudget", () => {
+  it("reserves base size INCLUDING the \\n\\n separators assembleEvidence counts", () => {
+    // Two 10-char base sections join to 10 + 2 + 10 = 22, not the naive 20.
+    // With evidence cap 100 the headroom is 78, not 80 — the 2 separator bytes matter.
+    expect(enrichmentBudget(["a".repeat(10), "b".repeat(10)], 1000, 100)).toBe(78);
+  });
+
+  it("floors at 0 when base alone already fills the evidence cap", () => {
+    expect(enrichmentBudget(["x".repeat(100)], 1000, 50)).toBe(0);
+  });
+
+  it("is bounded by the enrich budget when base headroom is large", () => {
+    expect(enrichmentBudget(["x".repeat(10)], 30, 1000)).toBe(30);
+  });
+
+  it("returns the full enrich budget for no base sections", () => {
+    expect(enrichmentBudget([], 30, 1000)).toBe(30);
   });
 });
 

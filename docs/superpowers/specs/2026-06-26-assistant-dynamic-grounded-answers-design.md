@@ -274,8 +274,9 @@ These pin the intent of the shapes; final wording is the model's. Priority shape
 >
 > **Going further** *(included only because "what does it mean" invites it)*: Because the text
 > says the Word "became (ἐγένετο) flesh" and "dwelt (ἐσκήνωσεν) among us," the verse presents the
-> incarnation as God taking up real residence in human existence — an inference resting on those
-> two glossed aorist verbs above, not on outside doctrine.
+> incarnation as **the Word** taking up real residence among humans — an inference resting on those
+> two glossed aorist verbs above, not on the Word=God identification (which would need John 1:1) or
+> any outside doctrine.
 
 **Topic-survey — "Verses about reconciliation."** (synthesize the *retrieved* set only)
 > Across the retrieved passages, reconciliation centers on **καταλλαγή / καταλλάσσω**: Rom 5:10–11

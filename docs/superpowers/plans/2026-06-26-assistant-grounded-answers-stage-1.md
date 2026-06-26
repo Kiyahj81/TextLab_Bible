@@ -333,7 +333,7 @@ it("degrades later passages to verse-text-only once the enrichment char budget i
 });
 ```
 
-Add `getPassageTokens` to the existing `vi.mock("@/lib/search", …)` hoisted mock object at the top of the file, and `getPassageTokens.mockReset()` in `beforeEach`. Ensure the suite also calls `vi.unstubAllEnvs()` in `afterEach` (the degrade test stubs `TEXTLAB_MAX_ENRICH_CHARS`).
+Add `getPassageTokens` to the existing `vi.mock("@/lib/search", …)` hoisted mock object at the top of the file. In `beforeEach`, call `getPassageTokens.mockReset()` **and then `getPassageTokens.mockResolvedValue([])`** — `passageCall` now awaits and iterates `getPassageTokens` for every eligible short SBLGNT passage, so existing passage-planner tests that don't stub it would otherwise iterate `undefined` and throw. Also ensure the suite calls `vi.unstubAllEnvs()` in `afterEach` (the degrade test stubs `TEXTLAB_MAX_ENRICH_CHARS`).
 
 - [ ] **Step 2: Run the test to verify it fails**
 

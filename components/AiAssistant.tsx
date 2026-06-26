@@ -6,6 +6,7 @@ import { useState } from "react";
 import { formatToolTrace, type ToolTraceEntry } from "@/lib/ai/toolTrace";
 import type { AssistantMode, ModelRole, RecommendedUpgrade } from "@/lib/ai/modelRouter";
 import { useAutoDismissString } from "@/lib/useAutoDismissStatus";
+import { ASSISTANT_AUTO_SCHOLARLY_COOKIE, writePrefCookie } from "@/lib/readerPrefs";
 
 type AssistantResponse = {
   answer: string;
@@ -43,7 +44,13 @@ type RestoredView = {
   createdAt: Date | string;
 };
 
-export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNoteRow[] }) {
+export function AiAssistant({
+  initialNotes,
+  autoScholarly: initialAutoScholarly = false
+}: {
+  initialNotes: GeneratedStudyNoteRow[];
+  autoScholarly?: boolean;
+}) {
   const [prompt, setPrompt] = useState("");
   const [responsePrompt, setResponsePrompt] = useState("");
   const [response, setResponse] = useState<AssistantResponse | null>(null);
@@ -55,6 +62,7 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
   const [savingNote, setSavingNote] = useState(false);
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
   const [copyCitationsStatus, setCopyCitationsStatus] = useState<string | null>(null);
+  const [autoScholarly, setAutoScholarly] = useState(initialAutoScholarly);
 
   // error stays persistent — user retries before it should clear.
   useAutoDismissString(saveStatus, setSaveStatus);
@@ -75,7 +83,8 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
           prompt: promptText,
           // Server schema rejects null on optional fields — only attach when set.
           ...(response?.sessionId ? { sessionId: response.sessionId } : {}),
-          ...(escalate ? { escalate: true } : {})
+          ...(escalate ? { escalate: true } : {}),
+          ...(autoScholarly && !escalate ? { autoEscalate: true } : {})
         })
       });
 
@@ -228,6 +237,18 @@ export function AiAssistant({ initialNotes }: { initialNotes: GeneratedStudyNote
               Try an example
             </button>
           </div>
+          <label className="mt-3 flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={autoScholarly}
+              onChange={(e) => {
+                setAutoScholarly(e.target.checked);
+                writePrefCookie(ASSISTANT_AUTO_SCHOLARLY_COOKIE, e.target.checked ? "1" : "0");
+              }}
+            />
+            Automatically use the scholarly model when a question warrants it
+            <span className="text-slate-500">(may be slower / more thorough)</span>
+          </label>
           {error ? <p role="alert" className="mt-2 text-sm text-red-700">{error}</p> : null}
         </form>
 

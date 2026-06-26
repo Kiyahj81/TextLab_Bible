@@ -53,3 +53,9 @@ export function writePrefCookie(name: string, value: string): void {
   if (typeof document === "undefined") return;
   document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${ONE_YEAR_SECONDS}; samesite=lax`;
 }
+
+export const ASSISTANT_AUTO_SCHOLARLY_COOKIE = "textlab-assistant-auto-scholarly";
+
+export function parseAutoScholarly(value: string | null | undefined): boolean {
+  return value === "1";
+}

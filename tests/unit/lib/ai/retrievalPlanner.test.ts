@@ -695,6 +695,43 @@ describe("runRetrievalPlan", () => {
     expect(annotated).toBe(1);                                // only the first was enriched (budget spent)
   });
 
+  it("fails open to the base passage when getPassageTokens rejects (degrade, never drop)", async () => {
+    getPassage.mockResolvedValue({
+      corpus: "SBLGNT",
+      references: [{ book: "John", chapter: 1, verse: 1, reference: "John 1:1", text: "Ἐν ἀρχῇ ἦν ὁ λόγος" }]
+    });
+    getPassageTokens.mockRejectedValue(new Error("token db down"));
+    const signals = extractSignals("Show John 1:1");
+    const packet = await runRetrievalPlan(signals, "Show John 1:1", false);
+    expect(packet.formattedEvidence).toContain("John 1:1, SBLGNT: Ἐν ἀρχῇ ἦν ὁ λόγος"); // base passage kept
+    expect(packet.formattedEvidence).not.toContain("noun — nominative singular masculine"); // no annotations
+    expect(packet.toolTrace.some((t) => t.tool === "getPassageTokens" && t.error)).toBe(true); // failure traced
+  });
+
+  it("does not let enrichment evict a later base passage (reserve base headroom)", async () => {
+    // Two large SBLGNT passages whose base text together fits under MAX_EVIDENCE_CHARS,
+    // but would exceed it if the first is enriched — the later base must survive.
+    getPassage.mockImplementation(async ({ book, corpus }: { book: string; corpus: "SBLGNT" | "WEB" }) => ({
+      corpus,
+      references: [{
+        book, chapter: 1, verse: 1, reference: `${book} 1:1`,
+        text: corpus === "SBLGNT" ? (book === "John" ? "α".repeat(42000) : "β".repeat(15000)) : "web"
+      }]
+    }));
+    getPassageTokens.mockImplementation(async ({ book }: { book: string }) =>
+      book === "John"
+        ? Array.from({ length: 20 }, (_, i) => ({
+            surface: "λόγος", lemma: "λόγος", morphCode: "N-NSM", partOfSpeech: "N-",
+            gloss: "word", domainLabel: "Communication (33)", verse: 1, wordIndex: i
+          }))
+        : []
+    );
+    const signals = extractSignals("Compare John 1:1 and Mark 1:1");
+    const packet = await runRetrievalPlan(signals, "Compare John 1:1 and Mark 1:1", false);
+    expect(packet.formattedEvidence).toContain("Mark 1:1"); // later base passage NOT evicted by earlier enrichment
+    expect(packet.formattedEvidence).not.toContain("noun — nominative singular masculine"); // enrichment suppressed to protect base
+  });
+
   it("decodes the morph code and appends the gloss on lemma evidence", async () => {
     searchLemma.mockResolvedValue({
       lemma: "λόγος", count: 1,

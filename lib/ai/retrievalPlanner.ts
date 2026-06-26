@@ -274,24 +274,35 @@ function passageCall(
         corpus === "SBLGNT" && !crossChapter && all.length > 0 && all.length <= MAX_ENRICH_VERSES;
       if (!canEnrich) return { citations, section, traces };
 
-      const tokens = await getPassageTokens({
-        book: ref.book, chapter: ref.chapter, verseStart: shown[0].verse, verseEnd: shown[shown.length - 1].verse
-      });
-      const annotationsByVerse = new Map<number, string[]>();
-      for (const t of tokens) {
-        const [line] = formatTokenAnnotations([t], { contentOnly: enrich.contentOnly, targetLemmas: enrich.targetLemmas });
-        if (!line) continue;
-        const list = annotationsByVerse.get(t.verse) ?? [];
-        list.push(line);
-        annotationsByVerse.set(t.verse, list);
+      // Enrichment is optional: a token-fetch failure must NOT drop the already-fetched
+      // base passage. Fail open to the verse-text-only section with an error trace.
+      try {
+        const tokens = await getPassageTokens({
+          book: ref.book, chapter: ref.chapter, verseStart: shown[0].verse, verseEnd: shown[shown.length - 1].verse
+        });
+        const annotationsByVerse = new Map<number, string[]>();
+        for (const t of tokens) {
+          const [line] = formatTokenAnnotations([t], { contentOnly: enrich.contentOnly, targetLemmas: enrich.targetLemmas });
+          if (!line) continue;
+          const list = annotationsByVerse.get(t.verse) ?? [];
+          list.push(line);
+          annotationsByVerse.set(t.verse, list);
+        }
+        const enrichedLines = shown.flatMap((r) => {
+          const base = `- ${r.reference}, ${corpus}: ${r.text}`;
+          const ann = annotationsByVerse.get(r.verse) ?? [];
+          return ann.length ? [base, ...ann] : [base];
+        });
+        const enrichedSection = buildSection(enrichedLines);
+        return { citations, section, traces, enrichedSection, enrichChars: enrichedSection.length - section.length };
+      } catch (error) {
+        traces.push({
+          tool: "getPassageTokens",
+          args: { book: ref.book, chapter: ref.chapter, verseStart: shown[0].verse, verseEnd: shown[shown.length - 1].verse },
+          error: error instanceof Error ? error.message : "Unknown error"
+        });
+        return { citations, section, traces };
       }
-      const enrichedLines = shown.flatMap((r) => {
-        const base = `- ${r.reference}, ${corpus}: ${r.text}`;
-        const ann = annotationsByVerse.get(r.verse) ?? [];
-        return ann.length ? [base, ...ann] : [base];
-      });
-      const enrichedSection = buildSection(enrichedLines);
-      return { citations, section, traces, enrichedSection, enrichChars: enrichedSection.length - section.length };
     }
   };
 }
@@ -632,7 +643,15 @@ export async function runRetrievalPlan(
   const sections: string[] = [];
 
   const settled = await Promise.allSettled(plan.map((call) => call.run()));
-  const ENRICH_BUDGET = maxEnrichChars();
+  // Reserve room for every base section first: enrichment may consume only the
+  // headroom between the total base size and MAX_EVIDENCE_CHARS, so admitting
+  // annotations can never push a later base section past assembleEvidence's cap
+  // (the "degrade, never drop" contract). Falls to 0 when base alone fills the budget.
+  const totalBaseChars = settled.reduce(
+    (sum, r) => (r.status === "fulfilled" && r.value.section ? sum + r.value.section.length : sum),
+    0
+  );
+  const ENRICH_BUDGET = Math.max(0, Math.min(maxEnrichChars(), MAX_EVIDENCE_CHARS - totalBaseChars));
   let enrichSpent = 0;
   settled.forEach((result, index) => {
     if (result.status === "fulfilled") {

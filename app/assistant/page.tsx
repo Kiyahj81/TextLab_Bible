@@ -10,8 +10,9 @@ export const dynamic = "force-dynamic";
 
 export default async function AssistantPage() {
   const userId = await requirePageAuth();
-  const introDismissed = (await cookies()).get(introCookieName("assistant"))?.value === "1";
-  const autoScholarly = parseAutoScholarly((await cookies()).get(ASSISTANT_AUTO_SCHOLARLY_COOKIE)?.value);
+  const cookieStore = await cookies();
+  const introDismissed = cookieStore.get(introCookieName("assistant"))?.value === "1";
+  const autoScholarly = parseAutoScholarly(cookieStore.get(ASSISTANT_AUTO_SCHOLARLY_COOKIE)?.value);
   const generatedNotes = await prisma.generatedStudyNote.findMany({
     where: { userId },
     orderBy: { createdAt: "desc" },

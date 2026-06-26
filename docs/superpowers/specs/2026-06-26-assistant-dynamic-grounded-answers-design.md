@@ -130,7 +130,7 @@ search layer (SBLGNT only).
 
 Under each verse, emit a per-token annotation line, e.g.:
 
-```
+```text
 - John 1:1, SBLGNT: Ἐν ἀρχῇ ἦν ὁ λόγος…
     λόγος · λόγος · noun — nominative singular masculine · "word" · Communication (33)
     ἦν · εἰμί · verb — imperfect active indicative, 3rd person singular · "was" · State (13)

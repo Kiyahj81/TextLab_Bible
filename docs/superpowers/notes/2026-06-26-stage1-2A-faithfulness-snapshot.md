@@ -32,7 +32,7 @@ the trustworthy number. (Of the items only AFTER could judge: `john-3-16` 0.67, 
 
 ## Per-item (BEFORE → AFTER score; ✗ before→after)
 
-```
+```text
 0.80 -> 1.00  ✗ 3->0  agape-1cor13-lemma
 0.75 -> 1.00  ✗ 3->0  charis-eph2-lemma
 0.63 -> 0.96  ✗ 6->1  domain-88-moral-rom1

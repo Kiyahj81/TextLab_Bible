@@ -202,7 +202,7 @@ given the synthesis prompt requires a claim per textual claim; a prose-sweep har
 open follow-up — it was explicitly **out of scope** for Phase 6 (it is a change to the grounding
 verifier, not the eval harness) and is **not** closed by it.
 
-### Assistant answer quality — Stage 1 spec'd, Stage 2 planned
+### Assistant answer quality — Stage 1 landed, Stage 2 planned
 
 A two-stage arc to make assistant answers **question-shaped and text-grounded**, motivated by
 persistently low weekly-report faithfulness (the prose `answer` drifts beyond the retrieved
@@ -211,8 +211,13 @@ spec at `docs/superpowers/specs/2026-06-26-assistant-dynamic-grounded-answers-de
 evidence enrichment (per-token morphology/gloss/Louw-Nida into `formattedEvidence` for passages
 ≤25 verses), intent-shaped synthesis with a derivation-chain rule (grounded core → optional
 labeled "Going further" that must build on a stated observation), core-only deterministic
-fallback, and signal-based scholarly routing with opt-in auto-escalate (R-B). **This is proposed Stage 1 work: until it lands, the existing guardrail below still holds — scholarly use stays manual and user-initiated; Stage 1 then adds a default-off user preference for first-pass scholarly routing on complex questions, never automatic without that opt-in.** Measured by a
-manual **2A** faithfulness snapshot on the unchanged judge, then a **2B** split metric
+fallback, and signal-based scholarly routing with opt-in auto-escalate (R-B). **Stage 1 landed
+2026-06-26 (branch `feat/assistant-grounded-answers-stage-1`): scholarly use stays manual and
+user-initiated by default, plus a default-off user preference for first-pass scholarly routing on
+complex questions — never automatic without that opt-in.** Measured by a
+manual **2A** faithfulness snapshot on the unchanged judge (mean faithfulness 0.64 → 0.93 on the
+items judged in both runs, ✗ overreach 60 → 10; see
+`docs/superpowers/notes/2026-06-26-stage1-2A-faithfulness-snapshot.md`), then a **2B** split metric
 (exegetical faithfulness vs. inference-grounded rate). **Stage 2** (deferred-but-prepared):
 structured `core[]` / `goingFurther[]` answer with `derivesFrom` links, machine-checkable
 grounding, tiered rendering, and the 2B split judge — Stage 1 lays its seams. Start Stage 2

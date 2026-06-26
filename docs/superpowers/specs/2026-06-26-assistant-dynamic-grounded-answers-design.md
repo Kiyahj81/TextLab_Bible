@@ -1,6 +1,6 @@
 # Assistant: Dynamic, Grounded, Question-Shaped Answers — Design (Stage 1)
 
-*Status: design approved for spec review · 2026-06-26*
+*Status: design approved for spec review · 2026-06-26 (rev. 2 — incorporates external-review edits: retrieved-only synthesis, lexical-metadata guardrails, total enrichment budget, application-trigger rule, output examples)*
 *Scope: Stage 1 of a two-stage arc. Stage 2 (structured tiered answer) is documented as a deferred pathway at the end of this doc.*
 
 ## Problem
@@ -59,7 +59,10 @@ evidence the corpus already holds.
 
 ### Non-goals (Stage 1)
 
-- No change to the answer **rendering** (stays markdown `answer` + `claims[]`).
+- No schema or UI-component change — the answer stays a markdown `answer` + `claims[]`.
+  **Precise meaning:** "rendering unchanged" means the rendering *component* is untouched. The
+  **markdown answer shape does change** (intent-shaped structure; an optional `Going further`
+  section). Answers will not look the same — only the renderer is the same.
 - No structured-answer schema, no `derivesFrom` links, no migration, no UI restructure —
   those are **Stage 2** (documented below).
 - No change to the deterministic **eval gate** (`eval/gate.ts`): it checks citation
@@ -71,11 +74,29 @@ evidence the corpus already holds.
 > (interpretation/application) only when the question calls for it, and every such
 > statement must explicitly build on a stated observation from the core. No claim that
 > isn't traceable to the evidence. No lexical/grammatical force beyond the provided
-> morphology/glosses/domains. No outside cross-references or doctrine.
+> morphology/glosses/domains. No cross-references or doctrine **that aren't in the retrieved
+> evidence**.
 
 Interpretation is not banned — it is *required to show its work*. The failure mode we kill
 is not "the model interpreted" but "the model interpreted something that doesn't follow
 from what was retrieved."
+
+**Guardrails on the new lexical evidence** (Components 1–2):
+
+- *Retrieved-only synthesis.* "No cross-references or doctrine" means none that aren't in the
+  retrieved evidence. Connecting **retrieved** passages is encouraged — it is the point of
+  `topic-survey` — but importing **unretrieved** passages or doctrine is not.
+- *Don't overclaim from metadata.* A Louw-Nida domain label is a broad orienting category, not
+  semantic proof (e.g. "Communication (33)" orients λόγος but does **not** establish a Logos
+  theology). A token `gloss` is one context-limited English aid, not the word's full range —
+  phrase it as "the gloss given is …", not "the word means …", especially for theology-heavy
+  terms (πίστις, δικαιοσύνη, σάρξ, πνεῦμα, νόμος, κόσμος, λόγος).
+- *Only mention what's present.* Morphology / gloss / domain are unevenly populated. If a field
+  is absent for a token, omit it — never infer or invent it. The model may reference only
+  fields actually present in the evidence.
+- *SBLGNT drives claims.* Already enforced by `lib/ai/grounding.ts` (WEB mismatch is a caveat,
+  never authority) and retained here; enrichment is SBLGNT-only, so no WEB wording can drive a
+  claim where the Greek differs.
 
 ## Success criteria / how we'll know
 
@@ -119,9 +140,18 @@ Constraints:
 - **Span gate:** enrich per-token **only when the passage span ≤ 25 verses** (the project's
   existing "long passage" threshold). Above 25 verses → verse-text-only, as today.
 - **Content-word filter:** annotate content tokens only; skip a stoplist POS set
-  (article, conjunction, particle) to control volume. Tunable constant.
-- **Budget:** worst case ≈ 25 verses × ~10 content tokens × ~80 chars ≈ 20 KB, SBLGNT-only,
-  well within `MAX_EVIDENCE_CHARS` (58 KB).
+  (article, conjunction, particle) by default — **but bypass the stoplist** when (a) the intent
+  is `morphology` (function words can be the point — argument-flow conjunctions, the article in
+  grammar questions), or (b) the token is the direct target of the query's lemma/morphology
+  search. Tunable constant; exact POS set + bypass conditions are a plan detail.
+- **Total enrichment budget:** the per-passage span gate bounds a *single* passage; it does
+  **not** bound a multi-passage prompt (e.g. several short passages in one `topic-survey` or
+  comparison). Enrichment must also respect a **total enrichment budget** that composes with the
+  existing `MAX_EVIDENCE_CHARS` cap in `assembleEvidence`: enrich passages in priority order and
+  degrade later passages to verse-text-only once the budget is reached (exact threshold/mechanism
+  → plan). Worst single passage ≈ 25 verses × ~10 content tokens × ~80 chars ≈ 20 KB, SBLGNT-only.
+- **Missing data:** absent morphology / gloss / domain fields are omitted from the annotation
+  line, never placeholdered.
 
 **1b. Word/lemma/morphology/domain searches.** Those sections already carry the **raw**
 `morphCode`. Decode it via `decodeMorphCode` and append the token `gloss`. Requires adding
@@ -152,8 +182,23 @@ the hard ceiling (no per-intent hard caps in Stage 1).
 **Priority shapes to get right first: `passage-study` and `topic-survey`** (most common and
 worst-grounded today).
 
-The existing Greek-quoting rules and the `claims[]` contract in `SYNTHESIS_SYSTEM_PROMPT` are
-retained unchanged — claims remain the grounding spine.
+The existing rules in `SYNTHESIS_SYSTEM_PROMPT` are retained unchanged — the Greek-quoting
+discipline, the **English-explanation-first / every-Greek-word-glossed** rule (so the reader
+never has to translate), and the `claims[]` contract (claims remain the grounding spine).
+
+**When does the question invite "going further" (application/reflection)?** The model includes
+it only on an explicit invitation, not by default. Detection method (model judgment vs. cue
+list) is a plan detail; the rule is:
+
+- *Invites it:* "How should Christians apply this?", "What does this mean for believers?",
+  "What is the theological significance?", "How might this preach?", open "what does this
+  passage teach?" framings.
+- *Does not:* "Parse this verb.", "What does this word mean?", "Where else does this lemma
+  occur?", "Summarize / show the passage.", a bare verse lookup.
+
+Depth scales by intent and is stated **explicitly in the prompt** (brief lookup · medium
+passage/word/topic study · concise+technical morphology · longer only on escalated synthesis),
+with `max_output_tokens` as the hard ceiling.
 
 ### Component 3 — Grounded-core → "going further" prose contract
 
@@ -162,6 +207,10 @@ convention**: the grounded core comes first; if the model goes further, it appea
 clear marker (a `Going further` heading) and is phrased as derivation ("Because the text says
 X …, it follows that …"). That marker is the segmentation signal the manual judge can use and
 — critically — the **precursor to Stage 2's structured `goingFurther[]`**.
+
+**Citation behavior is unchanged.** `claims[]` stay verse-level (the `greekQuote` already pins
+the specific word within the verse); the new token annotations *inform* the prose but do **not**
+introduce token-level claim references in Stage 1 — that is a Stage 2 schema change.
 
 ### Component 4 — Deterministic fallback
 
@@ -191,15 +240,51 @@ Recommend scholarly when the prompt shows real complexity, e.g.:
 - Add a user preference **"Automatically use the scholarly model when a question warrants
   it,"** default **off** (preserves the cost guardrail and the never-automatic-*by-default*
   principle). Stored cookie-backed, consistent with the existing reader-prefs pattern (no
-  migration); the assistant request carries the flag.
+  migration); the assistant request carries the flag. The toggle's helper text should note the
+  scholarly model may be slower / more thorough.
+  - **Limitation (intentional for Stage 1):** a cookie is per-browser/per-device and not synced
+    across sessions. For authenticated users the durable home is an account/user setting; that
+    is deferred to avoid a Stage-1 migration (see Out of scope).
 - When the preference is **on** and the detector fires confidently, route to the scholarly
   model **on the first pass** (no double-run, no clicking). When **off**, behavior is the
   improved recommend-only path (the button now actually appears).
 - Keep the manual `escalate` button path intact for the off case.
 
-**Verification.** Add a test asserting that escalation / auto-route calls the scholarly model
-**exactly once**; confirm `gpt-5.4` (or `OPENAI_SCHOLARLY_MODEL`) is reachable in the target
+**Verification.** Note `synthesizeWithRefinement` can make **two** synthesis calls (an initial
+call + one refinement round), so "exactly once" is the wrong assertion. The test asserts that
+when escalated, **synthesis uses the scholarly model and the default model is never called** —
+the assertion is on *which* model, not a single call. Transient-retry, model-failure, and
+deterministic-fallback semantics are unchanged from today and their exact test definitions are
+pinned in the plan. Confirm `gpt-5.4` (or `OPENAI_SCHOLARLY_MODEL`) is reachable in the target
 account.
+
+## Output examples (target shapes, illustrative not literal)
+
+These pin the intent of the shapes; final wording is the model's. Priority shapes first.
+
+**Morphology — "Parse ἦν in John 1:1."** (concise, technical, no "going further")
+> **ἦν** (John 1:1) — verb, imperfect active indicative, 3rd person singular of **εἰμί**
+> ("to be"); the provided gloss is "was."
+
+**Passage-study — "What does John 1:14 mean?"** (grounded core; no application unless asked)
+> John 1:14 says the Word **became flesh** — **σάρξ** ("flesh") — and **ἐσκήνωσεν** ("dwelt,"
+> lit. "tabernacled") among us, and that we beheld his **δόξα** ("glory"), full of **χάρις**
+> ("grace") and **ἀλήθεια** ("truth"). The aorist **ἐγένετο** ("became") marks a real entry
+> into human existence rather than mere appearance.
+>
+> **Going further** *(included only because "what does it mean" invites it)*: Because the text
+> pairs "became flesh" with "dwelt among us," the verse presents the incarnation as God taking
+> up residence with his people — an inference that rests on σὰρξ ἐγένετο and ἐσκήνωσεν above, not
+> on outside doctrine.
+
+**Topic-survey — "Verses about reconciliation."** (synthesize the *retrieved* set only)
+> Across the retrieved passages, reconciliation centers on **καταλλαγή / καταλλάσσω**: Rom 5:10–11
+> (reconciled to God through the death of his Son), 2 Cor 5:18–20 (the ministry of
+> reconciliation), Col 1:20–22, Eph 2:16.
+>
+> **Going further**: The thread connecting *these retrieved passages* is that God is the
+> reconciler and Christ's death is the means — a synthesis of the verses above, with no passage
+> imported beyond what was retrieved.
 
 ## Measurement plan (2A now, 2B next)
 
@@ -210,6 +295,10 @@ account.
   interpretation means a *better* answer can still score lower on the old single number, we
   read both the absolute score **and** the ✗ composition. Consider adding a few
   `passage-study` / `topic-survey` golden items to sharpen the signal on the priority shapes.
+  Expect `Going further` statements to **stay noisy** under the unchanged judge (it can't see
+  the derivation link). Manually triage each `Going further` ✗ as either a **defensible
+  derivation** (follows from a grounded observation — judge blind spot) or a **genuine leap**
+  (the failure we're killing). That triage is the raw material that designs the 2B rubric.
 - **2B (designed from 2A results):** split the judge into two honest metrics —
   *exegetical faithfulness* (textual claims supported by evidence; must stay high) and
   *inference-grounded rate* (fraction of interpretive statements that demonstrably follow
@@ -225,12 +314,17 @@ account.
   intent→shape selection and derivation-chain prompt directives, mirroring existing
   `tests/unit/lib/ai/synthesis.test.ts` prompt assertions (Component 2); core-only fallback
   shape (Component 4); routing detection fires on complex prompts and not on simple ones,
-  and escalation calls the scholarly model exactly once (Component 5).
+  and escalation routes synthesis to the scholarly model, not the default (Component 5).
 - Integration (Neon test branch): the new `getPassageTokens` query path; enriched word-search
   glosses.
 - Acceptance: `scripts/acceptance-test.js` assertions are pinned to corpus counts and answer
   shape — review for any answer-shape assertions that the new format changes, and update in
   lockstep (not caught by `npm run verify`).
+- **Test-impact sweep (broader than acceptance):** review every test that asserts answer
+  wording / headings / markdown structure, `claims` counts, prompt directives, or routing
+  behavior — at minimum `tests/unit/lib/ai/synthesis.test.ts`, `tests/unit/lib/ai/modelRouter.test.ts`,
+  `tests/unit/components/AiAssistant-scholarly.test.tsx`, `tests/unit/lib/ai/assistant.test.ts`,
+  `tests/unit/api/assistant-route.test.ts`. Update in lockstep with the new shapes.
 
 ## Risks & mitigations
 
@@ -245,9 +339,21 @@ account.
 ## Out of scope (Stage 1)
 
 - Structured tiered answer schema, rendering, persistence (Stage 2).
+- **Token-level claim evidence references** — would change the `claims[]` schema (Stage 2).
+- **Moving the auto-escalate preference into a DB account/user setting** — needs a migration
+  excluded from Stage 1; cookie-backed preference is used instead, with the account-setting
+  noted as the future home.
 - Runtime self-critique / refinement loop (the original "Approach 3" — held in reserve).
 - Prose-sweep grounding of inline references (separate existing follow-up in
   `docs/PROJECT_STATE.md`).
+
+## Deferred to the implementation plan (mechanics, not design)
+
+These are intentionally left at design altitude here and pinned when the plan is written: the
+exact synthesis prompt strings for every shape/guardrail; the content-word POS stoplist and its
+bypass conditions; the total-enrichment-budget threshold and degradation order; token-annotation
+ordering (verse then `wordIndex`); the application-trigger detection method (model judgment vs.
+cue list); and the escalation retry / model-failure / fallback test definitions.
 
 ---
 

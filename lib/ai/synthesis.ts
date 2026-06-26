@@ -300,19 +300,11 @@ export async function synthesizeWithRefinement(input: SynthesisInput): Promise<S
 
 export function buildDeterministicFallback(prompt: string, evidence: EvidencePacket): string {
   const hasEvidence = evidence.citations.length > 0;
-  return [
-    `Textual observations: TextLab retrieved the following evidence for "${prompt.trim()}".`,
-    "",
-    evidence.formattedEvidence,
-    "",
-    hasEvidence
-      ? "Interpretive suggestion: Any summary should stay limited to the retrieved occurrences above; the pattern is visible only where the corpus contains matching tokens."
-      : "Interpretive suggestion: No corpus evidence was retrieved, so no grounded interpretation can be offered for this prompt.",
-    "",
-    hasEvidence
-      ? "Application/reflection: Use the cited references as the starting point before making broader theological claims."
-      : "Application/reflection: Try rephrasing the question around a specific passage, Greek word, or reference so TextLab can retrieve supporting text."
-  ].join("\n");
+  const header = `Grounded evidence TextLab retrieved for "${prompt.trim()}":`;
+  const footer = hasEvidence
+    ? "These are the cited occurrences from the corpus; treat them as the basis for any further study."
+    : "No corpus evidence matched. Try rephrasing around a specific passage, Greek word, or reference so TextLab can retrieve supporting text.";
+  return [header, "", evidence.formattedEvidence, "", footer].join("\n");
 }
 
 export function buildRefusalAnswer(

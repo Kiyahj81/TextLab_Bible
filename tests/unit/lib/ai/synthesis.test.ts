@@ -293,25 +293,18 @@ describe("synthesizeWithRefinement", () => {
 });
 
 describe("buildDeterministicFallback", () => {
-  it("renders a three-section answer from the evidence", async () => {
+  it("returns a grounded core with no forced interpretation/application sections", async () => {
     const { buildDeterministicFallback } = await import("@/lib/ai/synthesis");
-    const text = buildDeterministicFallback("What does νόμος mean?", evidence);
-
-    expect(text).toContain("Textual observations");
-    expect(text).toContain("Interpretive suggestion");
-    expect(text).toContain("Application/reflection");
-    expect(text).toContain("νόμος");
+    const text = buildDeterministicFallback("What does John 1:1 say?", evidence);
+    expect(text).toContain(evidence.formattedEvidence);
+    expect(text).not.toContain("Interpretive suggestion");
+    expect(text).not.toContain("Application/reflection");
   });
 
-  it("explains when no evidence was retrieved", async () => {
+  it("guides a rephrase when no evidence was retrieved", async () => {
     const { buildDeterministicFallback } = await import("@/lib/ai/synthesis");
-    const text = buildDeterministicFallback("anything", {
-      citations: [],
-      toolTrace: [],
-      formattedEvidence: "No retrieval signals produced evidence from the corpus."
-    });
-
-    expect(text).toContain("No retrieval signals produced evidence from the corpus.");
+    const empty = { citations: [], toolTrace: [], formattedEvidence: "No retrieval signals produced evidence from the corpus." };
+    expect(buildDeterministicFallback("xyz", empty).toLowerCase()).toContain("rephras");
   });
 });
 

@@ -94,8 +94,10 @@ export function routeAssistantPrompt(
 }
 
 const SCHOLARLY_CUE_RE =
-  /\b(scholarly|deep synthesis|theological nuance|interpretive options|reconcile|reconciliation between|tension|paradox|harmoniz)/i;
+  /\b(scholarly|deep synthesis|theological nuance|interpretive options|reconcile|reconciliation between|tension|paradox|harmoniz|ambiguity|ambiguous)/i;
 const HOW_CAN_BOTH_RE = /\bhow (can|do|does)\b[\s\S]{0,60}\band\b/i;
+// "why does/do/did …" is interpretive/synthesis framing the spec calls out explicitly.
+const WHY_FRAMING_RE = /\bwhy (do|does|did)\b/i;
 
 export function recommendScholarlyUpgrade(prompt: string, signals?: Signals): RecommendedUpgrade | undefined {
   const distinctBooks = new Set((signals?.references ?? []).map((r) => r.book)).size;
@@ -107,6 +109,7 @@ export function recommendScholarlyUpgrade(prompt: string, signals?: Signals): Re
     distinctBooks >= 2 ||
     SCHOLARLY_CUE_RE.test(prompt) ||
     HOW_CAN_BOTH_RE.test(prompt) ||
+    WHY_FRAMING_RE.test(prompt) ||
     topicCount >= 3 ||
     longPrompt;
 

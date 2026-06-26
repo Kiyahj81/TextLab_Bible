@@ -75,6 +75,14 @@ describe("recommendScholarlyUpgrade", () => {
   it("still honors an explicit scholarly cue", () => {
     expect(rec("Give a deep synthesis of atonement")?.modelRole).toBe("scholarly");
   });
+
+  it("recommends scholarly on an ambiguity cue", () => {
+    expect(rec("Explain the ambiguity in this passage")?.modelRole).toBe("scholarly");
+  });
+
+  it("recommends scholarly on 'why does' interpretive framing", () => {
+    expect(rec("Why does Paul emphasize faith?")?.modelRole).toBe("scholarly");
+  });
 });
 
 describe("getModelForRole", () => {

@@ -25,17 +25,35 @@ describe("routeAssistantPrompt", () => {
   });
 
   it("attaches an advisory scholarly upgrade when scholarly cues are present", () => {
-    const decision = routeAssistantPrompt("Give a scholarly analysis of the interpretive options");
+    const prompt = "Give a scholarly analysis of the interpretive options";
+    const decision = routeAssistantPrompt(prompt, { signals: extractSignals(prompt) });
     expect(decision.modelRole).toBe("default");
     expect(decision.recommendedUpgrade?.modelRole).toBe("scholarly");
   });
 
   it("escalates to the scholarly model when escalate is requested", () => {
-    const decision = routeAssistantPrompt("Give a scholarly analysis", true);
+    const decision = routeAssistantPrompt("Give a scholarly analysis", { escalate: true });
     expect(decision.modelRole).toBe("scholarly");
     expect(decision.modelUsed).toBe("gpt-5.4");
     // Already escalated — no further upgrade should be advised.
     expect(decision.recommendedUpgrade).toBeUndefined();
+  });
+
+  it("auto-escalates on the first pass when autoEscalate is on and the prompt is complex", () => {
+    const prompt = "How do Paul in Romans and James reconcile faith and works?";
+    const decision = routeAssistantPrompt(prompt, { autoEscalate: true, signals: extractSignals(prompt) });
+    expect(decision.modelRole).toBe("scholarly");
+  });
+
+  it("does NOT auto-escalate a simple prompt even when autoEscalate is on", () => {
+    const prompt = "What does John 1:1 say?";
+    const decision = routeAssistantPrompt(prompt, { autoEscalate: true, signals: extractSignals(prompt) });
+    expect(decision.modelRole).toBe("default");
+  });
+
+  it("manual escalate still wins regardless of complexity", () => {
+    const decision = routeAssistantPrompt("Show Romans 7", { escalate: true });
+    expect(decision.modelRole).toBe("scholarly");
   });
 });
 

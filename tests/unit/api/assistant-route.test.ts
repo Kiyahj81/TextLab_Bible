@@ -103,12 +103,27 @@ describe("POST /api/assistant", () => {
   it("passes a user-confirmed escalate flag through to the assistant", async () => {
     const res = await POST(jsonRequest({ prompt: "deep synthesis", escalate: true }));
     expect(res.status).toBe(200);
-    expect(assistantMock).toHaveBeenCalledWith("deep synthesis", { escalate: true });
+    expect(assistantMock).toHaveBeenCalledWith("deep synthesis", { escalate: true, autoEscalate: false });
   });
 
   it("defaults escalate to false when omitted", async () => {
     await POST(jsonRequest({ prompt: "What is logos?" }));
-    expect(assistantMock).toHaveBeenCalledWith("What is logos?", { escalate: false });
+    expect(assistantMock).toHaveBeenCalledWith("What is logos?", { escalate: false, autoEscalate: false });
+  });
+
+  it("accepts autoEscalate: true and forwards it to the assistant", async () => {
+    const res = await POST(jsonRequest({ prompt: "how does faith reconcile with works", autoEscalate: true }));
+    expect(res.status).toBe(200);
+    expect(assistantMock).toHaveBeenCalledWith(
+      "how does faith reconcile with works",
+      { escalate: false, autoEscalate: true }
+    );
+  });
+
+  it("rejects a non-boolean autoEscalate with 400", async () => {
+    const res = await POST(jsonRequest({ prompt: "x", autoEscalate: "yes" }));
+    expect(res.status).toBe(400);
+    expect(assistantMock).not.toHaveBeenCalled();
   });
 
   it("rejects a non-boolean escalate with 400", async () => {

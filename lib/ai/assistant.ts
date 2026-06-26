@@ -39,10 +39,16 @@ export type AssistantAnswer = {
 
 export async function answerBibleQuestion(
   prompt: string,
-  options: { escalate?: boolean } = {}
+  options: { escalate?: boolean; autoEscalate?: boolean } = {}
 ): Promise<AssistantAnswer> {
-  const routing = routeAssistantPrompt(prompt, options.escalate ?? false);
+  // Compute signals first so they can be forwarded to the router for complexity
+  // detection (auto-escalation) without re-running signal extraction later.
   const signals = extractSignals(prompt);
+  const routing = routeAssistantPrompt(prompt, {
+    escalate: options.escalate ?? false,
+    autoEscalate: options.autoEscalate ?? false,
+    signals
+  });
   // Resolve live-mode once and pass it into retrieval. Remote semantic retrieval
   // embeds the prompt via OpenAI, so it must honor the same kill switch as synthesis
   // (no embedding egress/spend when live is disabled) — and skipping it also frees its

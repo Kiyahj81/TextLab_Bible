@@ -92,6 +92,21 @@ describe("answerBibleQuestion orchestration", () => {
     );
   });
 
+  it("auto-escalates on the first pass when autoEscalate is on and the prompt is complex", async () => {
+    isLiveAssistantEnabled.mockReturnValue(true);
+    synthesizeWithRefinement.mockResolvedValue({ answer: "AUTO-SCHOLARLY", claims: [], citations: [], toolTrace: [] });
+
+    const answer = await answerBibleQuestion(
+      "How do Paul in Romans and James reconcile faith and works?",
+      { autoEscalate: true }
+    );
+
+    expect(answer.modelRole).toBe("scholarly");
+    expect(synthesizeWithRefinement).toHaveBeenCalledWith(
+      expect.objectContaining({ routing: expect.objectContaining({ modelRole: "scholarly" }) })
+    );
+  });
+
   it("falls back when live synthesis returns null", async () => {
     isLiveAssistantEnabled.mockReturnValue(true);
     synthesizeWithRefinement.mockResolvedValue(null);

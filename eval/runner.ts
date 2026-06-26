@@ -145,9 +145,10 @@ export async function runWithJudge(item: GoldenItem): Promise<RunResult> {
     synthesisStatus = "skipped-no-key";
   } else {
     try {
-      const routing = routeAssistantPrompt(item.question, false);
+      const intent = extractSignals(item.question).intent;
+      const routing = routeAssistantPrompt(item.question);          // no auto-escalation in eval
       synthesisModel = routing.modelUsed;
-      const synth = await synthesizeWithRefinement({ prompt: item.question, evidence, routing });
+      const synth = await synthesizeWithRefinement({ prompt: item.question, evidence, routing, intent });
       if (synth) {
         answer = synth.answer;
         synthesisStatus = "ran";

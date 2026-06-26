@@ -54,9 +54,13 @@ export function isLiveAssistantEnabled() {
   return Boolean(process.env.OPENAI_API_KEY?.trim()) && process.env.TEXTLAB_ASSISTANT_DISABLE_LIVE !== "1";
 }
 
-export function routeAssistantPrompt(prompt: string, escalate = false): RoutingDecision {
-  // Escalation is always user-confirmed — the router never selects the scholarly
-  // model on its own; it only advises it via recommendedUpgrade.
+export function routeAssistantPrompt(
+  prompt: string,
+  options: { escalate?: boolean; autoEscalate?: boolean; signals?: Signals } = {}
+): RoutingDecision {
+  const { escalate = false, autoEscalate = false, signals } = options;
+
+  // Manual escalation is always honoured — the user has explicitly confirmed it.
   if (escalate) {
     return {
       modelRole: "scholarly",
@@ -65,7 +69,19 @@ export function routeAssistantPrompt(prompt: string, escalate = false): RoutingD
     };
   }
 
-  const recommendedUpgrade = recommendScholarlyUpgrade(prompt);
+  const recommendedUpgrade = recommendScholarlyUpgrade(prompt, signals);
+
+  // Opt-in first-pass auto-escalation: when the user has turned on auto-scholarly
+  // AND this question looks complex, go scholarly on the first pass without
+  // requiring an extra round-trip confirmation.
+  if (autoEscalate && recommendedUpgrade) {
+    return {
+      modelRole: "scholarly",
+      modelUsed: getModelForRole("scholarly"),
+      routingDecision:
+        "Auto-escalated to the scholarly model (auto-scholarly is on and this question looks complex)."
+    };
+  }
 
   return {
     modelRole: "default",

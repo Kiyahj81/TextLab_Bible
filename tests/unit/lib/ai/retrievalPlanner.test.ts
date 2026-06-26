@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import {
   ENGLISH_PHRASE_TO_GREEK_LEMMA,
   ENGLISH_TO_GREEK_LEMMA,
@@ -6,7 +6,7 @@ import {
   type Signals
 } from "@/lib/ai/signals";
 
-const { getPassage, searchLemma, searchKeyword, searchMorphology, getTopLemmas, findLemmaExamples, searchSemanticDetailed, searchDomain } =
+const { getPassage, searchLemma, searchKeyword, searchMorphology, getTopLemmas, findLemmaExamples, searchSemanticDetailed, searchDomain, getPassageTokens } =
   vi.hoisted(() => ({
     getPassage: vi.fn(),
     searchLemma: vi.fn(),
@@ -15,7 +15,8 @@ const { getPassage, searchLemma, searchKeyword, searchMorphology, getTopLemmas, 
     getTopLemmas: vi.fn(),
     findLemmaExamples: vi.fn(),
     searchSemanticDetailed: vi.fn(),
-    searchDomain: vi.fn()
+    searchDomain: vi.fn(),
+    getPassageTokens: vi.fn()
   }));
 
 vi.mock("@/lib/search", () => ({
@@ -27,6 +28,7 @@ vi.mock("@/lib/search", () => ({
   findLemmaExamples,
   searchSemanticDetailed,
   searchDomain,
+  getPassageTokens,
   SEMANTIC_INDEX_CORPUS: "WEB"
 }));
 
@@ -99,6 +101,8 @@ beforeEach(() => {
     pagination: {}
   }));
   searchSemanticDetailed.mockResolvedValue(semanticResult([]));
+  getPassageTokens.mockReset();
+  getPassageTokens.mockResolvedValue([]);
   getTopLemmas.mockResolvedValue([{ lemma: "λόγος", partOfSpeech: "N-", count: 10 }]);
   findLemmaExamples.mockResolvedValue(
     new Map([
@@ -118,6 +122,10 @@ beforeEach(() => {
       ]
     ])
   );
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 describe("runRetrievalPlan", () => {
@@ -646,6 +654,45 @@ describe("runRetrievalPlan", () => {
     );
 
     expect(packet.toolTrace.some((t) => t.tool === "searchDomain")).toBe(true);
+  });
+
+  it("annotates a ≤25-verse SBLGNT passage with per-token morphology/gloss", async () => {
+    getPassage.mockResolvedValue({
+      corpus: "SBLGNT",
+      references: [{ book: "John", chapter: 1, verse: 1, reference: "John 1:1", text: "Ἐν ἀρχῇ ἦν ὁ λόγος" }]
+    });
+    getPassageTokens.mockResolvedValue([
+      { surface: "λόγος", lemma: "λόγος", morphCode: "N-NSM", partOfSpeech: "N-", gloss: "word", domainLabel: "Communication (33)", verse: 1, wordIndex: 4 }
+    ]);
+    const signals = extractSignals("Show John 1:1");
+    const packet = await runRetrievalPlan(signals, "Show John 1:1", false);
+    expect(packet.formattedEvidence).toContain('λόγος · λόγος · noun — nominative singular masculine · "word"');
+  });
+
+  it("does NOT annotate a >25-verse passage", async () => {
+    const refs = Array.from({ length: 30 }, (_, i) => ({ book: "John", chapter: 1, verse: i + 1, reference: `John 1:${i + 1}`, text: "…" }));
+    getPassage.mockResolvedValue({ corpus: "SBLGNT", references: refs });
+    getPassageTokens.mockResolvedValue([]);
+    const signals = extractSignals("Show John 1");
+    await runRetrievalPlan(signals, "Show John 1", false);
+    expect(getPassageTokens).not.toHaveBeenCalled();
+  });
+
+  it("degrades later passages to verse-text-only once the enrichment char budget is spent", async () => {
+    vi.stubEnv("TEXTLAB_MAX_ENRICH_CHARS", "120"); // only the first passage's annotation fits
+    getPassage.mockImplementation(async ({ book, corpus }: { book: string; corpus: "SBLGNT" | "WEB" }) => ({
+      corpus,
+      references: [{ book, chapter: 1, verse: 1, reference: `${book} 1:1`, text: "Ἐν ἀρχῇ ἦν ὁ λόγος" }]
+    }));
+    getPassageTokens.mockResolvedValue([
+      { surface: "λόγος", lemma: "λόγος", morphCode: "N-NSM", partOfSpeech: "N-", gloss: "word", domainLabel: "Communication (33)", verse: 1, wordIndex: 4 }
+    ]);
+    const signals = extractSignals("Compare John 1:1 and Mark 1:1");
+    const packet = await runRetrievalPlan(signals, "Compare John 1:1 and Mark 1:1", false);
+    expect(packet.formattedEvidence).toContain("John 1:1");   // both passages still present
+    expect(packet.formattedEvidence).toContain("Mark 1:1");
+    const annotated = packet.formattedEvidence.split("noun — nominative singular masculine").length - 1;
+    expect(annotated).toBe(1);                                // only the first was enriched (budget spent)
   });
 });
 

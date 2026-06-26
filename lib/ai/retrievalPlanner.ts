@@ -4,6 +4,7 @@ import { ENGLISH_TO_GREEK_LEMMA, type DomainQuerySignal, type ParsedReference, t
 import {
   findLemmaExamples,
   getPassage,
+  getPassageTokens,
   getTopLemmas,
   searchDomain,
   searchKeyword,
@@ -12,6 +13,7 @@ import {
   searchSemanticDetailed
 } from "@/lib/search";
 import { parseReference } from "@/lib/references";
+import { formatTokenAnnotations } from "@/lib/ai/passageEvidence";
 
 export type EvidencePacket = {
   citations: AssistantCitation[];
@@ -104,7 +106,13 @@ function classifyTopicTerms(signals: Signals, prompt: string): PlannedTopicTerms
   return { deterministicWords, semanticKeywordTerms };
 }
 
-type CallResult = { citations: AssistantCitation[]; section: string; traces: ToolTraceEntry[] };
+type CallResult = {
+  citations: AssistantCitation[];
+  section: string;            // verse-text-only (base)
+  traces: ToolTraceEntry[];
+  enrichedSection?: string;   // SBLGNT passage with per-token annotations (≤25 verses, single chapter)
+  enrichChars?: number;       // extra chars vs the base section
+};
 
 type PlannedCall = {
   key: string;
@@ -139,6 +147,18 @@ function assembleEvidence(sections: string[]): string {
     ? "\n\n…(further evidence omitted to keep the answer within the saved-note limit; narrow the request for the rest)"
     : "";
   return kept.join("\n\n") + marker;
+}
+
+// Per-passage span gate: only SBLGNT passages ≤ this many fetched verses are eligible for
+// per-token annotation (matches the project "long passage" threshold).
+const MAX_ENRICH_VERSES = 25;
+
+// Whole-packet char budget for per-token annotations. Kept well under
+// MAX_EVIDENCE_CHARS (58 000) so enrichment never evicts base evidence in
+// assembleEvidence. Env-overridable so a test can force the degrade path.
+function maxEnrichChars(): number {
+  const raw = Number.parseInt(process.env.TEXTLAB_MAX_ENRICH_CHARS?.trim() ?? "", 10);
+  return Number.isFinite(raw) && raw >= 0 ? raw : 18_000;
 }
 
 // "to end of chapter" upper bound (no NT chapter exceeds this).
@@ -179,7 +199,11 @@ function passageSegments(ref: ParsedReference): PassageSegment[] {
   return segments;
 }
 
-function passageCall(corpus: "SBLGNT" | "WEB", ref: ParsedReference): PlannedCall {
+function passageCall(
+  corpus: "SBLGNT" | "WEB",
+  ref: ParsedReference,
+  enrich: { contentOnly: boolean; targetLemmas: ReadonlySet<string> }
+): PlannedCall {
   const segments = passageSegments(ref);
   const crossChapter = ref.chapterEnd !== undefined && ref.chapterEnd !== ref.chapter;
   const endVersePart = ref.verseEnd !== undefined ? `:${ref.verseEnd}` : "";
@@ -231,16 +255,42 @@ function passageCall(corpus: "SBLGNT" | "WEB", ref: ParsedReference): PlannedCal
         chapter: r.chapter,
         verse: r.verse
       }));
-      const lines = shown.map((r) => `- ${r.reference}, ${corpus}: ${r.text}`);
       const heading = `getPassage(${label}, ${corpus})`;
       // When the ceiling cut the fetch short, `all` only counts the fetched prefix,
       // so the usual "(N more)" count would understate the omission and could vanish
       // if the prefix lands exactly on the ceiling. Emit an explicit truncation
       // marker instead, so the synthesis model never reads it as complete.
-      const section = truncatedByCeiling
-        ? `### ${heading}\n${lines.join("\n")}\n…(truncated at ${MAX_PASSAGE_LINES}-line ceiling; request a narrower range for the full passage)`
-        : sectionBlock(heading, lines, all.length);
-      return { citations, section, traces };
+      const buildSection = (lines: string[]) =>
+        truncatedByCeiling
+          ? `### ${heading}\n${lines.join("\n")}\n…(truncated at ${MAX_PASSAGE_LINES}-line ceiling; request a narrower range for the full passage)`
+          : sectionBlock(heading, lines, all.length);
+
+      const baseLines = shown.map((r) => `- ${r.reference}, ${corpus}: ${r.text}`);
+      const section = buildSection(baseLines);
+
+      // Only a small, single-chapter SBLGNT passage is eligible to enrich.
+      const canEnrich =
+        corpus === "SBLGNT" && !crossChapter && all.length > 0 && all.length <= MAX_ENRICH_VERSES;
+      if (!canEnrich) return { citations, section, traces };
+
+      const tokens = await getPassageTokens({
+        book: ref.book, chapter: ref.chapter, verseStart: shown[0].verse, verseEnd: shown[shown.length - 1].verse
+      });
+      const annotationsByVerse = new Map<number, string[]>();
+      for (const t of tokens) {
+        const [line] = formatTokenAnnotations([t], { contentOnly: enrich.contentOnly, targetLemmas: enrich.targetLemmas });
+        if (!line) continue;
+        const list = annotationsByVerse.get(t.verse) ?? [];
+        list.push(line);
+        annotationsByVerse.set(t.verse, list);
+      }
+      const enrichedLines = shown.flatMap((r) => {
+        const base = `- ${r.reference}, ${corpus}: ${r.text}`;
+        const ann = annotationsByVerse.get(r.verse) ?? [];
+        return ann.length ? [base, ...ann] : [base];
+      });
+      const enrichedSection = buildSection(enrichedLines);
+      return { citations, section, traces, enrichedSection, enrichChars: enrichedSection.length - section.length };
     }
   };
 }
@@ -515,9 +565,11 @@ function buildPlan(signals: Signals, prompt: string, semanticEnabled: boolean): 
     add(domainCall(signals.domainQuery, scope));
   }
 
+  const targetLemmas = new Set(signals.greekWords);
+  const contentOnly = signals.intent !== "morphology";
   for (const ref of signals.references) {
-    add(passageCall("SBLGNT", ref));
-    add(passageCall("WEB", ref));
+    add(passageCall("SBLGNT", ref, { contentOnly, targetLemmas }));
+    add(passageCall("WEB", ref, { contentOnly, targetLemmas })); // WEB never enriches (canEnrich requires SBLGNT)
   }
 
   for (const lemma of signals.greekWords) {
@@ -574,11 +626,19 @@ export async function runRetrievalPlan(
   const sections: string[] = [];
 
   const settled = await Promise.allSettled(plan.map((call) => call.run()));
+  const ENRICH_BUDGET = maxEnrichChars();
+  let enrichSpent = 0;
   settled.forEach((result, index) => {
     if (result.status === "fulfilled") {
       citations.push(...result.value.citations);
       toolTrace.push(...result.value.traces);
-      if (result.value.section) sections.push(result.value.section);
+      const { section, enrichedSection, enrichChars = 0 } = result.value;
+      if (enrichedSection && enrichSpent + enrichChars <= ENRICH_BUDGET) {
+        sections.push(enrichedSection);
+        enrichSpent += enrichChars; // later passages degrade to verse-text-only once spent
+      } else if (section) {
+        sections.push(section);
+      }
     } else {
       const message = result.reason instanceof Error ? result.reason.message : "Unknown error";
       toolTrace.push({ ...plan[index].errorTrace, error: message });

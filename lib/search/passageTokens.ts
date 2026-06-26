@@ -33,9 +33,11 @@ export async function getPassageTokens(input: {
   });
 
   // Resolve the primary Louw-Nida domain code → "Label (NN)", same source as the reader.
+  // `lnDomain` is a non-null array (Prisma `@default([])`), so indexing is already safe;
+  // the optional-chain is defensive belt-and-suspenders for absent metadata.
   const domainCodes = new Set<string>();
   for (const t of tokens) {
-    const primary = t.lnDomain[0];
+    const primary = t.lnDomain?.[0];
     if (primary) domainCodes.add(primary.slice(0, 3));
   }
   const labelRows = domainCodes.size
@@ -47,7 +49,7 @@ export async function getPassageTokens(input: {
   const labels = new Map(labelRows.map((r) => [r.code, r.label]));
 
   return tokens.map((t) => {
-    const code = t.lnDomain[0]?.slice(0, 3);
+    const code = t.lnDomain?.[0]?.slice(0, 3);
     const label = code ? labels.get(code) : undefined;
     return {
       surface: t.surface,

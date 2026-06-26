@@ -14,6 +14,7 @@ import {
 } from "@/lib/search";
 import { parseReference } from "@/lib/references";
 import { formatTokenAnnotations } from "@/lib/ai/passageEvidence";
+import { decodeMorphCode } from "@/lib/morphology";
 
 export type EvidencePacket = {
   citations: AssistantCitation[];
@@ -312,9 +313,11 @@ function lemmaCall(lemma: string, scope: Scope): PlannedCall {
         toolName: "searchLemma",
         tokenId: r.tokenId
       }));
-      const lines = res.results
-        .slice(0, MAX_WORD_SAMPLE)
-        .map((r) => `| ${r.reference} | ${r.surface} | ${r.morphCode} | ${r.verseText} |`);
+      const lines = res.results.slice(0, MAX_WORD_SAMPLE).map((r) => {
+        const morph = r.morphCode ? decodeMorphCode(r.morphCode) ?? r.morphCode : "";
+        const gloss = r.gloss ? ` "${r.gloss}"` : "";
+        return `| ${r.reference} | ${r.surface} | ${morph}${gloss} | ${r.verseText} |`;
+      });
       return {
         citations,
         section: sectionBlock(`searchLemma(${label}) — ${res.count} hit(s)`, lines, res.count),
@@ -345,9 +348,11 @@ function domainCall(query: DomainQuerySignal, scope: Scope): PlannedCall {
         toolName: "searchDomain",
         tokenId: r.tokenId
       }));
-      const lines = res.results
-        .slice(0, MAX_WORD_SAMPLE)
-        .map((r) => `| ${r.reference} | ${r.surface} | ${r.morphCode} | ${r.verseText} |`);
+      const lines = res.results.slice(0, MAX_WORD_SAMPLE).map((r) => {
+        const morph = r.morphCode ? decodeMorphCode(r.morphCode) ?? r.morphCode : "";
+        const gloss = r.gloss ? ` "${r.gloss}"` : "";
+        return `| ${r.reference} | ${r.surface} | ${morph}${gloss} | ${r.verseText} |`;
+      });
       return {
         citations,
         section: sectionBlock(`searchDomain(${label}) — ${res.count} hit(s)`, lines, res.count),
@@ -404,9 +409,10 @@ function morphCall(code: string, mode: "exact" | "prefix", scope: Scope): Planne
         toolName: "searchMorphology",
         tokenId: r.tokenId
       }));
-      const lines = res.results
-        .slice(0, MAX_WORD_SAMPLE)
-        .map((r) => `| ${r.reference} | ${r.surface} | ${r.lemma} | ${r.morphCode} |`);
+      const lines = res.results.slice(0, MAX_WORD_SAMPLE).map((r) => {
+        const morph = r.morphCode ? decodeMorphCode(r.morphCode) ?? r.morphCode : "";
+        return `| ${r.reference} | ${r.surface} | ${r.lemma} | ${morph} |`;
+      });
       return {
         citations,
         section: sectionBlock(`searchMorphology(${label}) — ${res.count} hit(s)`, lines, res.count),

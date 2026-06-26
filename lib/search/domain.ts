@@ -76,6 +76,7 @@ export async function searchDomain(
     chapter: input.chapter
   };
 
+  // `gloss` is a scalar column returned by default; surfaced via hydrateTokens for evidence.
   const [total, tokens] = await Promise.all([
     prisma.token.count({ where }),
     prisma.token.findMany({

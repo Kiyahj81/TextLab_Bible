@@ -694,6 +694,18 @@ describe("runRetrievalPlan", () => {
     const annotated = packet.formattedEvidence.split("noun — nominative singular masculine").length - 1;
     expect(annotated).toBe(1);                                // only the first was enriched (budget spent)
   });
+
+  it("decodes the morph code and appends the gloss on lemma evidence", async () => {
+    searchLemma.mockResolvedValue({
+      lemma: "λόγος", count: 1,
+      results: [{ reference: "John 1:1", surface: "λόγος", morphCode: "N-NSM", gloss: "word", verseText: "Ἐν ἀρχῇ…", corpus: "SBLGNT", tokenId: "t1" }],
+      pagination: { page: 1, pageSize: 25, total: 1, pageCount: 1 }
+    });
+    const signals = extractSignals("How is λόγος used?");
+    const packet = await runRetrievalPlan(signals, "How is λόγος used?", false);
+    expect(packet.formattedEvidence).toContain("noun — nominative singular masculine");
+    expect(packet.formattedEvidence).toContain('"word"');
+  });
 });
 
 describe("shouldRunSemantic", () => {

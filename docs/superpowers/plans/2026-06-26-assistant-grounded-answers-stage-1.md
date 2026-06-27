@@ -829,7 +829,7 @@ Replace `recommendScholarlyUpgrade` in `lib/ai/modelRouter.ts`:
 import type { Signals } from "@/lib/ai/signals";
 
 const SCHOLARLY_CUE_RE =
-  /\b(scholarly|deep synthesis|theological nuance|interpretive options|reconcile|reconciliation between|tension|paradox|harmoniz)/i;
+  /\b(scholarly|deep synthesis|theological nuance|interpretive options|reconcile|reconciliation between|tension|paradox|harmonize)/i;
 const HOW_CAN_BOTH_RE = /\bhow (can|do|does)\b[\s\S]{0,60}\band\b/i;
 
 export function recommendScholarlyUpgrade(prompt: string, signals?: Signals): RecommendedUpgrade | undefined {

@@ -94,7 +94,7 @@ export function routeAssistantPrompt(
 }
 
 const SCHOLARLY_CUE_RE =
-  /\b(scholarly|deep synthesis|theological nuance|interpretive options|reconcile|reconciliation between|tension|paradox|harmoniz|ambiguity|ambiguous)/i;
+  /\b(scholarly|deep synthesis|theological nuance|interpretive options|reconcile|reconciliation between|tension|paradox|harmonize|ambiguity|ambiguous)/i;
 const HOW_CAN_BOTH_RE = /\bhow (can|do|does)\b[\s\S]{0,60}\band\b/i;
 // "why does/do/did …" is interpretive/synthesis framing the spec calls out explicitly.
 const WHY_FRAMING_RE = /\bwhy (do|does|did)\b/i;

@@ -247,8 +247,18 @@ describe("detectIntent", () => {
     expect(detectIntent("What does νόμος mean?")).toBe("word-study");
   });
 
-  it("classifies a show/read request as passage-study", () => {
-    expect(detectIntent("Show me Romans 7")).toBe("passage-study");
+  it("classifies an explicit recite/show request as passage-recite", () => {
+    expect(detectIntent("Show me Romans 7")).toBe("passage-recite");
+    expect(detectIntent("What does John 3:16 say?")).toBe("passage-recite");
+    expect(detectIntent("What is written in Matthew 6:9?")).toBe("passage-recite");
+  });
+
+  it("keeps explanatory passage questions as passage-study (no forced quote)", () => {
+    expect(detectIntent("Explain Romans 8 in plain language")).toBe("passage-study");
+    expect(detectIntent("What are the different senses in which Paul uses the word 'law' in Romans 7?")).toBe(
+      "passage-study"
+    );
+    expect(detectIntent("What does Romans 8 say about suffering?")).toBe("passage-study");
   });
 
   it("classifies a verses-about request as topic-survey", () => {

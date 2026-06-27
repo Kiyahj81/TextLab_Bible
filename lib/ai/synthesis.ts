@@ -77,7 +77,9 @@ const INTENT_SHAPE_GUIDANCE: Record<Intent, string> = {
   "morphology":
     "Shape: concise and technical. Lead with the parse/forms. No application or reflection.",
   "passage-study":
-    "Shape: medium. Open the answer by quoting the passage's English (WEB) wording verbatim in quotation marks (the WEB text is in the retrieved evidence), then give its key grounded lexical observations, then the meaning. Add 'Going further' only if the question asks for significance/application.",
+    "Shape: medium. State what the passage says with its key grounded lexical observations, then the meaning. Do NOT quote the whole passage verbatim unless the question explicitly asks for the text. Add 'Going further' only if the question asks for significance/application.",
+  "passage-recite":
+    "Shape: open the answer by quoting the passage's English (WEB) wording verbatim in quotation marks (the WEB text is in the retrieved evidence), then add a brief grounded note on the key words. Add 'Going further' only if the question asks for significance/application.",
   "word-study":
     "Shape: medium. Survey the occurrences and their senses from the evidence. Rarely add 'Going further'.",
   "topic-survey":

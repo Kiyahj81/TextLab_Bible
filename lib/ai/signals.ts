@@ -13,6 +13,7 @@ export type MorphSignal = { code: string; mode: "exact" | "prefix" };
 export type Intent =
   | "word-study"
   | "passage-study"
+  | "passage-recite"
   | "topic-survey"
   | "morphology"
   | "comparison"
@@ -183,7 +184,7 @@ const STOP_WORDS: ReadonlySet<string> = new Set([
   "subjunctive", "subjunctives", "infinitive", "infinitives", "aorist", "aorists", "tense", "tenses", "mood", "moods",
   "grammar", "grammatical", "parse", "noun", "nouns", "adjective", "adjectives", "adverb", "adverbs", "pronoun", "pronouns",
   "deponent", "optative", "vocative", "nominative", "genitive", "dative", "accusative", "singular", "plural",
-  "feminine", "masculine", "neuter", "morphology", "morphological",
+  "feminine", "masculine", "neuter", "morphology", "morphological", "within", "context", "contextual",
 ]);
 
 // Proper nouns that should not be treated as topic search terms. Book names are
@@ -391,7 +392,20 @@ export function detectIntent(prompt: string): Intent {
     return "topic-survey";
   }
 
-  if (detectReferences(prompt).length > 0 || /\b(show|read)\b/.test(lower) || lower.includes("passage")) {
+  const hasReference = detectReferences(prompt).length > 0;
+
+  // Explicit "recite the text" requests — lead the answer with the verbatim verse.
+  // Needs a passage reference, a recite verb, and NOT a word-survey or analysis framing,
+  // so "Explain Romans 8", "what does Paul say ABOUT X", and lemma surveys stay explanatory.
+  const reciteVerb = /\b(say|says|written|show|shows|showing|display|read|recite|quote)\b/.test(lower);
+  const wordSurvey = /\b(use|uses|usage|sense|senses|occurrence|occurrences|mean|meaning|word study)\b/.test(lower);
+  const analysisFraming =
+    /\b(explain|why|significance|implication|teach|about|regarding|concerning|plain language)\b/.test(lower);
+  if (hasReference && reciteVerb && !wordSurvey && !analysisFraming) {
+    return "passage-recite";
+  }
+
+  if (hasReference || /\b(show|read)\b/.test(lower) || lower.includes("passage")) {
     return "passage-study";
   }
 

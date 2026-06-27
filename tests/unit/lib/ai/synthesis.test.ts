@@ -345,10 +345,11 @@ describe("buildSynthesisInstructions", () => {
     expect(buildSynthesisInstructions("morphology").toLowerCase()).toContain("no application");
   });
 
-  it("tells passage answers to open with the verse's verbatim English (WEB) quote", async () => {
+  it("tells passage-recite answers to open with the verse's verbatim English (WEB) quote", async () => {
     const { buildSynthesisInstructions } = await import("@/lib/ai/synthesis");
-    expect(buildSynthesisInstructions("passage-study")).toContain("English (WEB) wording verbatim");
-    expect(buildSynthesisInstructions("word-study")).not.toContain("English (WEB) wording verbatim");
+    expect(buildSynthesisInstructions("passage-recite")).toContain("English (WEB) wording verbatim");
+    // a plain explanatory passage-study answer must NOT force the whole-verse quote
+    expect(buildSynthesisInstructions("passage-study")).not.toContain("English (WEB) wording verbatim");
   });
 });
 

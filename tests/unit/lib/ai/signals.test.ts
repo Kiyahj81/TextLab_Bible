@@ -8,6 +8,7 @@ import {
   detectPhraseLemmas,
   detectReferences,
   detectTopicWords,
+  detectConceptWords,
   extractSignals
 } from "@/lib/ai/signals";
 
@@ -275,6 +276,20 @@ describe("detectIntent", () => {
 
   it("falls back to general", () => {
     expect(detectIntent("Tell me about God")).toBe("general");
+  });
+});
+
+describe("detectConceptWords (routing-stable, decoupled from search stoplist)", () => {
+  it("counts concepts from the frozen base, ignoring a search-only stoplist edit", () => {
+    // detectTopicWords honors a caller-supplied search stoplist (the search path) ...
+    expect(detectTopicWords("grace mercy peace", new Set(["grace"]))).not.toContain("grace");
+    // ...but the routing concept words use the frozen base only, so the same word still counts.
+    expect(detectConceptWords("grace mercy peace")).toContain("grace");
+  });
+
+  it("still excludes generic framing words so they don't inflate routing", () => {
+    // "within"/"context" live in the base list, so this stays a single-concept prompt.
+    expect(detectConceptWords("Explain Romans 8:28 within the broader context of Romans 8")).toEqual(["broader"]);
   });
 });
 

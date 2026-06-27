@@ -1,4 +1,4 @@
-import type { Signals } from "@/lib/ai/signals";
+import { detectConceptWords, type Signals } from "@/lib/ai/signals";
 
 export type AssistantMode = "live" | "fallback";
 export type ModelRole = "default" | "scholarly";
@@ -101,7 +101,9 @@ const WHY_FRAMING_RE = /\bwhy (do|does|did)\b/i;
 
 export function recommendScholarlyUpgrade(prompt: string, signals?: Signals): RecommendedUpgrade | undefined {
   const distinctBooks = new Set((signals?.references ?? []).map((r) => r.book)).size;
-  const topicCount = signals?.topicWords.length ?? 0;
+  // Concept count comes from detectConceptWords (frozen base stoplist), NOT signals.topicWords
+  // (search-tunable), so tuning the search stoplist can never shift scholarly routing.
+  const conceptCount = detectConceptWords(prompt).length;
   const longPrompt = prompt.trim().split(/\s+/).length > 30;
 
   const complex =
@@ -110,7 +112,7 @@ export function recommendScholarlyUpgrade(prompt: string, signals?: Signals): Re
     SCHOLARLY_CUE_RE.test(prompt) ||
     HOW_CAN_BOTH_RE.test(prompt) ||
     WHY_FRAMING_RE.test(prompt) ||
-    topicCount >= 3 ||
+    conceptCount >= 3 ||
     longPrompt;
 
   if (!complex) return undefined;

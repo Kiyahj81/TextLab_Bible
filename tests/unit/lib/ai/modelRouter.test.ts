@@ -83,6 +83,11 @@ describe("recommendScholarlyUpgrade", () => {
   it("recommends scholarly on 'why does' interpretive framing", () => {
     expect(rec("Why does Paul emphasize faith?")?.modelRole).toBe("scholarly");
   });
+
+  it("recommends scholarly on three distinct concept words", () => {
+    // No reference, cue, or comparison — the concept count alone (>= 3) tips it.
+    expect(rec("Explain justification, sanctification, and glorification")?.modelRole).toBe("scholarly");
+  });
 });
 
 describe("getModelForRole", () => {

@@ -165,7 +165,12 @@ export const ENGLISH_PHRASE_TO_GREEK_LEMMA: Readonly<Record<string, string>> = {
   "sexual immorality": "πορνεία",
 };
 
-const STOP_WORDS: ReadonlySet<string> = new Set([
+// Frozen baseline stoplist — generic, framing, and morphology words that are noise for
+// BOTH keyword/semantic search AND the scholarly-routing concept count. The router reads
+// ONLY this list (via detectConceptWords), so it stays stable when the search stoplist is
+// tuned. Put a word here when it should be excluded from routing too (e.g. framing words
+// like "within"/"context").
+const BASE_STOP_WORDS: ReadonlySet<string> = new Set([
   "the", "a", "an", "and", "or", "but", "if", "then", "so", "as", "of", "in", "on", "at",
   "to", "for", "with", "by", "from", "into", "onto", "off", "out", "up", "down", "over",
   "under", "about", "between", "through", "during", "before", "after", "above", "below",
@@ -186,6 +191,16 @@ const STOP_WORDS: ReadonlySet<string> = new Set([
   "deponent", "optative", "vocative", "nominative", "genitive", "dative", "accusative", "singular", "plural",
   "feminine", "masculine", "neuter", "morphology", "morphological", "within", "context", "contextual",
 ]);
+
+// Additional exclusions for KEYWORD/SEMANTIC SEARCH ONLY. Tune this for search quality;
+// it does NOT affect scholarly routing (which counts concepts from BASE_STOP_WORDS via
+// detectConceptWords). Add a word here when it pollutes search but should still count as a
+// substantive concept for routing. Currently empty — the decoupling is structural.
+const SEARCH_ONLY_STOP_WORDS: ReadonlySet<string> = new Set<string>([]);
+
+// Search-facing stoplist = frozen base + search-only extras. Editing SEARCH_ONLY_STOP_WORDS
+// changes search without touching routing.
+const STOP_WORDS: ReadonlySet<string> = new Set([...BASE_STOP_WORDS, ...SEARCH_ONLY_STOP_WORDS]);
 
 // Proper nouns that should not be treated as topic search terms. Book names are
 // already excluded separately via the ntBooks alias set.
@@ -298,12 +313,12 @@ export function detectMorphCodes(prompt: string): MorphSignal[] {
   return out;
 }
 
-export function detectTopicWords(prompt: string): string[] {
+export function detectTopicWords(prompt: string, stopWords: ReadonlySet<string> = STOP_WORDS): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
   for (const raw of prompt.toLowerCase().split(/[^a-z]+/)) {
     if (raw.length < 3) continue;
-    if (STOP_WORDS.has(raw)) continue;
+    if (stopWords.has(raw)) continue;
     if (PROPER_NOUNS.has(raw)) continue;
     if (BOOK_ALIASES.has(raw)) continue;
     if (seen.has(raw)) continue;
@@ -311,6 +326,13 @@ export function detectTopicWords(prompt: string): string[] {
     out.push(raw);
   }
   return out;
+}
+
+// Routing-stable "concept" words: filtered by the frozen BASE_STOP_WORDS only, so tuning
+// the search stoplist (SEARCH_ONLY_STOP_WORDS) can never shift scholarly routing. The router
+// counts these instead of the search-facing topicWords.
+export function detectConceptWords(prompt: string): string[] {
+  return detectTopicWords(prompt, BASE_STOP_WORDS);
 }
 
 // Precompiled phrase matchers. Anchored so a phrase embedded in a larger word does

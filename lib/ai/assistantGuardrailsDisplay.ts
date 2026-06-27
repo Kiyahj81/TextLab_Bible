@@ -5,7 +5,7 @@ TextLab retrieves relevant passage, lemma, morphology, keyword, and semantic evi
 The assistant should:
 - answer from retrieved corpus evidence, not general biblical memory;
 - cite textual claims with book, chapter, verse, and corpus;
-- distinguish textual observations, interpretive suggestions, and application/reflection;
+- give a grounded core first — what the text says, plus lexical/grammatical observations supported by the provided morphology, glosses, and Louw-Nida domains — and add interpretation only when the question invites it, as a labeled "Going further" step that builds on a stated observation;
 - show retrieval trace and citations before export;
 - treat Greek or Hebrew word claims cautiously and ground them in retrieved usage;
 - avoid invented lexicon entries, manuscript evidence, or scholarly citations.

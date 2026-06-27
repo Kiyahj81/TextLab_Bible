@@ -344,6 +344,12 @@ describe("buildSynthesisInstructions", () => {
     const { buildSynthesisInstructions } = await import("@/lib/ai/synthesis");
     expect(buildSynthesisInstructions("morphology").toLowerCase()).toContain("no application");
   });
+
+  it("tells passage answers to open with the verse's verbatim English (WEB) quote", async () => {
+    const { buildSynthesisInstructions } = await import("@/lib/ai/synthesis");
+    expect(buildSynthesisInstructions("passage-study")).toContain("English (WEB) wording verbatim");
+    expect(buildSynthesisInstructions("word-study")).not.toContain("English (WEB) wording verbatim");
+  });
 });
 
 describe("appendAlignmentNotes", () => {

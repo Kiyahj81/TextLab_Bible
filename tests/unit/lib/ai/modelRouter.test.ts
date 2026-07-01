@@ -88,6 +88,12 @@ describe("recommendScholarlyUpgrade", () => {
     // No reference, cue, or comparison — the concept count alone (>= 3) tips it.
     expect(rec("Explain justification, sanctification, and glorification")?.modelRole).toBe("scholarly");
   });
+
+  it("does NOT recommend scholarly for a routine multi-topic survey", () => {
+    // Three concepts, but a topic survey is retrieval, not deep synthesis — the concept
+    // count must not auto-escalate it.
+    expect(rec("Find verses about faith, hope, and love")).toBeUndefined();
+  });
 });
 
 describe("getModelForRole", () => {

@@ -106,13 +106,17 @@ export function recommendScholarlyUpgrade(prompt: string, signals?: Signals): Re
   const conceptCount = detectConceptWords(prompt).length;
   const longPrompt = prompt.trim().split(/\s+/).length > 30;
 
+  const intent = signals?.intent;
   const complex =
-    signals?.intent === "comparison" ||
+    intent === "comparison" ||
     distinctBooks >= 2 ||
     SCHOLARLY_CUE_RE.test(prompt) ||
     HOW_CAN_BOTH_RE.test(prompt) ||
     WHY_FRAMING_RE.test(prompt) ||
-    conceptCount >= 3 ||
+    // Concept density is a synthesis proxy, but a topic survey ("find verses about
+    // faith, hope, and love") or a recite request is retrieval, not synthesis — don't
+    // let the bare concept count auto-escalate those to the expensive model.
+    (intent !== "topic-survey" && intent !== "passage-recite" && conceptCount >= 3) ||
     longPrompt;
 
   if (!complex) return undefined;

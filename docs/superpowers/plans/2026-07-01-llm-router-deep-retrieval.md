@@ -690,18 +690,14 @@ export async function runRetrievalPlan(
 
 - [ ] **Step 1: Write the failing tests**
 
-The existing `tests/unit/lib/ai/retrievalPlanner.test.ts` mocks `@/lib/search` — follow its established mock pattern (read the file top before editing; reuse its `vi.mock("@/lib/search", …)` helpers). Add a new describe block:
+The existing `tests/unit/lib/ai/retrievalPlanner.test.ts` already binds `getPassage`, `searchSemanticDetailed`, etc. as mock functions via its top-of-file `vi.hoisted()` block (which feeds `vi.mock("@/lib/search", …)`). **Do NOT add an import from `@/lib/search` — that would redeclare those bindings and the file won't parse.** Use the hoisted mock variables directly (`searchSemanticDetailed.mock.calls`, `getPassage.mockClear()`), exactly as the file's existing tests do. `extractSignals` is already imported. Add a new describe block:
 
 ```typescript
-import { runRetrievalPlan } from "@/lib/ai/retrievalPlanner";
-import { extractSignals } from "@/lib/ai/signals";
-import { getPassage, searchSemanticDetailed } from "@/lib/search";
-
 describe("deep retrieval mode", () => {
   it("standard mode is unchanged: scoped semantic only, subject to the conceptual gate", async () => {
     const signals = extractSignals("verses about love in John 3");
     await runRetrievalPlan(signals, "verses about love in John 3", { semanticEnabled: true });
-    const calls = vi.mocked(searchSemanticDetailed).mock.calls;
+    const calls = searchSemanticDetailed.mock.calls;
     expect(calls).toHaveLength(1);
     expect(calls[0][0]).toMatchObject({ book: "John", chapter: 3, limit: 5 });
   });
@@ -709,7 +705,7 @@ describe("deep retrieval mode", () => {
   it("deep + pinned scope adds a corpus-wide pass alongside the scoped one", async () => {
     const signals = extractSignals("verses about love in John 3");
     await runRetrievalPlan(signals, "verses about love in John 3", { semanticEnabled: true, deep: true });
-    const calls = vi.mocked(searchSemanticDetailed).mock.calls;
+    const calls = searchSemanticDetailed.mock.calls;
     expect(calls).toHaveLength(2);
     expect(calls[0][0]).toMatchObject({ book: "John", chapter: 3, limit: 5 });   // scoped
     expect(calls[1][0]).toMatchObject({ book: undefined, chapter: undefined, limit: 5 }); // corpus-wide
@@ -723,7 +719,7 @@ describe("deep retrieval mode", () => {
     expect(signals.topicWords).toHaveLength(0);
     expect(signals.phraseTerms ?? []).toHaveLength(0);
     await runRetrievalPlan(signals, "Is Romans 7 about Paul?", { semanticEnabled: true, deep: true });
-    const calls = vi.mocked(searchSemanticDetailed).mock.calls;
+    const calls = searchSemanticDetailed.mock.calls;
     expect(calls).toHaveLength(1); // corpus-wide only (scoped pass gated off)
     expect(calls[0][0]).toMatchObject({ book: undefined, chapter: undefined });
   });
@@ -731,7 +727,7 @@ describe("deep retrieval mode", () => {
   it("deep + unpinned scope raises the single pass to 10 hits", async () => {
     const signals = extractSignals("What is reconciliation?");
     await runRetrievalPlan(signals, "What is reconciliation?", { semanticEnabled: true, deep: true });
-    const calls = vi.mocked(searchSemanticDetailed).mock.calls;
+    const calls = searchSemanticDetailed.mock.calls;
     expect(calls).toHaveLength(1);
     expect(calls[0][0]).toMatchObject({ limit: 10 });
   });
@@ -739,13 +735,13 @@ describe("deep retrieval mode", () => {
   it("deep + all-exact-verse prompt still gets the corpus-wide pass", async () => {
     const signals = extractSignals("Does John 1:1 call the Word God?");
     await runRetrievalPlan(signals, "Does John 1:1 call the Word God?", { semanticEnabled: true, deep: true });
-    expect(vi.mocked(searchSemanticDetailed).mock.calls.length).toBeGreaterThanOrEqual(1);
+    expect(searchSemanticDetailed.mock.calls.length).toBeGreaterThanOrEqual(1);
   });
 
   it("semanticEnabled:false suppresses every semantic pass, deep included", async () => {
     const signals = extractSignals("verses about love in John 3");
     await runRetrievalPlan(signals, "verses about love in John 3", { semanticEnabled: false, deep: true });
-    expect(vi.mocked(searchSemanticDetailed)).not.toHaveBeenCalled();
+    expect(searchSemanticDetailed).not.toHaveBeenCalled();
   });
 
   it("caps deterministic calls at 8 standard / 12 deep", async () => {
@@ -758,11 +754,11 @@ describe("deep retrieval mode", () => {
     expect(signals.references).toHaveLength(7);
 
     await runRetrievalPlan(signals, prompt, { semanticEnabled: false });
-    expect(vi.mocked(getPassage).mock.calls).toHaveLength(8); // standard cap
+    expect(getPassage.mock.calls).toHaveLength(8); // standard cap
 
-    vi.mocked(getPassage).mockClear();
+    getPassage.mockClear();
     await runRetrievalPlan(signals, prompt, { semanticEnabled: false, deep: true });
-    expect(vi.mocked(getPassage).mock.calls).toHaveLength(12); // deep cap
+    expect(getPassage.mock.calls).toHaveLength(12); // deep cap
   });
 
   it("labels the semantic trace entries with scope and deep", async () => {
@@ -1093,7 +1089,7 @@ git commit -m "feat(assistant): persist routerSource/deep/complexityScore in ses
 
 **Files:**
 - Modify: `app/api/assistant/route.ts`
-- Test: `tests/unit/api/assistant.test.ts`, `tests/unit/api/assistant-route.test.ts` (read both; put new cases in whichever exercises the request schema).
+- Test: `tests/unit/api/assistant-route.test.ts` (the request-schema suite; `tests/unit/api/assistant.test.ts` is the sessions-persistence suite handled in Task 6).
 
 **Interfaces:**
 - Consumes: Task 5's `answerBibleQuestion(prompt, { escalate, confirmEscalation })`.
@@ -1101,27 +1097,29 @@ git commit -m "feat(assistant): persist routerSource/deep/complexityScore in ses
 
 - [ ] **Step 1: Write the failing tests**
 
+The suite exposes `POST` (imported from the route), a `jsonRequest(body)` helper, and `assistantMock` (the hoisted `answerBibleQuestion` mock) — use exactly that surface, no new helpers:
+
 ```typescript
 it("forwards confirmEscalation to answerBibleQuestion", async () => {
-  await postAssistant({ prompt: "q", confirmEscalation: true });
-  expect(vi.mocked(answerBibleQuestion)).toHaveBeenCalledWith("q", { escalate: false, confirmEscalation: true });
+  await POST(jsonRequest({ prompt: "q", confirmEscalation: true }));
+  expect(assistantMock).toHaveBeenCalledWith("q", { escalate: false, confirmEscalation: true });
 });
 
 it("maps deprecated explicit autoEscalate:false to confirmEscalation:true", async () => {
   // A stale opt-out must stay an opt-out under the new auto-default semantics.
-  await postAssistant({ prompt: "q", autoEscalate: false });
-  expect(vi.mocked(answerBibleQuestion)).toHaveBeenCalledWith("q", { escalate: false, confirmEscalation: true });
+  await POST(jsonRequest({ prompt: "q", autoEscalate: false }));
+  expect(assistantMock).toHaveBeenCalledWith("q", { escalate: false, confirmEscalation: true });
 });
 
 it("treats autoEscalate:true and omission as the auto default", async () => {
-  await postAssistant({ prompt: "q", autoEscalate: true });
-  expect(vi.mocked(answerBibleQuestion)).toHaveBeenLastCalledWith("q", { escalate: false, confirmEscalation: false });
-  await postAssistant({ prompt: "q" });
-  expect(vi.mocked(answerBibleQuestion)).toHaveBeenLastCalledWith("q", { escalate: false, confirmEscalation: false });
+  await POST(jsonRequest({ prompt: "q", autoEscalate: true }));
+  expect(assistantMock).toHaveBeenLastCalledWith("q", { escalate: false, confirmEscalation: false });
+  await POST(jsonRequest({ prompt: "q" }));
+  expect(assistantMock).toHaveBeenLastCalledWith("q", { escalate: false, confirmEscalation: false });
 });
 ```
 
-(Use the file's existing request-builder helper — both suites already post to the route with mocked auth.)
+**Intentional updates to existing cases:** the suite currently pins the old options shape — e.g. `expect(assistantMock).toHaveBeenCalledWith("deep synthesis", { escalate: true, autoEscalate: false })` plus an `autoEscalate` passthrough case. Update those expectations to the new shape (`{ escalate: true, confirmEscalation: false }` etc.); the desired behavior changed — this is not accidental breakage.
 
 - [ ] **Step 2: Run to verify failures**
 
@@ -1193,13 +1191,19 @@ export function parseConfirmScholarly(value: string | null | undefined): boolean
 
 - [ ] **Step 1: Write the failing tests**
 
-In `tests/unit/components/AiAssistant-scholarly.test.tsx`, following the file's existing render/fetch-mock pattern:
+In `tests/unit/components/AiAssistant-scholarly.test.tsx`. The suite stubs `globalThis.fetch` via `vi.stubGlobal` and exposes a `fetchMock()` accessor; it drives the form with `fireEvent.change` on the prompt placeholder + a click on the "ask assistant" button. There is no `submitPrompt` helper yet — add one built from that exact pattern, then the new cases:
 
 ```typescript
+async function submitPrompt(text: string) {
+  fireEvent.change(screen.getByPlaceholderText(/Show me every use/i), { target: { value: text } });
+  fireEvent.click(screen.getByRole("button", { name: /ask assistant/i }));
+  await waitFor(() => expect(fetchMock().mock.calls.length).toBeGreaterThan(0));
+}
+
 it("sends confirmEscalation when the ask-first toggle is on", async () => {
   render(<AiAssistant initialNotes={[]} confirmScholarly />);
   await submitPrompt("Why does Paul describe a tension between law and grace?");
-  const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
+  const body = JSON.parse(fetchMock().mock.calls[0][1].body as string);
   expect(body.confirmEscalation).toBe(true);
   expect(body.autoEscalate).toBeUndefined();
 });
@@ -1207,12 +1211,12 @@ it("sends confirmEscalation when the ask-first toggle is on", async () => {
 it("sends neither flag when the toggle is off (auto default)", async () => {
   render(<AiAssistant initialNotes={[]} />);
   await submitPrompt("Why does Paul describe a tension between law and grace?");
-  const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
+  const body = JSON.parse(fetchMock().mock.calls[0][1].body as string);
   expect(body.confirmEscalation).toBeUndefined();
   expect(body.autoEscalate).toBeUndefined();
 });
 
-it("writes the new confirm cookie when toggled", async () => {
+it("writes the new confirm cookie when toggled", () => {
   render(<AiAssistant initialNotes={[]} />);
   fireEvent.click(screen.getByLabelText(/ask before using the scholarly model/i));
   expect(document.cookie).toContain("textlab-assistant-confirm-scholarly=1");
@@ -1406,6 +1410,27 @@ function semanticPassesFrom(evidence: EvidencePacket): SemanticPassTrace[] {
 
 `RunResult` gains `semanticPasses: SemanticPassTrace[]` (set in `runOnce` from the packet). Keep the existing scalar `rerankStatus`/`rerankCandidateCount` fields for backward compatibility, derived as `semanticPasses[0] ?? null` values, and delete `semanticTraceFrom()`. Surface `semanticPasses` in the JSON report output (`eval/report.ts` render) so deep runs show both passes.
 
+**Existing fixture updates (required — the new `RunResult` fields are non-optional):**
+- `tests/unit/eval/gate.test.ts` has a `res(over)` builder ending in `satisfies RunResult` — add defaults to it: `modelRole: "default", routerSource: "score", deep: false, complexityScore: null, semanticPasses: []`.
+- `tests/unit/eval/report.test.ts` declares literal `RunResult[]` samples — add the same five fields to each literal.
+- Add a gate unit test for the new check (reuse the file's `res()`/item-construction helpers):
+
+```typescript
+it("gates routing expectations only for items that declare expectedRouting", () => {
+  const outcome = evaluateGate([
+    res({ item: itemWith({ id: "r-pass", expectedRouting: "scholarly" }), modelRole: "scholarly" }),
+    res({ item: itemWith({ id: "r-fail", expectedRouting: "scholarly" }), modelRole: "default" }),
+    res({ item: itemWith({ id: "r-undeclared" }) }) // no expectedRouting → no routing check
+  ]);
+  const routing = outcome.checks.filter((c) => c.label.startsWith("routing"));
+  expect(routing).toHaveLength(2);
+  expect(routing.find((c) => c.label.includes("r-pass"))?.passed).toBe(true);
+  expect(routing.find((c) => c.label.includes("r-fail"))?.passed).toBe(false);
+});
+```
+
+(`itemWith` = however the suite builds `GoldenItem`s today — follow its existing pattern.)
+
 `eval/gate.ts` — after the per-item metric loop, add:
 
 ```typescript
@@ -1492,7 +1517,7 @@ Expected: clean / PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add eval/dataset/schema.ts eval/dataset/golden-set.json eval/runner.ts eval/gate.ts
+git add eval/dataset/schema.ts eval/dataset/golden-set.json eval/runner.ts eval/gate.ts eval/report.ts tests/unit/eval
 git commit -m "feat(eval): routing expectations in the gate; route-before-retrieve runner"
 ```
 

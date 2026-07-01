@@ -6,13 +6,13 @@ import type { EvidencePacket } from "@/lib/ai/retrievalPlanner";
 // Bare creator/model slug routed through the AI SDK's Vercel AI Gateway global
 // provider (authenticated by AI_GATEWAY_API_KEY) — same mechanism as rerank.ts.
 // NOTE THE SLUG FORM: the Gateway catalog uses the bare creator/model form
-// (`anthropic/claude-sonnet-5`), matching `voyage/rerank-2.5` in rerank.ts. When
-// a Claude id carries a minor version the Gateway spells it with a DOT
-// (`anthropic/claude-sonnet-4.6`), NOT the hyphenated direct-API id
-// `claude-sonnet-4-6` (that errors on the Gateway). VERIFY the exact slug
-// against the current Vercel AI Gateway model list before first run; on a wrong
-// slug the judge reports status "error" (visible in the report), it does not
-// silently vanish.
+// (`anthropic/claude-sonnet-5`), matching `voyage/rerank-2.5` in rerank.ts. If
+// you pin a model whose id carries a minor version, spell that version with a
+// DOT as the Gateway catalog does (`...sonnet-X.Y`), NOT the hyphenated
+// direct-API form (`...sonnet-X-Y`), which errors on the Gateway. VERIFY the
+// exact slug against the current Vercel AI Gateway model list before first run;
+// on a wrong slug the judge reports status "error" (visible in the report), it
+// does not silently vanish.
 export const EVAL_JUDGE_MODEL = process.env.EVAL_JUDGE_MODEL ?? "anthropic/claude-sonnet-5";
 // PER-ATTEMPT budget (not total): each of the MAX_ATTEMPTS calls gets a fresh
 // AbortSignal.timeout, so the worst case is MAX_ATTEMPTS × timeout + backoffs.

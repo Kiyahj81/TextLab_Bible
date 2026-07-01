@@ -46,7 +46,8 @@ the trustworthy number. (Of the items only AFTER could judge: `john-3-16` 0.67, 
 1.00 -> 0.91  ✗ 0->1  resurrection-1cor15-conceptual   (lone regression: one new ✗)
 0.50 -> 1.00  ✗ 7->0  rom-8-28-exact
 (AFTER-only, BEFORE judge-errored)  john-3-16-exact 0.67 (✗5) · sexual-immorality-conceptual 1.00 (✗0)
-(AFTER judge-errored, not scored)  domain-33, domain-ln-25, beatitudes, armor-of-god
+(AFTER judge-errored, BEFORE scored)  domain-33, domain-ln-25, beatitudes, armor-of-god
+(judge-errored in BOTH runs, unscored either way)  reconciliation, earthen-vessels
 ```
 
 The largest gains are exactly the items that BEFORE were drowning in forced interpretation/application:

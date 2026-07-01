@@ -65,20 +65,18 @@ function stripDomainMarkers(text: string): string {
   // Both marker forms are stripped only when the captured domain number is in
   // range 1..93 — mirroring detectDomainQuery's guard so an out-of-range marker
   // (which was NOT recognized as a domain query) is left intact for topic
-  // extraction. Use fresh local regexes (no shared /g state) with a replacer that
-  // returns the original match when out of range; the module-level regexes used
-  // by detectDomainQuery stay non-global.
+  // extraction. Fresh local /g copies so EVERY in-range marker is stripped (a
+  // prompt can name more than one, e.g. "compare LN 33 and domain 88"); the
+  // module-level regexes stay non-global because detectDomainQuery drives them
+  // with stateful .exec() and must not carry lastIndex between calls.
   const inRange = (num: string) => {
     const n = Number.parseInt(num, 10);
     return n >= 1 && n <= 93;
   };
+  const global = (re: RegExp) => new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g");
   return text
-    .replace(new RegExp(LN_REF_RE.source, LN_REF_RE.flags), (match, dom: string) =>
-      inRange(dom) ? " " : match
-    )
-    .replace(new RegExp(DOMAIN_NUM_RE.source, DOMAIN_NUM_RE.flags), (match, num: string) =>
-      inRange(num) ? " " : match
-    );
+    .replace(global(LN_REF_RE), (match, dom: string) => (inRange(dom) ? " " : match))
+    .replace(global(DOMAIN_NUM_RE), (match, num: string) => (inRange(num) ? " " : match));
 }
 
 // English Bible terms → Greek lemma. Used by the retrieval planner to turn a

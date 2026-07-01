@@ -154,12 +154,16 @@ function assembleEvidence(sections: string[]): string {
 // per-token annotation (matches the project "long passage" threshold).
 const MAX_ENRICH_VERSES = 25;
 
-// Whole-packet char budget for per-token annotations. Kept well under
-// MAX_EVIDENCE_CHARS (58 000) so enrichment never evicts base evidence in
-// assembleEvidence. Env-overridable so a test can force the degrade path.
+// Whole-packet char budget for per-token annotations. Sized to cover a single
+// max-eligible passage (25 content-only verses ≈ 20 KB of annotation lines) so
+// the primary passage still enriches on a fresh budget, while staying well under
+// MAX_EVIDENCE_CHARS (58 000). The enrichmentBudget() min() clamp guarantees base
+// evidence is never evicted regardless of this value — it only bounds how much
+// enrichment the tail of a multi-passage packet may add. Env-overridable so a
+// test can force the degrade path.
 function maxEnrichChars(): number {
   const raw = Number.parseInt(process.env.TEXTLAB_MAX_ENRICH_CHARS?.trim() ?? "", 10);
-  return Number.isFinite(raw) && raw >= 0 ? raw : 18_000;
+  return Number.isFinite(raw) && raw >= 0 ? raw : 24_000;
 }
 
 // Reserve room for every base section — joined with the same "\n\n" separators

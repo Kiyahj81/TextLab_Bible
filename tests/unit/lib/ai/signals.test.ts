@@ -253,6 +253,15 @@ describe("extractSignals domainQuery", () => {
     expect(signals.domainQuery).toBeUndefined();
     expect(signals.topicWords).toContain("love");
   });
+
+  it("strips EVERY in-range marker, not just the first (global replace)", () => {
+    // Two domain markers in one prompt: without the /g flag only the first was
+    // stripped, leaking "domain" from the second into topic words.
+    const signals = extractSignals("compare domain 33 and domain 88 for love");
+    expect(signals.domainQuery).toEqual({ kind: "domain", code: "033" });
+    expect(signals.topicWords).not.toContain("domain");
+    expect(signals.topicWords).toContain("love");
+  });
 });
 
 describe("detectIntent", () => {

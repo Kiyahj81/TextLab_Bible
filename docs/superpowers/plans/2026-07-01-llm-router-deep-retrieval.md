@@ -45,7 +45,7 @@ Create `tests/unit/lib/ai/complexity.test.ts`:
 ```typescript
 import { describe, expect, it } from "vitest";
 import { COMPLEXITY_THRESHOLD, scoreComplexity } from "@/lib/ai/complexity";
-import { extractSignals } from "@/lib/ai/signals";
+import { detectConceptWords, extractSignals } from "@/lib/ai/signals";
 
 const score = (p: string) => scoreComplexity(p, extractSignals(p));
 
@@ -64,22 +64,32 @@ describe("scoreComplexity", () => {
 
   it("bare why-framing alone scores 1 → not complex", () => {
     // Old OR-gate escalated this; new intended behavior: default.
-    const s = score("Why did Paul write Romans?");
+    // Precondition guards keep the fixture honest against extraction drift:
+    const prompt = "Why did Paul write Romans?";
+    expect(detectConceptWords(prompt).length).toBeLessThan(3);
+    const s = score(prompt);
     expect(s.score).toBe(1);
     expect(s.complex).toBe(false);
   });
 
   it("concept density alone scores 1 → not complex", () => {
     // "fruit", "Spirit", "teach", "believers" hit the concept list but nothing else fires.
-    const s = score("What does the fruit of the Spirit passage teach believers?");
+    const prompt = "What does the fruit of the Spirit passage teach believers?";
+    expect(detectConceptWords(prompt).length).toBeGreaterThanOrEqual(3);
+    const s = score(prompt);
+    expect(s.score).toBe(1);
     expect(s.complex).toBe(false);
   });
 
   it("length alone scores 1 → not complex", () => {
+    // 31 filler words, deliberately free of concept words, refs, and cue phrasings.
     const verbose =
-      "I was wondering if you could possibly show me and maybe explain a little bit " +
-      "about what the actual words of the very famous verse John 3:16 in the Bible say"; // 31 words
+      "Please give me a very long and complete explanation over many words of everything " +
+      "that was going on at that time and in that place among all of those people there";
+    expect(verbose.trim().split(/\s+/).length).toBeGreaterThan(30);
+    expect(detectConceptWords(verbose).length).toBeLessThan(3);
     const s = score(verbose);
+    expect(s.score).toBe(1);
     expect(s.complex).toBe(false);
   });
 
@@ -108,17 +118,23 @@ describe("scoreComplexity", () => {
 
   // --- weak cues combine to cross the threshold ---
 
-  it("why-framing plus a tension cue scores 3 → complex", () => {
+  it("why-framing plus a tension cue (plus concept density) scores 4 → complex", () => {
+    // why +1, scholarly cue "tension" +2, concept density (law/grace/tension) +1.
     const s = score("Why does Paul describe a tension between law and grace?");
-    expect(s.score).toBe(3);
+    expect(s.score).toBe(4);
     expect(s.complex).toBe(true);
   });
 
   it("why-framing plus length crosses the threshold", () => {
+    // 32 filler words + "why did", free of concept words and refs: 1 + 1 = 2.
     const verbose =
-      "Why does Paul spend so much time talking about the different ways that people " +
-      "in the churches he wrote to were supposed to treat one another every single day"; // >30 words + why
-    expect(score(verbose).complex).toBe(true);
+      "Why did the people who were listening at that time react in the way that they did " +
+      "when they heard all of the things that were being said to them back then?";
+    expect(verbose.trim().split(/\s+/).length).toBeGreaterThan(30);
+    expect(detectConceptWords(verbose).length).toBeLessThan(3);
+    const s = score(verbose);
+    expect(s.score).toBe(2);
+    expect(s.complex).toBe(true);
   });
 });
 ```
@@ -698,9 +714,13 @@ describe("deep retrieval mode", () => {
   });
 
   it("deep + pinned scope runs the corpus-wide pass even for termless prompts (relaxed gate)", async () => {
-    // Proper nouns are filtered → no topic words → standard gate would skip semantic entirely.
-    const signals = extractSignals("Is Romans 7 about Paul himself?");
-    await runRetrievalPlan(signals, "Is Romans 7 about Paul himself?", { semanticEnabled: true, deep: true });
+    // Proper nouns are filtered → no topic words → standard gate would skip semantic
+    // entirely. NOTE: "…about Paul himself?" is NOT termless ("himself" survives as a
+    // topic word) — this shorter phrasing is; the precondition guards the fixture.
+    const signals = extractSignals("Is Romans 7 about Paul?");
+    expect(signals.topicWords).toHaveLength(0);
+    expect(signals.phraseTerms ?? []).toHaveLength(0);
+    await runRetrievalPlan(signals, "Is Romans 7 about Paul?", { semanticEnabled: true, deep: true });
     const calls = vi.mocked(searchSemanticDetailed).mock.calls;
     expect(calls).toHaveLength(1); // corpus-wide only (scoped pass gated off)
     expect(calls[0][0]).toMatchObject({ book: undefined, chapter: undefined });
@@ -815,7 +835,15 @@ and replace the semantic block at the end with:
         );
       }
     } else if (shouldRunSemantic(signals)) {
-      plan.push(semanticCall(prompt, keywords, scope, { limit: SEMANTIC_HIT_LIMIT, scopeLabel: "scoped", deep }));
+      // Label from the actual scope: a standard pass with no pinned scope IS
+      // corpus-wide and must not be trace-labeled "scoped".
+      plan.push(
+        semanticCall(prompt, keywords, scope, {
+          limit: SEMANTIC_HIT_LIMIT,
+          scopeLabel: scopePinned ? "scoped" : "corpus-wide",
+          deep
+        })
+      );
     }
   }
 ```
@@ -1348,12 +1376,14 @@ Add the four fields to the `RunResult` type. In `runWithJudge`, delete the secon
 
 Append to `eval/dataset/golden-set.json` (conceptual type = recall/precision report-only, so these only gate routing + the global citation check; every question below has provable score math):
 
+**Reference format invariant:** `tests/unit/eval/dataset.test.ts` requires every golden reference to be its own canonical form (`canonicalizeReference(ref) === ref`) — use the dataset's short book names (`Rom`, `Gal`, `1Cor`, `Jas`, …), never full names.
+
 ```json
 {
   "id": "routing-why-alone-default",
   "question": "Why did Paul write Romans?",
   "queryType": "conceptual",
-  "goldenReferences": ["Romans 1:1"],
+  "goldenReferences": ["Rom 1:1"],
   "expectedRouting": "default",
   "notes": "Solo why-framing scores 1 — the old OR-gate escalated this; the weighted score must not."
 },
@@ -1361,7 +1391,7 @@ Append to `eval/dataset/golden-set.json` (conceptual type = recall/precision rep
   "id": "routing-concept-density-default",
   "question": "What does the fruit of the Spirit passage teach believers?",
   "queryType": "conceptual",
-  "goldenReferences": ["Galatians 5:22"],
+  "goldenReferences": ["Gal 5:22"],
   "expectedRouting": "default",
   "notes": "Concept density alone scores 1 — routine passage question stays default."
 },
@@ -1369,7 +1399,7 @@ Append to `eval/dataset/golden-set.json` (conceptual type = recall/precision rep
   "id": "routing-topic-survey-default",
   "question": "Find verses about faith, hope, and love",
   "queryType": "conceptual",
-  "goldenReferences": ["1 Corinthians 13:13"],
+  "goldenReferences": ["1Cor 13:13"],
   "expectedRouting": "default",
   "notes": "Topic surveys never score concept density."
 },
@@ -1377,7 +1407,7 @@ Append to `eval/dataset/golden-set.json` (conceptual type = recall/precision rep
   "id": "routing-reconcile-scholarly",
   "question": "How do Paul in Romans and James reconcile faith and works?",
   "queryType": "conceptual",
-  "goldenReferences": ["Romans 3:28", "James 2:24"],
+  "goldenReferences": ["Rom 3:28", "Jas 2:24"],
   "expectedRouting": "scholarly",
   "notes": "Scholarly cue (reconcile) scores 2."
 },
@@ -1385,21 +1415,21 @@ Append to `eval/dataset/golden-set.json` (conceptual type = recall/precision rep
   "id": "routing-why-plus-tension-scholarly",
   "question": "Why does Paul describe a tension between law and grace?",
   "queryType": "conceptual",
-  "goldenReferences": ["Romans 6:14"],
+  "goldenReferences": ["Rom 6:14"],
   "expectedRouting": "scholarly",
-  "notes": "Why-framing (1) + tension cue (2) = 3."
+  "notes": "Why-framing (1) + tension cue (2) + concept density (1) = 4."
 },
 {
   "id": "routing-comparison-scholarly",
   "question": "Compare δικαιοσύνη in Romans and Galatians",
   "queryType": "conceptual",
-  "goldenReferences": ["Romans 1:17", "Galatians 2:21"],
+  "goldenReferences": ["Rom 1:17", "Gal 2:21"],
   "expectedRouting": "scholarly",
   "notes": "Comparison intent scores 2."
 }
 ```
 
-**Check the golden references resolve** (adjust to verses actually present in the corpus — run the gate to confirm the citation-resolvability global check stays green).
+**Check the invariants:** run `npm run test:unit -- eval/dataset` (canonical-reference test) and the gate (citation-resolvability check) — adjust references to verses actually present in the corpus if either fails.
 
 - [ ] **Step 3: Run the gate against the test DB**
 
@@ -1437,8 +1467,11 @@ Create `scripts/smoke-classifier.ts`:
 // scripts/smoke-classifier.ts
 // Live smoke test for the complexity classifier (spec: required before merge).
 // Verifies the exact production call — Responses API, strict JSON schema,
-// reasoning effort "low", 2s timeout, no retry — against the real model.
+// reasoning effort "low", 2s timeout, no retry — against the real model,
+// with the same extracted signals production supplies (intent + book count),
+// so the merge blocker validates the real classifier prompt, not a variant.
 import { classifyComplexityLLM, getRouterModel } from "@/lib/ai/complexity";
+import { extractSignals } from "@/lib/ai/signals";
 
 const PROMPTS: Array<{ prompt: string; expect: boolean }> = [
   { prompt: "What does John 3:16 say?", expect: false },
@@ -1453,7 +1486,7 @@ async function main() {
   for (const { prompt, expect } of PROMPTS) {
     const started = Date.now();
     try {
-      const verdict = await classifyComplexityLLM(prompt);
+      const verdict = await classifyComplexityLLM(prompt, extractSignals(prompt));
       const ok = verdict.complex === expect;
       if (!ok) mismatches++;
       console.log(
@@ -1528,13 +1561,27 @@ Expected: green. Deep mode fires only on live scholarly routing and the acceptan
 
 - [ ] **Step 5: Before/after eval report (PR headline measurement)**
 
+**Both runs must measure the IDENTICAL dataset** (the branch adds six routing items — 20 vs 26 items makes aggregate recall/precision/faithfulness incomparable), and each run's output must be saved aside before the next run overwrites `eval/output/report.*`:
+
 ```bash
-git stash list # ensure clean tree
-git checkout main && npm run eval:report   # BEFORE snapshot — save the output
-git checkout feat/assistant-llm-router-deep-retrieval && npm run eval:report  # AFTER
+git status --porcelain  # ensure clean tree first
+
+# BEFORE — main's code, but the BRANCH's dataset (main's zod schema strips the
+# unknown expectedRouting key, so the file parses fine there):
+git checkout main
+git checkout feat/assistant-llm-router-deep-retrieval -- eval/dataset/golden-set.json
+npm run eval:report
+mkdir -p eval/output/snapshots
+cp eval/output/report.* eval/output/snapshots/  # then rename with a -before suffix
+git checkout -- eval/dataset/golden-set.json    # restore main's dataset
+
+# AFTER — the branch as-is:
+git checkout feat/assistant-llm-router-deep-retrieval
+npm run eval:report
+# rename the fresh eval/output/report.* copies with an -after suffix alongside the before files
 ```
 
-Record both faithfulness/recall/precision summaries in the PR description (same protocol as PR #54). Needs `OPENAI_API_KEY` + `AI_GATEWAY_API_KEY` in `.env.test`.
+Record both faithfulness/recall/precision summaries (26 items each) in the PR description (same protocol as PR #54). Needs `OPENAI_API_KEY` + `AI_GATEWAY_API_KEY` in `.env.test`.
 
 - [ ] **Step 6: Commit docs + final state**
 

@@ -65,7 +65,7 @@ One unit with one job — judge whether a prompt needs deep, cross-text synthesi
 | Concept density ≥3 (keeps the topic-survey / passage-recite exclusion) | +1 |
 | Length >30 words | +1 |
 
-- Strong cues escalate alone; each weak cue needs a second signal. "What does the fruit of the Spirit passage teach believers?" (concept density only, score 1) stays default. "Why did Paul write Romans?" (why-framing only, score 1) stays default. "Why does Paul describe a tension between law and grace?" (why-framing +1, scholarly cue "tension" +2, score 3) escalates.
+- Strong cues escalate alone; each weak cue needs a second signal. "What does the fruit of the Spirit passage teach believers?" (concept density only, score 1) stays default. "Why did Paul write Romans?" (why-framing only, score 1) stays default. "Why does Paul describe a tension between law and grace?" (why-framing +1, scholarly cue "tension" +2, concept density +1 → score 4) escalates.
 - **Deliberately no new fallback cues** for interpretive-stance questions — catching those is the LLM router's job; the score only needs to be a sane deterministic floor (eval gate, kill switch, classifier failure).
 
 ### `routeAssistantPrompt` (`lib/ai/modelRouter.ts`)

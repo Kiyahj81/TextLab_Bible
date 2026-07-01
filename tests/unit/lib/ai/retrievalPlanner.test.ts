@@ -680,6 +680,18 @@ describe("runRetrievalPlan", () => {
     expect(getPassageTokens).not.toHaveBeenCalled();
   });
 
+  it("does NOT enrich a cross-chapter passage (getPassageTokens is single-chapter only)", async () => {
+    // getPassageTokens can only encode one chapter, so passageCall gates enrichment on
+    // !crossChapter. Pin that: a cross-chapter ref must not reach the token helper.
+    getPassage.mockImplementation(async ({ corpus, chapter }: { corpus: "SBLGNT" | "WEB"; chapter: number }) => ({
+      corpus,
+      references: [{ book: "Rom", chapter, verse: 1, reference: `Rom ${chapter}:1`, text: "Greek text" }]
+    }));
+    const signals = extractSignals("Explain Romans 7:25-8:4");
+    await runRetrievalPlan(signals, "Explain Romans 7:25-8:4", false);
+    expect(getPassageTokens).not.toHaveBeenCalled();
+  });
+
   it("degrades later passages to verse-text-only once the enrichment char budget is spent", async () => {
     vi.stubEnv("TEXTLAB_MAX_ENRICH_CHARS", "120"); // only the first passage's annotation fits
     getPassage.mockImplementation(async ({ book, corpus }: { book: string; corpus: "SBLGNT" | "WEB" }) => ({

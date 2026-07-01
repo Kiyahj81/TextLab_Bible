@@ -13,8 +13,15 @@ export type PassageToken = {
 };
 export type PassageTokenRow = PassageToken & { verse: number; wordIndex: number };
 
-// Enriched SBLGNT tokens for a verse range — a trimmed getReaderPassage token path
-// with no user notes/highlights, for the assistant's evidence block.
+// Enriched SBLGNT tokens for a verse range WITHIN A SINGLE CHAPTER — a trimmed
+// getReaderPassage token path with no user notes/highlights, for the assistant's
+// evidence block. The input intentionally has no chapterEnd: the query filters on one
+// `chapter` with `verse BETWEEN verseStart AND verseEnd`, so a cross-chapter span
+// (e.g. Rom 7:25–8:4) CANNOT be expressed here — passing one would encode
+// `chapter = 7 AND verse BETWEEN 25 AND 4` and silently return []. The only caller
+// (passageCall) gates enrichment on `!crossChapter`, so cross-chapter passages are shown
+// as base verse text and never reach this helper. If enrichment is ever extended to
+// cross-chapter ranges, add chapterEnd support (a per-chapter compound filter) here first.
 export async function getPassageTokens(input: {
   book: string;
   chapter: number;

@@ -294,6 +294,12 @@ describe("detectIntent", () => {
     expect(detectIntent("What does νόμος mean in Romans 7?")).toBe("word-study");
   });
 
+  it("keeps a passage-subject meaning question as passage-study when a Greek lemma is only incidental", () => {
+    // The lemma override must key off the meaning-query subject, not any Greek token:
+    // the subject here is the passage reference, not νόμος.
+    expect(detectIntent("What does John 3:16 mean for νόμος?")).toBe("passage-study");
+  });
+
   it("classifies an explicit recite/show request as passage-recite", () => {
     expect(detectIntent("Show me Romans 7")).toBe("passage-recite");
     expect(detectIntent("What does John 3:16 say?")).toBe("passage-recite");

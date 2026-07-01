@@ -426,8 +426,13 @@ export function detectIntent(prompt: string): Intent {
   const hasReference = detectReferences(prompt).length > 0;
   const explicitLexicalCue = /(how (is|are) .+ used|senses of|word study)/.test(lower);
   const genericMeaningQuery = /(what does .+ mean|meaning of)/.test(lower);
-  const namesGreekLemma = detectGreekWords(prompt).length > 0;
-  if (explicitLexicalCue || (genericMeaningQuery && (!hasReference || namesGreekLemma))) {
+  // The Greek-lemma override applies only when the lemma is the SUBJECT of the meaning
+  // query, not merely present elsewhere: "what does νόμος mean in Romans 7" is a word
+  // study, but "what does John 3:16 mean for νόμος" is passage interpretation.
+  const meaningSubject =
+    prompt.match(/what does\s+(.+?)\s+mean/i)?.[1] ?? prompt.match(/meaning of\s+(.+)/i)?.[1] ?? "";
+  const subjectNamesGreekLemma = detectGreekWords(meaningSubject).length > 0;
+  if (explicitLexicalCue || (genericMeaningQuery && (!hasReference || subjectNamesGreekLemma))) {
     return "word-study";
   }
 

@@ -646,7 +646,22 @@ export async function routeAssistantPrompt(
 
 Also add `import type { Signals } from "@/lib/ai/signals";` if `detectConceptWords` import is now unused, and remove the unused `detectConceptWords` import.
 
-**Compile note:** `lib/ai/assistant.ts` and `eval/runner.ts` still call the router synchronously — TypeScript may not flag a missing `await` on the object usage, but the routing object would be a Promise. **Do not leave this state uncommitted past this task**; Task 5/9 fix the callers, so in THIS task patch the two call sites minimally to `await` (assistant.ts line 66: `const routing = await routeAssistantPrompt(prompt, { escalate: options.escalate ?? false, signals, live: true });` — drop the `autoEscalate` argument; eval/runner.ts line 152: `const routing = await routeAssistantPrompt(item.question, { signals, live: false });`). Run `npx tsc --noEmit --pretty false` to confirm.
+**Compile note:** `lib/ai/assistant.ts` and `eval/runner.ts` still call the router synchronously — TypeScript may not flag a missing `await` on the object usage, but the routing object would be a Promise. **Do not leave this state uncommitted past this task**; Task 5/9 fix the callers, so in THIS task patch the two call sites minimally to `await` (assistant.ts line 66: `const routing = await routeAssistantPrompt(prompt, { escalate: options.escalate ?? false, signals, live: true });` — drop the `autoEscalate` argument; eval/runner.ts line 152: `const routing = await routeAssistantPrompt(item.question, { signals, live: false });`).
+
+**Also patch the non-live fallback literal in the same file** (the `if (!live) { return fallbackAnswer(...) }` branch, above the `routing = ...` line): `RoutingDecision` now requires `deep`/`routerSource`, and this literal predates Task 5's reorder, so it must gain both fields NOW or tsc fails at this task's checkpoint, not just at Task 5's:
+
+```typescript
+    return fallbackAnswer(prompt, evidence, {
+      modelRole: "default",
+      modelUsed: "none",
+      deep: false,
+      routerSource: "none",
+      routingDecision:
+        "Live synthesis is disabled, so TextLab returned the deterministic local retrieval fallback (no model call was made)."
+    });
+```
+
+Run `npx tsc --noEmit --pretty false` to confirm both patches together leave the tree compiling.
 
 - [ ] **Step 4: Run tests + type check**
 
@@ -908,43 +923,102 @@ git commit -m "feat(assistant): deep retrieval mode with corpus-wide semantic pa
 
 - [ ] **Step 1: Write/adjust the failing tests**
 
-Read `tests/unit/lib/ai/assistant.test.ts` first and follow its existing mock structure (it mocks the planner/synthesis modules). Add/replace cases:
+`tests/unit/lib/ai/assistant.test.ts` currently mocks `@/lib/ai/modelRouter` by spreading `importOriginal()` and overriding ONLY `isLiveAssistantEnabled` — meaning `routeAssistantPrompt` is the REAL implementation today. That must change: with the Task 3 reorder, a live test run would otherwise call the real classifier (`classifyComplexityLLM`), which reaches out to OpenAI from a unit test. Replace the mock so `routeAssistantPrompt` is a hoisted `vi.fn()` too, and give it a default in `beforeEach`:
+
+```typescript
+const { isLiveAssistantEnabled, routeAssistantPrompt } = vi.hoisted(() => ({
+  isLiveAssistantEnabled: vi.fn(() => false),
+  routeAssistantPrompt: vi.fn()
+}));
+vi.mock("@/lib/ai/modelRouter", async (importOriginal) => {
+  const real = await (importOriginal as () => Promise<typeof import("@/lib/ai/modelRouter")>)();
+  return { ...real, isLiveAssistantEnabled, routeAssistantPrompt };
+});
+
+import { answerBibleQuestion, detectBookFromPrompt } from "@/lib/ai/assistant";
+import { routeAssistantPrompt } from "@/lib/ai/modelRouter"; // now the mocked binding
+```
+
+Extend the existing `beforeEach` with a default routing decision so every test that doesn't override it still gets a valid object:
+
+```typescript
+beforeEach(() => {
+  vi.clearAllMocks();
+  // …existing resets…
+  isLiveAssistantEnabled.mockReturnValue(false);
+  routeAssistantPrompt.mockResolvedValue({
+    modelRole: "default",
+    modelUsed: "gpt-5-chat-latest",
+    deep: false,
+    routerSource: "score",
+    routingDecision: "Handled by the default model for normal retrieval planning and synthesis."
+  });
+});
+```
+
+Now add the new cases:
 
 ```typescript
 it("routes BEFORE retrieval and passes the routing depth into the planner", async () => {
-  // Arrange the router mock to return scholarly/deep, then assert the planner
-  // mock was called with { semanticEnabled: true, deep: true }.
-  vi.mocked(routeAssistantPrompt).mockResolvedValue({
+  isLiveAssistantEnabled.mockReturnValue(true);
+  routeAssistantPrompt.mockResolvedValue({
     modelRole: "scholarly", modelUsed: "gpt-5.4", deep: true, routerSource: "llm",
     routingDecision: "Scholarly model used automatically: test."
   });
-  await answerBibleQuestion("Is Romans 7 about Paul himself?");
-  expect(vi.mocked(runRetrievalPlan)).toHaveBeenCalledWith(
-    expect.anything(), "Is Romans 7 about Paul himself?", { semanticEnabled: true, deep: true }
+  synthesizeWithRefinement.mockResolvedValue({ answer: "x", claims: [], citations: [], toolTrace: [] });
+
+  await answerBibleQuestion("Is Romans 7 about Paul?");
+  expect(runRetrievalPlan).toHaveBeenCalledWith(
+    expect.anything(), "Is Romans 7 about Paul?", { semanticEnabled: true, deep: true }
   );
 });
 
 it("non-live path never routes: routerSource none, deep false, standard retrieval", async () => {
-  vi.stubEnv("OPENAI_API_KEY", "");
+  isLiveAssistantEnabled.mockReturnValue(false);
   const answer = await answerBibleQuestion("What does John 1:1 say?");
   expect(answer.modelUsed).toBe("none");
   expect(answer.routerSource).toBe("none");
   expect(answer.deep).toBe(false);
-  expect(vi.mocked(routeAssistantPrompt)).not.toHaveBeenCalled();
-  expect(vi.mocked(runRetrievalPlan)).toHaveBeenCalledWith(
+  expect(routeAssistantPrompt).not.toHaveBeenCalled();
+  expect(runRetrievalPlan).toHaveBeenCalledWith(
     expect.anything(), expect.anything(), { semanticEnabled: false }
   );
 });
 
 it("forwards confirmEscalation to the router", async () => {
+  isLiveAssistantEnabled.mockReturnValue(true);
+  synthesizeWithRefinement.mockResolvedValue({ answer: "x", claims: [], citations: [], toolTrace: [] });
   await answerBibleQuestion("prompt", { confirmEscalation: true });
-  expect(vi.mocked(routeAssistantPrompt)).toHaveBeenCalledWith(
+  expect(routeAssistantPrompt).toHaveBeenCalledWith(
     "prompt", expect.objectContaining({ confirmEscalation: true, live: true })
   );
 });
 ```
 
-(Adapt mock setup names to the file's existing `vi.mock` pattern — the assertions above are the contract.)
+**Migrate the existing tests that reference the removed `autoEscalate` option and the now-mocked router:**
+
+- Delete the "auto-escalates on the first pass when autoEscalate is on…" test (lines 108–121 in the current file) — `autoEscalate` no longer exists on `answerBibleQuestion`'s options; the "forwards confirmEscalation to the router" case above supersedes it.
+- Update "routes to the scholarly model when escalation is requested" to drive the mocked router explicitly, since the real complexity logic is out of scope for this file (it's covered by `modelRouter.test.ts` / `complexity.test.ts`):
+
+```typescript
+it("routes to the scholarly model when escalation is requested", async () => {
+  isLiveAssistantEnabled.mockReturnValue(true);
+  routeAssistantPrompt.mockResolvedValue({
+    modelRole: "scholarly", modelUsed: "gpt-5.4", deep: true, routerSource: "manual",
+    routingDecision: "Escalated to the scholarly model at the user's request."
+  });
+  synthesizeWithRefinement.mockResolvedValue({ answer: "SCHOLARLY", claims: [], citations: [], toolTrace: [] });
+
+  const answer = await answerBibleQuestion("deep synthesis please", { escalate: true });
+
+  expect(routeAssistantPrompt).toHaveBeenCalledWith(
+    "deep synthesis please", expect.objectContaining({ escalate: true, live: true })
+  );
+  expect(answer.modelRole).toBe("scholarly");
+});
+```
+
+- The "does not claim a scholarly/model pass on the non-live fallback…" test needs no behavioral change but gains two assertions: `expect(answer.deep).toBe(false); expect(answer.routerSource).toBe("none");`.
 
 - [ ] **Step 2: Run to verify failures**
 
@@ -1006,15 +1080,43 @@ export async function answerBibleQuestion(
 
 3. The `...routing` spreads in `withMarkdown` calls automatically carry the new fields; extend `WithMarkdownInput` with the same three fields (`deep: boolean; routerSource: RouterSource; complexityScore?: number;`).
 
+**Two more compile-only patches required for this task's tsc checkpoint to pass** (both are TEMPORARY shims superseded by later tasks — call this out in the diff/PR, don't polish them):
+
+4. `app/api/assistant/route.ts:68` still calls `answerBibleQuestion(prompt, { escalate, autoEscalate })`, but `autoEscalate` is no longer a valid option — passing it as an inline object literal is now a TS excess-property error. Task 7 does the real migration; for now just drop it from the call (the destructured `autoEscalate` local becomes temporarily unused, which is not a tsc error — `noUnusedLocals` is off in this repo's `tsconfig.json`):
+
+```typescript
+  // TEMPORARY until Task 7's confirmEscalation migration — drop autoEscalate here
+  // so the call matches the new options type; the schema still accepts the field.
+  const answer = await answerBibleQuestion(prompt, { escalate });
+```
+
+5. `tests/unit/api/assistant.test.ts` (the sessions-persistence suite) declares a module-level `const answer: AssistantAnswer = { … }` fixture that predates the new required fields. Add them so the literal still satisfies the type — Task 6 is what actually exercises these fields meaningfully in persistence:
+
+```typescript
+const answer: AssistantAnswer = {
+  answer: "ok",
+  citations: [{ reference: "John 1:1", corpus: "SBLGNT", searchQuery: "lemma:λόγος" }],
+  markdown: "# x",
+  toolTrace: [{ tool: "getPassage", args: {} }],
+  mode: "fallback",
+  grounded: true,
+  modelRole: "default",
+  modelUsed: "gpt-5-chat-latest",
+  routingDecision: "Handled by the default model",
+  deep: false,
+  routerSource: "score" // placeholder value — Task 6 asserts this persists correctly
+};
+```
+
 - [ ] **Step 4: Run tests + type check**
 
-Run: `npm run test:unit -- "lib/ai/assistant" && npx tsc --noEmit --pretty false`
-Expected: PASS / clean.
+Run: `npm run test:unit -- "lib/ai/assistant" "api/assistant" && npx tsc --noEmit --pretty false`
+Expected: PASS / clean across both suites (the sessions-persistence suite and the route suite must still compile even though their own behavioral migrations land in Tasks 6–7).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add lib/ai/assistant.ts tests/unit/lib/ai/assistant.test.ts
+git add lib/ai/assistant.ts app/api/assistant/route.ts tests/unit/lib/ai/assistant.test.ts tests/unit/api/assistant.test.ts
 git commit -m "feat(assistant): route before retrieval; deep flag flows into the planner"
 ```
 
@@ -1024,7 +1126,7 @@ git commit -m "feat(assistant): route before retrieval; deep flag flows into the
 
 **Files:**
 - Modify: `lib/ai/sessions.ts`
-- Test: locate with `npm run test:unit -- sessions` (`tests/unit/` has a sessions suite; if the whitelist is asserted in `tests/unit/api/assistant.test.ts` instead, update there).
+- Test: `tests/unit/api/assistant.test.ts` (the sessions-persistence suite — same file Task 5 Step 3 patched with a placeholder `routerSource`/`deep` on its module-level `answer` fixture).
 
 **Interfaces:**
 - Consumes: Task 5's `AssistantAnswer` fields.
@@ -1032,20 +1134,28 @@ git commit -m "feat(assistant): route before retrieval; deep flag flows into the
 
 - [ ] **Step 1: Write the failing test**
 
-In the suite that asserts saved assistant-message metadata, add:
+Update the module-level `answer` fixture's placeholder values to something the new test can distinguish (`routerSource: "score-fallback", deep: true`, add `complexityScore: 3`), and add:
 
 ```typescript
 it("persists routerSource, deep, and complexityScore in message metadata", async () => {
-  // Build an AssistantAnswer fixture with routerSource: "score-fallback",
-  // deep: true, complexityScore: 3 and run finishAssistantExchange with the
-  // suite's mocked prisma; assert the aiMessage.create metadata contains all three.
-  expect(savedMetadata).toMatchObject({ routerSource: "score-fallback", deep: true, complexityScore: 3 });
+  const { sessionId, userMessagePromise } = await startAssistantExchange({
+    userId: "local-user",
+    requestedSessionId: "",
+    prompt: "What is logos?"
+  });
+  await finishAssistantExchange({ sessionId, userMessagePromise, answer });
+
+  expect(prismaMock.aiMessage.create.mock.calls[1][0].data.metadata).toMatchObject({
+    routerSource: "score-fallback",
+    deep: true,
+    complexityScore: 3
+  });
 });
 ```
 
 - [ ] **Step 2: Run to verify failure**
 
-Run: `npm run test:unit -- sessions` (or the hosting file)
+Run: `npm run test:unit -- "api/assistant"`
 Expected: FAIL — fields absent from metadata.
 
 - [ ] **Step 3: Implement**
@@ -1073,13 +1183,13 @@ and in `finishAssistantExchange`:
 
 - [ ] **Step 4: Run tests**
 
-Run: `npm run test:unit -- sessions`
+Run: `npm run test:unit -- "api/assistant"`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add lib/ai/sessions.ts tests/unit
+git add lib/ai/sessions.ts tests/unit/api/assistant.test.ts
 git commit -m "feat(assistant): persist routerSource/deep/complexityScore in session metadata"
 ```
 
@@ -1217,9 +1327,26 @@ it("sends neither flag when the toggle is off (auto default)", async () => {
 });
 
 it("writes the new confirm cookie when toggled", () => {
+  // Clear first: the component's migration-seed effect (added below) writes this
+  // same cookie on EVERY mount whenever it's unset, including the two tests above
+  // — without clearing, this assertion could pass even if the click handler did
+  // nothing, because an earlier test's mount already seeded "1".
+  document.cookie = "textlab-assistant-confirm-scholarly=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
   render(<AiAssistant initialNotes={[]} />);
+  // The migration-seed effect fires on mount with the default (unset) prop → "0".
+  expect(document.cookie).toContain("textlab-assistant-confirm-scholarly=0");
   fireEvent.click(screen.getByLabelText(/ask before using the scholarly model/i));
+  // Prove the CLICK, not the seed effect, drove this: "0" → "1".
   expect(document.cookie).toContain("textlab-assistant-confirm-scholarly=1");
+});
+```
+
+Add a `beforeEach` at the top of this file's existing `beforeEach`/`afterEach` block to clear the cookie before every test in the suite, so the seed effect in the two tests above never leaks state into later ones either:
+
+```typescript
+beforeEach(() => {
+  document.cookie = "textlab-assistant-confirm-scholarly=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+  // …existing fetch-mock stub setup…
 });
 ```
 
@@ -1411,16 +1538,16 @@ function semanticPassesFrom(evidence: EvidencePacket): SemanticPassTrace[] {
 `RunResult` gains `semanticPasses: SemanticPassTrace[]` (set in `runOnce` from the packet). Keep the existing scalar `rerankStatus`/`rerankCandidateCount` fields for backward compatibility, derived as `semanticPasses[0] ?? null` values, and delete `semanticTraceFrom()`. Surface `semanticPasses` in the JSON report output (`eval/report.ts` render) so deep runs show both passes.
 
 **Existing fixture updates (required — the new `RunResult` fields are non-optional):**
-- `tests/unit/eval/gate.test.ts` has a `res(over)` builder ending in `satisfies RunResult` — add defaults to it: `modelRole: "default", routerSource: "score", deep: false, complexityScore: null, semanticPasses: []`.
+- `tests/unit/eval/gate.test.ts` has a `res(over)` builder (line 11: `function res(over: Partial<RunResult> & { item: GoldenItem }): RunResult`) ending in `satisfies RunResult` — add the five new required-field defaults to its returned object literal: `modelRole: "default", routerSource: "score", deep: false, complexityScore: null, semanticPasses: []`.
 - `tests/unit/eval/report.test.ts` declares literal `RunResult[]` samples — add the same five fields to each literal.
-- Add a gate unit test for the new check (reuse the file's `res()`/item-construction helpers):
+- Add a gate unit test for the new check, using the file's own `item(id, queryType, extra)` helper (line 7 — NOT a helper named `itemWith`, which does not exist in this suite):
 
 ```typescript
 it("gates routing expectations only for items that declare expectedRouting", () => {
   const outcome = evaluateGate([
-    res({ item: itemWith({ id: "r-pass", expectedRouting: "scholarly" }), modelRole: "scholarly" }),
-    res({ item: itemWith({ id: "r-fail", expectedRouting: "scholarly" }), modelRole: "default" }),
-    res({ item: itemWith({ id: "r-undeclared" }) }) // no expectedRouting → no routing check
+    res({ item: item("r-pass", "conceptual", { expectedRouting: "scholarly" }), modelRole: "scholarly" }),
+    res({ item: item("r-fail", "conceptual", { expectedRouting: "scholarly" }), modelRole: "default" }),
+    res({ item: item("r-undeclared", "conceptual") }) // no expectedRouting → no routing check
   ]);
   const routing = outcome.checks.filter((c) => c.label.startsWith("routing"));
   expect(routing).toHaveLength(2);
@@ -1428,8 +1555,6 @@ it("gates routing expectations only for items that declare expectedRouting", () 
   expect(routing.find((c) => c.label.includes("r-fail"))?.passed).toBe(false);
 });
 ```
-
-(`itemWith` = however the suite builds `GoldenItem`s today — follow its existing pattern.)
 
 `eval/gate.ts` — after the per-item metric loop, add:
 

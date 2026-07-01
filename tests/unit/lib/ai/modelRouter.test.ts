@@ -7,6 +7,7 @@ import {
   recommendScholarlyUpgrade,
   routeAssistantPrompt
 } from "@/lib/ai/modelRouter";
+import { extractSignals } from "@/lib/ai/signals";
 
 beforeEach(() => {
   vi.unstubAllEnvs();
@@ -24,29 +25,74 @@ describe("routeAssistantPrompt", () => {
   });
 
   it("attaches an advisory scholarly upgrade when scholarly cues are present", () => {
-    const decision = routeAssistantPrompt("Give a scholarly analysis of the interpretive options");
+    const prompt = "Give a scholarly analysis of the interpretive options";
+    const decision = routeAssistantPrompt(prompt, { signals: extractSignals(prompt) });
     expect(decision.modelRole).toBe("default");
     expect(decision.recommendedUpgrade?.modelRole).toBe("scholarly");
   });
 
   it("escalates to the scholarly model when escalate is requested", () => {
-    const decision = routeAssistantPrompt("Give a scholarly analysis", true);
+    const decision = routeAssistantPrompt("Give a scholarly analysis", { escalate: true });
     expect(decision.modelRole).toBe("scholarly");
     expect(decision.modelUsed).toBe("gpt-5.4");
     // Already escalated — no further upgrade should be advised.
     expect(decision.recommendedUpgrade).toBeUndefined();
   });
+
+  it("auto-escalates on the first pass when autoEscalate is on and the prompt is complex", () => {
+    const prompt = "How do Paul in Romans and James reconcile faith and works?";
+    const decision = routeAssistantPrompt(prompt, { autoEscalate: true, signals: extractSignals(prompt) });
+    expect(decision.modelRole).toBe("scholarly");
+  });
+
+  it("does NOT auto-escalate a simple prompt even when autoEscalate is on", () => {
+    const prompt = "What does John 1:1 say?";
+    const decision = routeAssistantPrompt(prompt, { autoEscalate: true, signals: extractSignals(prompt) });
+    expect(decision.modelRole).toBe("default");
+  });
+
+  it("manual escalate still wins regardless of complexity", () => {
+    const decision = routeAssistantPrompt("Show Romans 7", { escalate: true });
+    expect(decision.modelRole).toBe("scholarly");
+  });
 });
 
 describe("recommendScholarlyUpgrade", () => {
-  it("returns undefined for ordinary prompts", () => {
-    expect(recommendScholarlyUpgrade("What does love mean?")).toBeUndefined();
+  const rec = (p: string) => recommendScholarlyUpgrade(p, extractSignals(p));
+
+  it("returns undefined for a simple lookup", () => {
+    expect(rec("What does John 1:1 say?")).toBeUndefined();
   });
 
-  it("returns an upgrade for scholarly prompts", () => {
-    const upgrade = recommendScholarlyUpgrade("I need a deep synthesis with theological nuance");
-    expect(upgrade?.modelRole).toBe("scholarly");
-    expect(typeof upgrade?.model).toBe("string");
+  it("recommends scholarly for cross-book tension questions", () => {
+    expect(rec("How do Paul in Romans and James reconcile faith and works?")?.modelRole).toBe("scholarly");
+  });
+
+  it("recommends scholarly for a comparison prompt", () => {
+    expect(rec("Compare δικαιοσύνη in Romans and Galatians")?.modelRole).toBe("scholarly");
+  });
+
+  it("still honors an explicit scholarly cue", () => {
+    expect(rec("Give a deep synthesis of atonement")?.modelRole).toBe("scholarly");
+  });
+
+  it("recommends scholarly on an ambiguity cue", () => {
+    expect(rec("Explain the ambiguity in this passage")?.modelRole).toBe("scholarly");
+  });
+
+  it("recommends scholarly on 'why does' interpretive framing", () => {
+    expect(rec("Why does Paul emphasize faith?")?.modelRole).toBe("scholarly");
+  });
+
+  it("recommends scholarly on three distinct concept words", () => {
+    // No reference, cue, or comparison — the concept count alone (>= 3) tips it.
+    expect(rec("Explain justification, sanctification, and glorification")?.modelRole).toBe("scholarly");
+  });
+
+  it("does NOT recommend scholarly for a routine multi-topic survey", () => {
+    // Three concepts, but a topic survey is retrieval, not deep synthesis — the concept
+    // count must not auto-escalate it.
+    expect(rec("Find verses about faith, hope, and love")).toBeUndefined();
   });
 });
 

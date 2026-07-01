@@ -8,6 +8,7 @@ import {
   detectPhraseLemmas,
   detectReferences,
   detectTopicWords,
+  detectConceptWords,
   extractSignals
 } from "@/lib/ai/signals";
 
@@ -221,6 +222,12 @@ describe("detectDomainQuery", () => {
     expect(detectDomainQuery("33.55")).toBeUndefined();
     expect(detectDomainQuery("domain 200 is out of range")).toBeUndefined();
   });
+  it("does NOT fire on an out-of-range LN ref (domain part > 93)", () => {
+    // The LN branch validates 1..93 like the domain-number branch, so an
+    // out-of-range marker falls back to normal retrieval instead of an empty LN search.
+    expect(detectDomainQuery("LN 99.1")).toBeUndefined();
+    expect(detectDomainQuery("Louw-Nida 94.2 in Matthew")).toBeUndefined();
+  });
 });
 
 describe("extractSignals domainQuery", () => {
@@ -240,6 +247,35 @@ describe("extractSignals domainQuery", () => {
     expect(signals.domainQuery).toBeUndefined();
     expect(signals.topicWords).toContain("law");
   });
+
+  it("leaves an out-of-range LN marker out of domainQuery and intact for topic extraction", () => {
+    const signals = extractSignals("what does LN 99.1 of love mean");
+    expect(signals.domainQuery).toBeUndefined();
+    expect(signals.topicWords).toContain("love");
+  });
+
+  it("strips EVERY in-range marker, not just the first (global replace)", () => {
+    // Two domain markers in one prompt: without the /g flag only the first was
+    // stripped, leaking "domain" from the second into topic words.
+    const signals = extractSignals("compare domain 33 and domain 88 for love");
+    expect(signals.domainQuery).toEqual({ kind: "domain", code: "033" });
+    expect(signals.topicWords).not.toContain("domain");
+    expect(signals.topicWords).toContain("love");
+  });
+
+  it("does not leak domain-marker words when an out-of-range marker is left in the text", () => {
+    // detectDomainQuery rejects the out-of-range marker, so its text survives — but the
+    // marker words themselves are never real search concepts.
+    const a = extractSignals("domain 200 love");
+    expect(a.domainQuery).toBeUndefined();
+    expect(a.topicWords).not.toContain("domain");
+    expect(a.topicWords).toContain("love");
+    const b = extractSignals("Louw-Nida 94.2 love");
+    expect(b.domainQuery).toBeUndefined();
+    expect(b.topicWords).not.toContain("louw");
+    expect(b.topicWords).not.toContain("nida");
+    expect(b.topicWords).toContain("love");
+  });
 });
 
 describe("detectIntent", () => {
@@ -247,8 +283,35 @@ describe("detectIntent", () => {
     expect(detectIntent("What does νόμος mean?")).toBe("word-study");
   });
 
-  it("classifies a show/read request as passage-study", () => {
-    expect(detectIntent("Show me Romans 7")).toBe("passage-study");
+  it("keeps a passage-meaning question as passage-study, not word-study", () => {
+    // The generic "what does X mean" form must not hijack passage interpretation
+    // into the lexical answer path when X is a passage reference.
+    expect(detectIntent("What does John 3:16 mean?")).toBe("passage-study");
+    expect(detectIntent("What does Romans 8 mean?")).toBe("passage-study");
+  });
+
+  it("still classifies a lemma meaning question as word-study even with a reference", () => {
+    expect(detectIntent("What does νόμος mean in Romans 7?")).toBe("word-study");
+  });
+
+  it("keeps a passage-subject meaning question as passage-study when a Greek lemma is only incidental", () => {
+    // The lemma override must key off the meaning-query subject, not any Greek token:
+    // the subject here is the passage reference, not νόμος.
+    expect(detectIntent("What does John 3:16 mean for νόμος?")).toBe("passage-study");
+  });
+
+  it("classifies an explicit recite/show request as passage-recite", () => {
+    expect(detectIntent("Show me Romans 7")).toBe("passage-recite");
+    expect(detectIntent("What does John 3:16 say?")).toBe("passage-recite");
+    expect(detectIntent("What is written in Matthew 6:9?")).toBe("passage-recite");
+  });
+
+  it("keeps explanatory passage questions as passage-study (no forced quote)", () => {
+    expect(detectIntent("Explain Romans 8 in plain language")).toBe("passage-study");
+    expect(detectIntent("What are the different senses in which Paul uses the word 'law' in Romans 7?")).toBe(
+      "passage-study"
+    );
+    expect(detectIntent("What does Romans 8 say about suffering?")).toBe("passage-study");
   });
 
   it("classifies a verses-about request as topic-survey", () => {
@@ -265,6 +328,20 @@ describe("detectIntent", () => {
 
   it("falls back to general", () => {
     expect(detectIntent("Tell me about God")).toBe("general");
+  });
+});
+
+describe("detectConceptWords (routing-stable, decoupled from search stoplist)", () => {
+  it("counts concepts from the frozen base, ignoring a search-only stoplist edit", () => {
+    // detectTopicWords honors a caller-supplied search stoplist (the search path) ...
+    expect(detectTopicWords("grace mercy peace", new Set(["grace"]))).not.toContain("grace");
+    // ...but the routing concept words use the frozen base only, so the same word still counts.
+    expect(detectConceptWords("grace mercy peace")).toContain("grace");
+  });
+
+  it("still excludes generic framing words so they don't inflate routing", () => {
+    // "within"/"context" live in the base list, so this stays a single-concept prompt.
+    expect(detectConceptWords("Explain Romans 8:28 within the broader context of Romans 8")).toEqual(["broader"]);
   });
 });
 

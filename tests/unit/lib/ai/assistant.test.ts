@@ -60,6 +60,19 @@ describe("answerBibleQuestion orchestration", () => {
     expect(answer.grounded).toBe(true);
   });
 
+  it("does not claim a scholarly/model pass on the non-live fallback even when escalation is requested", async () => {
+    // isLiveAssistantEnabled() is false here, so no model call happens — the routing
+    // metadata must not advertise the scholarly pass that escalate would have selected.
+    const answer = await answerBibleQuestion("deep synthesis please", { escalate: true });
+
+    expect(synthesizeWithRefinement).not.toHaveBeenCalled();
+    expect(answer.mode).toBe("fallback");
+    expect(answer.modelRole).toBe("default");
+    expect(answer.modelUsed).toBe("none");
+    expect(answer.routingDecision).toMatch(/disabled|no model call/i);
+    expect(answer.recommendedUpgrade).toBeUndefined();
+  });
+
   it("returns the synthesized answer when live and synthesis succeeds", async () => {
     isLiveAssistantEnabled.mockReturnValue(true);
     synthesizeWithRefinement.mockResolvedValue({
@@ -85,6 +98,21 @@ describe("answerBibleQuestion orchestration", () => {
     synthesizeWithRefinement.mockResolvedValue({ answer: "SCHOLARLY", claims: [], citations: [], toolTrace: [] });
 
     const answer = await answerBibleQuestion("deep synthesis please", { escalate: true });
+
+    expect(answer.modelRole).toBe("scholarly");
+    expect(synthesizeWithRefinement).toHaveBeenCalledWith(
+      expect.objectContaining({ routing: expect.objectContaining({ modelRole: "scholarly" }) })
+    );
+  });
+
+  it("auto-escalates on the first pass when autoEscalate is on and the prompt is complex", async () => {
+    isLiveAssistantEnabled.mockReturnValue(true);
+    synthesizeWithRefinement.mockResolvedValue({ answer: "AUTO-SCHOLARLY", claims: [], citations: [], toolTrace: [] });
+
+    const answer = await answerBibleQuestion(
+      "How do Paul in Romans and James reconcile faith and works?",
+      { autoEscalate: true }
+    );
 
     expect(answer.modelRole).toBe("scholarly");
     expect(synthesizeWithRefinement).toHaveBeenCalledWith(

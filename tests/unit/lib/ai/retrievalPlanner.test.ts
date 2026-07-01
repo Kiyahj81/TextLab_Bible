@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import {
   ENGLISH_PHRASE_TO_GREEK_LEMMA,
   ENGLISH_TO_GREEK_LEMMA,
@@ -6,7 +6,7 @@ import {
   type Signals
 } from "@/lib/ai/signals";
 
-const { getPassage, searchLemma, searchKeyword, searchMorphology, getTopLemmas, findLemmaExamples, searchSemanticDetailed, searchDomain } =
+const { getPassage, searchLemma, searchKeyword, searchMorphology, getTopLemmas, findLemmaExamples, searchSemanticDetailed, searchDomain, getPassageTokens } =
   vi.hoisted(() => ({
     getPassage: vi.fn(),
     searchLemma: vi.fn(),
@@ -15,7 +15,8 @@ const { getPassage, searchLemma, searchKeyword, searchMorphology, getTopLemmas, 
     getTopLemmas: vi.fn(),
     findLemmaExamples: vi.fn(),
     searchSemanticDetailed: vi.fn(),
-    searchDomain: vi.fn()
+    searchDomain: vi.fn(),
+    getPassageTokens: vi.fn()
   }));
 
 vi.mock("@/lib/search", () => ({
@@ -27,10 +28,11 @@ vi.mock("@/lib/search", () => ({
   findLemmaExamples,
   searchSemanticDetailed,
   searchDomain,
+  getPassageTokens,
   SEMANTIC_INDEX_CORPUS: "WEB"
 }));
 
-import { runRetrievalPlan, shouldRunSemantic } from "@/lib/ai/retrievalPlanner";
+import { runRetrievalPlan, shouldRunSemantic, enrichmentBudget } from "@/lib/ai/retrievalPlanner";
 
 const emptySignals: Signals = {
   references: [],
@@ -99,6 +101,8 @@ beforeEach(() => {
     pagination: {}
   }));
   searchSemanticDetailed.mockResolvedValue(semanticResult([]));
+  getPassageTokens.mockReset();
+  getPassageTokens.mockResolvedValue([]);
   getTopLemmas.mockResolvedValue([{ lemma: "λόγος", partOfSpeech: "N-", count: 10 }]);
   findLemmaExamples.mockResolvedValue(
     new Map([
@@ -118,6 +122,10 @@ beforeEach(() => {
       ]
     ])
   );
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 describe("runRetrievalPlan", () => {
@@ -646,6 +654,144 @@ describe("runRetrievalPlan", () => {
     );
 
     expect(packet.toolTrace.some((t) => t.tool === "searchDomain")).toBe(true);
+  });
+
+  it("annotates a ≤25-verse SBLGNT passage with per-token morphology/gloss", async () => {
+    getPassage.mockResolvedValue({
+      corpus: "SBLGNT",
+      references: [{ book: "John", chapter: 1, verse: 1, reference: "John 1:1", text: "Ἐν ἀρχῇ ἦν ὁ λόγος" }]
+    });
+    getPassageTokens.mockResolvedValue([
+      { surface: "λόγος", lemma: "λόγος", morphCode: "N-NSM", partOfSpeech: "N-", gloss: "word", domainLabel: "Communication (33)", verse: 1, wordIndex: 4 }
+    ]);
+    const signals = extractSignals("Show John 1:1");
+    const packet = await runRetrievalPlan(signals, "Show John 1:1", false);
+    expect(packet.formattedEvidence).toContain('λόγος · λόγος · noun — nominative singular masculine · "word"');
+    // A successful token fetch is traced too (mirrors getPassage), not only failures.
+    expect(packet.toolTrace.some((t) => t.tool === "getPassageTokens" && !t.error)).toBe(true);
+  });
+
+  it("does NOT annotate a >25-verse passage", async () => {
+    const refs = Array.from({ length: 30 }, (_, i) => ({ book: "John", chapter: 1, verse: i + 1, reference: `John 1:${i + 1}`, text: "…" }));
+    getPassage.mockResolvedValue({ corpus: "SBLGNT", references: refs });
+    getPassageTokens.mockResolvedValue([]);
+    const signals = extractSignals("Show John 1");
+    await runRetrievalPlan(signals, "Show John 1", false);
+    expect(getPassageTokens).not.toHaveBeenCalled();
+  });
+
+  it("focuses passage annotations on an English→Greek mapped lemma (targetLemmas)", async () => {
+    getPassage.mockResolvedValue({
+      corpus: "SBLGNT",
+      references: [{ book: "John", chapter: 21, verse: 15, reference: "John 21:15", text: "ἀγαπᾷς με" }]
+    });
+    // POS is a normally-skipped category; the token is kept only because its lemma is the
+    // mapped target ("love" → ἀγάπη). Before the fix targetLemmas was empty for this
+    // English-concept prompt, so the annotation was dropped.
+    getPassageTokens.mockResolvedValue([
+      { surface: "ἀγάπην", lemma: "ἀγάπη", morphCode: "N-ASF", partOfSpeech: "C-", gloss: "love", domainLabel: null, verse: 15, wordIndex: 1 }
+    ]);
+    const signals = extractSignals("How is love used in John 21?");
+    const packet = await runRetrievalPlan(signals, "How is love used in John 21?", false);
+    expect(packet.formattedEvidence).toContain("ἀγάπην · ἀγάπη");
+  });
+
+  it("does NOT enrich a cross-chapter passage (getPassageTokens is single-chapter only)", async () => {
+    // getPassageTokens can only encode one chapter, so passageCall gates enrichment on
+    // !crossChapter. Pin that: a cross-chapter ref must not reach the token helper.
+    getPassage.mockImplementation(async ({ corpus, chapter }: { corpus: "SBLGNT" | "WEB"; chapter: number }) => ({
+      corpus,
+      references: [{ book: "Rom", chapter, verse: 1, reference: `Rom ${chapter}:1`, text: "Greek text" }]
+    }));
+    const signals = extractSignals("Explain Romans 7:25-8:4");
+    await runRetrievalPlan(signals, "Explain Romans 7:25-8:4", false);
+    expect(getPassageTokens).not.toHaveBeenCalled();
+  });
+
+  it("degrades later passages to verse-text-only once the enrichment char budget is spent", async () => {
+    vi.stubEnv("TEXTLAB_MAX_ENRICH_CHARS", "120"); // only the first passage's annotation fits
+    getPassage.mockImplementation(async ({ book, corpus }: { book: string; corpus: "SBLGNT" | "WEB" }) => ({
+      corpus,
+      references: [{ book, chapter: 1, verse: 1, reference: `${book} 1:1`, text: "Ἐν ἀρχῇ ἦν ὁ λόγος" }]
+    }));
+    getPassageTokens.mockResolvedValue([
+      { surface: "λόγος", lemma: "λόγος", morphCode: "N-NSM", partOfSpeech: "N-", gloss: "word", domainLabel: "Communication (33)", verse: 1, wordIndex: 4 }
+    ]);
+    const signals = extractSignals("Compare John 1:1 and Mark 1:1");
+    const packet = await runRetrievalPlan(signals, "Compare John 1:1 and Mark 1:1", false);
+    expect(packet.formattedEvidence).toContain("John 1:1");   // both passages still present
+    expect(packet.formattedEvidence).toContain("Mark 1:1");
+    const annotated = packet.formattedEvidence.split("noun — nominative singular masculine").length - 1;
+    expect(annotated).toBe(1);                                // only the first was enriched (budget spent)
+  });
+
+  it("fails open to the base passage when getPassageTokens rejects (degrade, never drop)", async () => {
+    getPassage.mockResolvedValue({
+      corpus: "SBLGNT",
+      references: [{ book: "John", chapter: 1, verse: 1, reference: "John 1:1", text: "Ἐν ἀρχῇ ἦν ὁ λόγος" }]
+    });
+    getPassageTokens.mockRejectedValue(new Error("token db down"));
+    const signals = extractSignals("Show John 1:1");
+    const packet = await runRetrievalPlan(signals, "Show John 1:1", false);
+    expect(packet.formattedEvidence).toContain("John 1:1, SBLGNT: Ἐν ἀρχῇ ἦν ὁ λόγος"); // base passage kept
+    expect(packet.formattedEvidence).not.toContain("noun — nominative singular masculine"); // no annotations
+    expect(packet.toolTrace.some((t) => t.tool === "getPassageTokens" && t.error)).toBe(true); // failure traced
+  });
+
+  it("does not let enrichment evict a later base passage (reserve base headroom)", async () => {
+    // Two large SBLGNT passages whose base text together fits under MAX_EVIDENCE_CHARS,
+    // but would exceed it if the first is enriched — the later base must survive.
+    getPassage.mockImplementation(async ({ book, corpus }: { book: string; corpus: "SBLGNT" | "WEB" }) => ({
+      corpus,
+      references: [{
+        book, chapter: 1, verse: 1, reference: `${book} 1:1`,
+        text: corpus === "SBLGNT" ? (book === "John" ? "α".repeat(42000) : "β".repeat(15000)) : "web"
+      }]
+    }));
+    getPassageTokens.mockImplementation(async ({ book }: { book: string }) =>
+      book === "John"
+        ? Array.from({ length: 20 }, (_, i) => ({
+            surface: "λόγος", lemma: "λόγος", morphCode: "N-NSM", partOfSpeech: "N-",
+            gloss: "word", domainLabel: "Communication (33)", verse: 1, wordIndex: i
+          }))
+        : []
+    );
+    const signals = extractSignals("Compare John 1:1 and Mark 1:1");
+    const packet = await runRetrievalPlan(signals, "Compare John 1:1 and Mark 1:1", false);
+    expect(packet.formattedEvidence).toContain("Mark 1:1"); // later base passage NOT evicted by earlier enrichment
+    expect(packet.formattedEvidence).not.toContain("noun — nominative singular masculine"); // enrichment suppressed to protect base
+  });
+
+  it("decodes the morph code and appends the gloss on lemma evidence", async () => {
+    searchLemma.mockResolvedValue({
+      lemma: "λόγος", count: 1,
+      results: [{ reference: "John 1:1", surface: "λόγος", morphCode: "N-NSM", gloss: "word", verseText: "Ἐν ἀρχῇ…", corpus: "SBLGNT", tokenId: "t1" }],
+      pagination: { page: 1, pageSize: 25, total: 1, pageCount: 1 }
+    });
+    const signals = extractSignals("How is λόγος used?");
+    const packet = await runRetrievalPlan(signals, "How is λόγος used?", false);
+    expect(packet.formattedEvidence).toContain("noun — nominative singular masculine");
+    expect(packet.formattedEvidence).toContain('"word"');
+  });
+});
+
+describe("enrichmentBudget", () => {
+  it("reserves base size INCLUDING the \\n\\n separators assembleEvidence counts", () => {
+    // Two 10-char base sections join to 10 + 2 + 10 = 22, not the naive 20.
+    // With evidence cap 100 the headroom is 78, not 80 — the 2 separator bytes matter.
+    expect(enrichmentBudget(["a".repeat(10), "b".repeat(10)], 1000, 100)).toBe(78);
+  });
+
+  it("floors at 0 when base alone already fills the evidence cap", () => {
+    expect(enrichmentBudget(["x".repeat(100)], 1000, 50)).toBe(0);
+  });
+
+  it("is bounded by the enrich budget when base headroom is large", () => {
+    expect(enrichmentBudget(["x".repeat(10)], 30, 1000)).toBe(30);
+  });
+
+  it("returns the full enrich budget for no base sections", () => {
+    expect(enrichmentBudget([], 30, 1000)).toBe(30);
   });
 });
 

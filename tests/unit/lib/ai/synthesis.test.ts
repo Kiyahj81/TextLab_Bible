@@ -293,25 +293,18 @@ describe("synthesizeWithRefinement", () => {
 });
 
 describe("buildDeterministicFallback", () => {
-  it("renders a three-section answer from the evidence", async () => {
+  it("returns a grounded core with no forced interpretation/application sections", async () => {
     const { buildDeterministicFallback } = await import("@/lib/ai/synthesis");
-    const text = buildDeterministicFallback("What does νόμος mean?", evidence);
-
-    expect(text).toContain("Textual observations");
-    expect(text).toContain("Interpretive suggestion");
-    expect(text).toContain("Application/reflection");
-    expect(text).toContain("νόμος");
+    const text = buildDeterministicFallback("What does John 1:1 say?", evidence);
+    expect(text).toContain(evidence.formattedEvidence);
+    expect(text).not.toContain("Interpretive suggestion");
+    expect(text).not.toContain("Application/reflection");
   });
 
-  it("explains when no evidence was retrieved", async () => {
+  it("guides a rephrase when no evidence was retrieved", async () => {
     const { buildDeterministicFallback } = await import("@/lib/ai/synthesis");
-    const text = buildDeterministicFallback("anything", {
-      citations: [],
-      toolTrace: [],
-      formattedEvidence: "No retrieval signals produced evidence from the corpus."
-    });
-
-    expect(text).toContain("No retrieval signals produced evidence from the corpus.");
+    const empty = { citations: [], toolTrace: [], formattedEvidence: "No retrieval signals produced evidence from the corpus." };
+    expect(buildDeterministicFallback("xyz", empty).toLowerCase()).toContain("rephras");
   });
 });
 
@@ -334,6 +327,29 @@ describe("buildRefusalAnswer", () => {
     expect(text).toContain(evidence.formattedEvidence);
     // Paragraph breaks (blank lines) must survive — the message is rendered in a <pre>.
     expect(text).toContain("\n\n");
+  });
+});
+
+describe("buildSynthesisInstructions", () => {
+  it("states the grounded-core / going-further derivation rule and retrieved-only guardrail", async () => {
+    const { buildSynthesisInstructions } = await import("@/lib/ai/synthesis");
+    const text = buildSynthesisInstructions("passage-study");
+    expect(text).toContain("grounded core");
+    expect(text).toContain("Going further");
+    expect(text).toContain("retrieved evidence");           // retrieved-only synthesis
+    expect(text).not.toContain("Structure the answer in three sections");
+  });
+
+  it("tells morphology answers to stay technical with no application", async () => {
+    const { buildSynthesisInstructions } = await import("@/lib/ai/synthesis");
+    expect(buildSynthesisInstructions("morphology").toLowerCase()).toContain("no application");
+  });
+
+  it("tells passage-recite answers to open with the verse's verbatim English (WEB) quote", async () => {
+    const { buildSynthesisInstructions } = await import("@/lib/ai/synthesis");
+    expect(buildSynthesisInstructions("passage-recite")).toContain("English (WEB) wording verbatim");
+    // a plain explanatory passage-study answer must NOT force the whole-verse quote
+    expect(buildSynthesisInstructions("passage-study")).not.toContain("English (WEB) wording verbatim");
   });
 });
 

@@ -9,3 +9,4 @@ export * from "@/lib/search/keyword";
 export * from "@/lib/search/tokens";
 export * from "@/lib/search/domain";
 export * from "@/lib/search/semantic";
+export { getPassageTokens, type PassageToken, type PassageTokenRow } from "@/lib/search/passageTokens";

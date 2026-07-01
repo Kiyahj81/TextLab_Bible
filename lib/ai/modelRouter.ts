@@ -1,3 +1,5 @@
+import { detectConceptWords, type Signals } from "@/lib/ai/signals";
+
 export type AssistantMode = "live" | "fallback";
 export type ModelRole = "default" | "scholarly";
 
@@ -52,9 +54,13 @@ export function isLiveAssistantEnabled() {
   return Boolean(process.env.OPENAI_API_KEY?.trim()) && process.env.TEXTLAB_ASSISTANT_DISABLE_LIVE !== "1";
 }
 
-export function routeAssistantPrompt(prompt: string, escalate = false): RoutingDecision {
-  // Escalation is always user-confirmed — the router never selects the scholarly
-  // model on its own; it only advises it via recommendedUpgrade.
+export function routeAssistantPrompt(
+  prompt: string,
+  options: { escalate?: boolean; autoEscalate?: boolean; signals?: Signals } = {}
+): RoutingDecision {
+  const { escalate = false, autoEscalate = false, signals } = options;
+
+  // Manual escalation is always honoured — the user has explicitly confirmed it.
   if (escalate) {
     return {
       modelRole: "scholarly",
@@ -63,7 +69,19 @@ export function routeAssistantPrompt(prompt: string, escalate = false): RoutingD
     };
   }
 
-  const recommendedUpgrade = recommendScholarlyUpgrade(prompt);
+  const recommendedUpgrade = recommendScholarlyUpgrade(prompt, signals);
+
+  // Opt-in first-pass auto-escalation: when the user has turned on auto-scholarly
+  // AND this question looks complex, go scholarly on the first pass without
+  // requiring an extra round-trip confirmation.
+  if (autoEscalate && recommendedUpgrade) {
+    return {
+      modelRole: "scholarly",
+      modelUsed: getModelForRole("scholarly"),
+      routingDecision:
+        "Auto-escalated to the scholarly model (auto-scholarly is on and this question looks complex)."
+    };
+  }
 
   return {
     modelRole: "default",
@@ -75,31 +93,36 @@ export function routeAssistantPrompt(prompt: string, escalate = false): RoutingD
   };
 }
 
-export function recommendScholarlyUpgrade(prompt: string): RecommendedUpgrade | undefined {
-  const normalized = prompt.toLowerCase();
-  const scholarlySignals = [
-    "scholarly",
-    "theological nuance",
-    "cross-text",
-    "cross text",
-    "ambiguity",
-    "ambiguous",
-    "long-chain",
-    "large-content",
-    "research quality",
-    "research-quality",
-    "deep synthesis",
-    "complex theological",
-    "interpretive options"
-  ];
+const SCHOLARLY_CUE_RE =
+  /\b(scholarly|deep synthesis|theological nuance|interpretive options|reconcile|reconciliation between|tension|paradox|harmonize|ambiguity|ambiguous)/i;
+const HOW_CAN_BOTH_RE = /\bhow (can|do|does)\b[\s\S]{0,60}\band\b/i;
+// "why does/do/did …" is interpretive/synthesis framing the spec calls out explicitly.
+const WHY_FRAMING_RE = /\bwhy (do|does|did)\b/i;
 
-  if (!scholarlySignals.some((signal) => normalized.includes(signal))) {
-    return undefined;
-  }
+export function recommendScholarlyUpgrade(prompt: string, signals?: Signals): RecommendedUpgrade | undefined {
+  const distinctBooks = new Set((signals?.references ?? []).map((r) => r.book)).size;
+  // Concept count comes from detectConceptWords (frozen base stoplist), NOT signals.topicWords
+  // (search-tunable), so tuning the search stoplist can never shift scholarly routing.
+  const conceptCount = detectConceptWords(prompt).length;
+  const longPrompt = prompt.trim().split(/\s+/).length > 30;
 
+  const intent = signals?.intent;
+  const complex =
+    intent === "comparison" ||
+    distinctBooks >= 2 ||
+    SCHOLARLY_CUE_RE.test(prompt) ||
+    HOW_CAN_BOTH_RE.test(prompt) ||
+    WHY_FRAMING_RE.test(prompt) ||
+    // Concept density is a synthesis proxy, but a topic survey ("find verses about
+    // faith, hope, and love") or a recite request is retrieval, not synthesis — don't
+    // let the bare concept count auto-escalate those to the expensive model.
+    (intent !== "topic-survey" && intent !== "passage-recite" && conceptCount >= 3) ||
+    longPrompt;
+
+  if (!complex) return undefined;
   return {
     modelRole: "scholarly",
     model: getModelForRole("scholarly"),
-    reason: "This prompt appears to ask for deeper scholarly synthesis; confirm before using the scholarly model."
+    reason: "This question looks like it needs deeper, cross-text synthesis; confirm before using the scholarly model."
   };
 }

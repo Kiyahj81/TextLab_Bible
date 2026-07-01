@@ -71,6 +71,7 @@ export type HydratedToken = {
   surface: string;
   lemma: string | null;
   morphCode: string | null;
+  gloss: string | null;          // added: scalar column returned by default; surfaced via hydrateTokens for evidence.
   chapter: number;
   verse: number;
   book: { id: string; osisId: string };
@@ -110,6 +111,7 @@ export async function hydrateTokens(tokens: HydratedToken[], withEnglish = false
     surface: token.surface,
     lemma: token.lemma ?? "",
     morphCode: token.morphCode ?? "",
+    gloss: token.gloss ?? null,
     verseText: verseText.get(key(token.book.id, token.chapter, token.verse, token.corpus.abbreviation)) ?? "",
     ...(withEnglish
       ? { englishText: verseText.get(key(token.book.id, token.chapter, token.verse, "WEB")) }

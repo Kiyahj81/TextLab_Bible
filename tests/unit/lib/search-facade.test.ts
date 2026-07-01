@@ -15,7 +15,7 @@ const RUNTIME_EXPORTS = [
   "embedQuery", "searchSemantic", "searchSemanticDetailed",
   "EMBEDDING_MODEL", "SEMANTIC_INDEX_CORPUS", "embeddingTextHash", "formatVectorLiteral",
   "getAvailablePassages", "getAvailableReaderBooks", "getPassageNeighbors",
-  "getReaderPassage", "getPassage", "searchKeyword",
+  "getReaderPassage", "getPassage", "getPassageTokens", "searchKeyword",
   "searchLemma", "searchMorphology", "findLemmaExamples",
   "LEMMA_STOP_WORDS", "CONTENT_PART_OF_SPEECH", "getTopLemmas",
   "normalizeDomainCode", "resolveDomainFilter", "domainTokenWhere",

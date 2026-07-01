@@ -55,3 +55,16 @@ describe("parseReaderLayout", () => {
     expect(READER_LAYOUT_COOKIE).toBe("textlab-reader-layout");
   });
 });
+
+import { ASSISTANT_AUTO_SCHOLARLY_COOKIE, parseAutoScholarly } from "@/lib/readerPrefs";
+
+describe("parseAutoScholarly", () => {
+  it("treats '1' as enabled and everything else as disabled", () => {
+    expect(parseAutoScholarly("1")).toBe(true);
+    expect(parseAutoScholarly("0")).toBe(false);
+    expect(parseAutoScholarly(undefined)).toBe(false);
+  });
+  it("exposes a stable cookie name", () => {
+    expect(ASSISTANT_AUTO_SCHOLARLY_COOKIE).toBe("textlab-assistant-auto-scholarly");
+  });
+});

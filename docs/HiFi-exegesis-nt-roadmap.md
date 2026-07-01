@@ -259,7 +259,7 @@ recall+precision on exact-verse/cross-chapter, recall on lemma-survey, and two g
 Context recall is measured over the full retrieved evidence (not just the ≤10 citation sample).
 **Non-blocking weekly hybrid report** (`npm run eval:report`): runs the full pipeline (pgvector + RRF
 + Voyage rerank + synthesis) once per question and adds an LLM-as-judge faithfulness score routed
-through the Vercel AI Gateway (`EVAL_JUDGE_MODEL`, default `anthropic/claude-sonnet-4.6`); dual-key
+through the Vercel AI Gateway (`EVAL_JUDGE_MODEL`, default `anthropic/claude-sonnet-5`); dual-key
 (`OPENAI_API_KEY` for embeddings+synthesis, `AI_GATEWAY_API_KEY` for rerank+judge), with explicit
 per-question synthesis/judge status. Original target (RAGAS faithfulness >0.90 + context precision)
 is realized as the weekly faithfulness score plus the gate's deterministic precision/recall + citation

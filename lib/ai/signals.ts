@@ -13,6 +13,7 @@ export type MorphSignal = { code: string; mode: "exact" | "prefix" };
 export type Intent =
   | "word-study"
   | "passage-study"
+  | "passage-recite"
   | "topic-survey"
   | "morphology"
   | "comparison"
@@ -40,13 +41,18 @@ export type DomainQuerySignal = { kind: "domain"; code: string } | { kind: "ln";
 // Anchored to an explicit Louw-Nida marker so ordinary text — including
 // chapter.verse notation like "John 3.16" — never trips domain retrieval.
 // Bare dotted refs are intentionally NOT detected here (the /search LN field
-// handles those). `domain N` validates 1..93.
+// handles those). Both forms validate the domain number as 1..93 (the LN form
+// guards the part before the dot); an out-of-range marker is treated as ordinary
+// text so the prompt falls back to normal topic extraction/search.
 const LN_REF_RE = /(?:louw[\s-]?nida|\bln)\s+(\d{1,2})\.(\d{1,3}[a-z]?)\b/i;
 const DOMAIN_NUM_RE = /(?:louw[\s-]?nida|\bln|\bdomain)\s+0*(\d{1,3})\b/i;
 
 export function detectDomainQuery(prompt: string): DomainQuerySignal | undefined {
   const lnMatch = LN_REF_RE.exec(prompt);
-  if (lnMatch) return { kind: "ln", ref: `${lnMatch[1]}.${lnMatch[2]}` };
+  if (lnMatch) {
+    const n = Number.parseInt(lnMatch[1], 10);
+    if (n >= 1 && n <= 93) return { kind: "ln", ref: `${lnMatch[1]}.${lnMatch[2]}` };
+  }
   const domMatch = DOMAIN_NUM_RE.exec(prompt);
   if (domMatch) {
     const n = Number.parseInt(domMatch[1], 10);
@@ -56,19 +62,21 @@ export function detectDomainQuery(prompt: string): DomainQuerySignal | undefined
 }
 
 function stripDomainMarkers(text: string): string {
-  // LN refs are always stripped (matches detectDomainQuery, which has no range
-  // guard for the LN form). Domain-number markers are only stripped when the
-  // captured number is in range 1..93 — mirroring detectDomainQuery's guard so an
-  // out-of-range "domain N" (which was NOT recognized as a domain query) is left
-  // intact for topic extraction. Use a fresh local regex (no shared /g state) and
-  // a replacer that returns the original match when out of range; the module-level
-  // DOMAIN_NUM_RE used by detectDomainQuery stays non-global.
+  // Both marker forms are stripped only when the captured domain number is in
+  // range 1..93 — mirroring detectDomainQuery's guard so an out-of-range marker
+  // (which was NOT recognized as a domain query) is left intact for topic
+  // extraction. Fresh local /g copies so EVERY in-range marker is stripped (a
+  // prompt can name more than one, e.g. "compare LN 33 and domain 88"); the
+  // module-level regexes stay non-global because detectDomainQuery drives them
+  // with stateful .exec() and must not carry lastIndex between calls.
+  const inRange = (num: string) => {
+    const n = Number.parseInt(num, 10);
+    return n >= 1 && n <= 93;
+  };
+  const global = (re: RegExp) => new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g");
   return text
-    .replace(LN_REF_RE, " ")
-    .replace(new RegExp(DOMAIN_NUM_RE.source, DOMAIN_NUM_RE.flags), (match, num: string) => {
-      const n = Number.parseInt(num, 10);
-      return n >= 1 && n <= 93 ? " " : match;
-    });
+    .replace(global(LN_REF_RE), (match, dom: string) => (inRange(dom) ? " " : match))
+    .replace(global(DOMAIN_NUM_RE), (match, num: string) => (inRange(num) ? " " : match));
 }
 
 // English Bible terms → Greek lemma. Used by the retrieval planner to turn a
@@ -164,7 +172,12 @@ export const ENGLISH_PHRASE_TO_GREEK_LEMMA: Readonly<Record<string, string>> = {
   "sexual immorality": "πορνεία",
 };
 
-const STOP_WORDS: ReadonlySet<string> = new Set([
+// Frozen baseline stoplist — generic, framing, and morphology words that are noise for
+// BOTH keyword/semantic search AND the scholarly-routing concept count. The router reads
+// ONLY this list (via detectConceptWords), so it stays stable when the search stoplist is
+// tuned. Put a word here when it should be excluded from routing too (e.g. framing words
+// like "within"/"context").
+const BASE_STOP_WORDS: ReadonlySet<string> = new Set([
   "the", "a", "an", "and", "or", "but", "if", "then", "so", "as", "of", "in", "on", "at",
   "to", "for", "with", "by", "from", "into", "onto", "off", "out", "up", "down", "over",
   "under", "about", "between", "through", "during", "before", "after", "above", "below",
@@ -183,8 +196,22 @@ const STOP_WORDS: ReadonlySet<string> = new Set([
   "subjunctive", "subjunctives", "infinitive", "infinitives", "aorist", "aorists", "tense", "tenses", "mood", "moods",
   "grammar", "grammatical", "parse", "noun", "nouns", "adjective", "adjectives", "adverb", "adverbs", "pronoun", "pronouns",
   "deponent", "optative", "vocative", "nominative", "genitive", "dative", "accusative", "singular", "plural",
-  "feminine", "masculine", "neuter", "morphology", "morphological",
+  "feminine", "masculine", "neuter", "morphology", "morphological", "within", "context", "contextual",
+  // Louw-Nida domain-marker words — never real search concepts. Keeps them out of both
+  // search keywords and scholarly routing when an out-of-range marker (e.g. "domain 200 love",
+  // "Louw-Nida 94.2 love") is left in the text after detectDomainQuery rejects it.
+  "domain", "louw", "nida",
 ]);
+
+// Additional exclusions for KEYWORD/SEMANTIC SEARCH ONLY. Tune this for search quality;
+// it does NOT affect scholarly routing (which counts concepts from BASE_STOP_WORDS via
+// detectConceptWords). Add a word here when it pollutes search but should still count as a
+// substantive concept for routing. Currently empty — the decoupling is structural.
+const SEARCH_ONLY_STOP_WORDS: ReadonlySet<string> = new Set<string>([]);
+
+// Search-facing stoplist = frozen base + search-only extras. Editing SEARCH_ONLY_STOP_WORDS
+// changes search without touching routing.
+const STOP_WORDS: ReadonlySet<string> = new Set([...BASE_STOP_WORDS, ...SEARCH_ONLY_STOP_WORDS]);
 
 // Proper nouns that should not be treated as topic search terms. Book names are
 // already excluded separately via the ntBooks alias set.
@@ -297,12 +324,12 @@ export function detectMorphCodes(prompt: string): MorphSignal[] {
   return out;
 }
 
-export function detectTopicWords(prompt: string): string[] {
+export function detectTopicWords(prompt: string, stopWords: ReadonlySet<string> = STOP_WORDS): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
   for (const raw of prompt.toLowerCase().split(/[^a-z]+/)) {
     if (raw.length < 3) continue;
-    if (STOP_WORDS.has(raw)) continue;
+    if (stopWords.has(raw)) continue;
     if (PROPER_NOUNS.has(raw)) continue;
     if (BOOK_ALIASES.has(raw)) continue;
     if (seen.has(raw)) continue;
@@ -310,6 +337,13 @@ export function detectTopicWords(prompt: string): string[] {
     out.push(raw);
   }
   return out;
+}
+
+// Routing-stable "concept" words: filtered by the frozen BASE_STOP_WORDS only, so tuning
+// the search stoplist (SEARCH_ONLY_STOP_WORDS) can never shift scholarly routing. The router
+// counts these instead of the search-facing topicWords.
+export function detectConceptWords(prompt: string): string[] {
+  return detectTopicWords(prompt, BASE_STOP_WORDS);
 }
 
 // Precompiled phrase matchers. Anchored so a phrase embedded in a larger word does
@@ -383,7 +417,22 @@ export function detectIntent(prompt: string): Intent {
     return "morphology";
   }
 
-  if (/(what does .+ mean|meaning of|how (is|are) .+ used|senses of|word study)/.test(lower)) {
+  // Word-study routes to the lexical / lexeme answer path. Explicit lexical cues
+  // (usage, "senses of", "word study") always qualify. A generic "what does X
+  // mean" / "meaning of X" qualifies only when it is NOT about a passage —
+  // "what does John 3:16 mean" is passage interpretation, not a word study —
+  // unless a Greek lemma is named ("what does νόμος mean in Romans 7"), which
+  // keeps the lexeme in focus.
+  const hasReference = detectReferences(prompt).length > 0;
+  const explicitLexicalCue = /(how (is|are) .+ used|senses of|word study)/.test(lower);
+  const genericMeaningQuery = /(what does .+ mean|meaning of)/.test(lower);
+  // The Greek-lemma override applies only when the lemma is the SUBJECT of the meaning
+  // query, not merely present elsewhere: "what does νόμος mean in Romans 7" is a word
+  // study, but "what does John 3:16 mean for νόμος" is passage interpretation.
+  const meaningSubject =
+    prompt.match(/what does\s+(.+?)\s+mean/i)?.[1] ?? prompt.match(/meaning of\s+(.+)/i)?.[1] ?? "";
+  const subjectNamesGreekLemma = detectGreekWords(meaningSubject).length > 0;
+  if (explicitLexicalCue || (genericMeaningQuery && (!hasReference || subjectNamesGreekLemma))) {
     return "word-study";
   }
 
@@ -391,7 +440,18 @@ export function detectIntent(prompt: string): Intent {
     return "topic-survey";
   }
 
-  if (detectReferences(prompt).length > 0 || /\b(show|read)\b/.test(lower) || lower.includes("passage")) {
+  // Explicit "recite the text" requests — lead the answer with the verbatim verse.
+  // Needs a passage reference, a recite verb, and NOT a word-survey or analysis framing,
+  // so "Explain Romans 8", "what does Paul say ABOUT X", and lemma surveys stay explanatory.
+  const reciteVerb = /\b(say|says|written|show|shows|showing|display|read|recite|quote)\b/.test(lower);
+  const wordSurvey = /\b(use|uses|usage|sense|senses|occurrence|occurrences|mean|meaning|word study)\b/.test(lower);
+  const analysisFraming =
+    /\b(explain|why|significance|implication|teach|about|regarding|concerning|plain language)\b/.test(lower);
+  if (hasReference && reciteVerb && !wordSurvey && !analysisFraming) {
+    return "passage-recite";
+  }
+
+  if (hasReference || /\b(show|read)\b/.test(lower) || lower.includes("passage")) {
     return "passage-study";
   }
 

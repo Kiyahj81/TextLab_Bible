@@ -23,6 +23,12 @@ describe("Louw-Nida domain search (integration)", () => {
     expect(res.results.every((r) => typeof r.surface === "string")).toBe(true);
   });
 
+  itDb("result rows carry a non-empty gloss from hydrateTokens", async () => {
+    const res = await searchDomain({ ln: "33.55", pageSize: 5 });
+    expect(res.results.length).toBeGreaterThan(0);
+    expect(res.results.some((r) => typeof r.gloss === "string" && r.gloss.length > 0)).toBe(true);
+  });
+
   itDb("returns tokens for an exact subdomain code", async () => {
     const res = await searchDomain({ subdomain: "033006", pageSize: 5 });
     expect(res.count).toBeGreaterThan(0);

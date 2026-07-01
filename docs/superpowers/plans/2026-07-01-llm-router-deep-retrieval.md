@@ -666,7 +666,7 @@ Run `npx tsc --noEmit --pretty false` to confirm both patches together leave the
 - [ ] **Step 4: Run tests + type check**
 
 Run: `npm run test:unit -- modelRouter && npx tsc --noEmit --pretty false`
-Expected: modelRouter tests PASS; tsc clean. `npm run test:unit -- assistant` may need `await`-related snapshot tweaks — if `tests/unit/lib/ai/assistant.test.ts` or `tests/unit/api/*` fail on the removed `autoEscalate` option, update those call expectations minimally (full behavioral rework lands in Tasks 5/7).
+Expected: modelRouter tests PASS; tsc clean. Note on the other suites at this checkpoint: `route.ts` and `answerBibleQuestion`'s signatures are unchanged in Task 3 (only the router's internal call sites drop `autoEscalate` and gain `await`), so `tests/unit/api/*` stay green. The assistant suite also stays green — its one `autoEscalate` behavioral case uses a genuinely complex prompt, which now auto-escalates via the score path anyway (same scholarly outcome); its full mock rework and that case's removal land in Task 5. Don't hand-patch the assistant suite here.
 
 - [ ] **Step 5: Commit**
 
@@ -893,9 +893,10 @@ export async function runRetrievalPlan(
   // …rest of the body unchanged…
 ```
 
-5. Mechanical callsite updates (keep the repo compiling — full reorder is Task 5):
+5. Mechanical callsite updates (keep the repo compiling — full reorder is Task 5). `tsconfig.json` includes `scripts/`, so EVERY positional-boolean callsite must migrate or tsc fails at this task's checkpoint:
 - `lib/ai/assistant.ts:52`: `const evidence = await runRetrievalPlan(signals, prompt, { semanticEnabled: live });`
 - `eval/runner.ts:86`: `const evidence = await runRetrievalPlan(signals, item.question, { semanticEnabled });`
+- `scripts/evidence-diff.ts:38`: `const packet = await runRetrievalPlan(signals, prompt, { semanticEnabled: false });`
 
 - [ ] **Step 4: Run tests + type check**
 
@@ -905,7 +906,7 @@ Expected: PASS / clean. Also run `npm run test:unit -- assistant` — existing a
 - [ ] **Step 5: Commit**
 
 ```bash
-git add lib/ai/retrievalPlanner.ts lib/ai/assistant.ts eval/runner.ts tests/unit/lib/ai/retrievalPlanner.test.ts
+git add lib/ai/retrievalPlanner.ts lib/ai/assistant.ts eval/runner.ts scripts/evidence-diff.ts tests/unit/lib/ai/retrievalPlanner.test.ts
 git commit -m "feat(assistant): deep retrieval mode with corpus-wide semantic pass"
 ```
 
@@ -919,7 +920,7 @@ git commit -m "feat(assistant): deep retrieval mode with corpus-wide semantic pa
 
 **Interfaces:**
 - Consumes: Task 3's async router, Task 4's `RetrievalOptions`.
-- Produces (Tasks 6–8 rely on this): `AssistantAnswer` gains `deep: boolean; routerSource: RouterSource; complexityScore?: number;` and `answerBibleQuestion(prompt, options)` options become `{ escalate?: boolean; confirmEscalation?: boolean }`.
+- Produces (Tasks 6–8 rely on this): `AssistantAnswer` gains `deep: boolean; routerSource: RouterSource; complexityScore?: number;` and `answerBibleQuestion(prompt, options)` options gain `confirmEscalation?: boolean` (and temporarily keep `autoEscalate?: boolean`, accepted-but-ignored, removed in Task 7 — see the signature note below). This keeps `app/api/assistant/route.ts` and its route suite untouched and green during this task; the API migration is wholly Task 7's concern.
 
 - [ ] **Step 1: Write/adjust the failing tests**
 
@@ -935,8 +936,11 @@ vi.mock("@/lib/ai/modelRouter", async (importOriginal) => {
   return { ...real, isLiveAssistantEnabled, routeAssistantPrompt };
 });
 
+// Use the hoisted `routeAssistantPrompt` mock variable DIRECTLY in the tests
+// (exactly as the existing file uses `isLiveAssistantEnabled`). Do NOT also
+// `import { routeAssistantPrompt } from "@/lib/ai/modelRouter"` — that would
+// redeclare the identifier already bound by the vi.hoisted destructuring above.
 import { answerBibleQuestion, detectBookFromPrompt } from "@/lib/ai/assistant";
-import { routeAssistantPrompt } from "@/lib/ai/modelRouter"; // now the mocked binding
 ```
 
 Extend the existing `beforeEach` with a default routing decision so every test that doesn't override it still gets a valid object:
@@ -1047,7 +1051,11 @@ export type AssistantAnswer = {
 ```typescript
 export async function answerBibleQuestion(
   prompt: string,
-  options: { escalate?: boolean; confirmEscalation?: boolean } = {}
+  // `autoEscalate?` is accepted but ignored here for ONE task only: it keeps the
+  // current route call (`answerBibleQuestion(prompt, { escalate, autoEscalate })`)
+  // and its route-suite assertions compiling+passing until Task 7 migrates the
+  // API to confirmEscalation. Task 7 removes `autoEscalate?` from this signature.
+  options: { escalate?: boolean; confirmEscalation?: boolean; autoEscalate?: boolean } = {}
 ): Promise<AssistantAnswer> {
   const signals = extractSignals(prompt);
   const live = isLiveAssistantEnabled();
@@ -1080,17 +1088,9 @@ export async function answerBibleQuestion(
 
 3. The `...routing` spreads in `withMarkdown` calls automatically carry the new fields; extend `WithMarkdownInput` with the same three fields (`deep: boolean; routerSource: RouterSource; complexityScore?: number;`).
 
-**Two more compile-only patches required for this task's tsc checkpoint to pass** (both are TEMPORARY shims superseded by later tasks — call this out in the diff/PR, don't polish them):
+**One more compile-only patch required for this task's tsc checkpoint** (TEMPORARY, superseded by Task 6 — call it out in the diff/PR, don't polish it):
 
-4. `app/api/assistant/route.ts:68` still calls `answerBibleQuestion(prompt, { escalate, autoEscalate })`, but `autoEscalate` is no longer a valid option — passing it as an inline object literal is now a TS excess-property error. Task 7 does the real migration; for now just drop it from the call (the destructured `autoEscalate` local becomes temporarily unused, which is not a tsc error — `noUnusedLocals` is off in this repo's `tsconfig.json`):
-
-```typescript
-  // TEMPORARY until Task 7's confirmEscalation migration — drop autoEscalate here
-  // so the call matches the new options type; the schema still accepts the field.
-  const answer = await answerBibleQuestion(prompt, { escalate });
-```
-
-5. `tests/unit/api/assistant.test.ts` (the sessions-persistence suite) declares a module-level `const answer: AssistantAnswer = { … }` fixture that predates the new required fields. Add them so the literal still satisfies the type — Task 6 is what actually exercises these fields meaningfully in persistence:
+4. `tests/unit/api/assistant.test.ts` (the sessions-persistence suite) declares a module-level `const answer: AssistantAnswer = { … }` fixture that predates the new required fields. Add them so the literal still satisfies the type — Task 6 is what actually exercises these fields in persistence. Keep the fixture DEFAULT-coherent (`deep: false` with `modelRole: "default"` — deep is true only for scholarly routing; Task 6 builds its own scholarly variant rather than mutating this shared fixture, which the existing persistence test also reads):
 
 ```typescript
 const answer: AssistantAnswer = {
@@ -1104,19 +1104,21 @@ const answer: AssistantAnswer = {
   modelUsed: "gpt-5-chat-latest",
   routingDecision: "Handled by the default model",
   deep: false,
-  routerSource: "score" // placeholder value — Task 6 asserts this persists correctly
+  routerSource: "score"
 };
 ```
+
+**`app/api/assistant/route.ts` is deliberately NOT touched in this task.** Because `answerBibleQuestion`'s options still accept `autoEscalate?` (ignored), the existing route call `answerBibleQuestion(prompt, { escalate, autoEscalate })` keeps compiling and all three route-suite assertions (`{ escalate, autoEscalate }`) keep passing. The API migration is entirely Task 7.
 
 - [ ] **Step 4: Run tests + type check**
 
 Run: `npm run test:unit -- "lib/ai/assistant" "api/assistant" && npx tsc --noEmit --pretty false`
-Expected: PASS / clean across both suites (the sessions-persistence suite and the route suite must still compile even though their own behavioral migrations land in Tasks 6–7).
+Expected: PASS / clean. The route suite (`assistant-route.test.ts`) still passes unchanged (route.ts untouched); the sessions-persistence suite (`assistant.test.ts`) compiles with the widened fixture; the reordered `lib/ai/assistant.test.ts` passes.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add lib/ai/assistant.ts app/api/assistant/route.ts tests/unit/lib/ai/assistant.test.ts tests/unit/api/assistant.test.ts
+git add lib/ai/assistant.ts tests/unit/lib/ai/assistant.test.ts tests/unit/api/assistant.test.ts
 git commit -m "feat(assistant): route before retrieval; deep flag flows into the planner"
 ```
 
@@ -1134,16 +1136,26 @@ git commit -m "feat(assistant): route before retrieval; deep flag flows into the
 
 - [ ] **Step 1: Write the failing test**
 
-Update the module-level `answer` fixture's placeholder values to something the new test can distinguish (`routerSource: "score-fallback", deep: true`, add `complexityScore: 3`), and add:
+Do NOT mutate the shared module-level `answer` fixture — it stays default-coherent (`modelRole: "default"`, `deep: false`) and the existing persistence test reads it. Build a **local, coherent scholarly variant** for this case (deep is true only for scholarly routing, so `modelRole`/`modelUsed`/`routingDecision` must all reflect a scholarly pass):
 
 ```typescript
 it("persists routerSource, deep, and complexityScore in message metadata", async () => {
+  const scholarlyAnswer: AssistantAnswer = {
+    ...answer,
+    modelRole: "scholarly",
+    modelUsed: "gpt-5.4",
+    deep: true,
+    routerSource: "score-fallback",
+    complexityScore: 3,
+    routingDecision: "Scholarly model used automatically: the deterministic heuristic scored this complex."
+  };
+
   const { sessionId, userMessagePromise } = await startAssistantExchange({
     userId: "local-user",
     requestedSessionId: "",
-    prompt: "What is logos?"
+    prompt: "reconcile Paul and James on justification"
   });
-  await finishAssistantExchange({ sessionId, userMessagePromise, answer });
+  await finishAssistantExchange({ sessionId, userMessagePromise, answer: scholarlyAnswer });
 
   expect(prismaMock.aiMessage.create.mock.calls[1][0].data.metadata).toMatchObject({
     routerSource: "score-fallback",
@@ -1198,11 +1210,11 @@ git commit -m "feat(assistant): persist routerSource/deep/complexityScore in ses
 ### Task 7: API route — `confirmEscalation` with `autoEscalate` migration
 
 **Files:**
-- Modify: `app/api/assistant/route.ts`
+- Modify: `app/api/assistant/route.ts`, `lib/ai/assistant.ts` (drop the temporary `autoEscalate?` compat option added in Task 5)
 - Test: `tests/unit/api/assistant-route.test.ts` (the request-schema suite; `tests/unit/api/assistant.test.ts` is the sessions-persistence suite handled in Task 6).
 
 **Interfaces:**
-- Consumes: Task 5's `answerBibleQuestion(prompt, { escalate, confirmEscalation })`.
+- Consumes: Task 5's `answerBibleQuestion`, which currently accepts `{ escalate?, confirmEscalation?, autoEscalate? }`; this task removes the temporary `autoEscalate?` so the final shape is `{ escalate?, confirmEscalation? }`.
 - Produces: request schema `{ prompt, sessionId?, escalate?, confirmEscalation?, autoEscalate? (deprecated) }`.
 
 - [ ] **Step 1: Write the failing tests**
@@ -1268,15 +1280,17 @@ and the handler body:
   const answer = await answerBibleQuestion(prompt, { escalate, confirmEscalation });
 ```
 
-- [ ] **Step 4: Run tests**
+Then remove the temporary compat field from `lib/ai/assistant.ts` — `answerBibleQuestion`'s options go back to the final `{ escalate?: boolean; confirmEscalation?: boolean }` (delete the `autoEscalate?: boolean` and its comment added in Task 5). No caller passes `autoEscalate` anymore (the route now sends `confirmEscalation`; the mocked assistant tests don't), so this compiles clean.
 
-Run: `npm run test:unit -- api/assistant`
-Expected: PASS.
+- [ ] **Step 4: Run tests + type check**
+
+Run: `npm run test:unit -- api/assistant && npx tsc --noEmit --pretty false`
+Expected: PASS / clean.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add app/api/assistant/route.ts tests/unit/api
+git add app/api/assistant/route.ts lib/ai/assistant.ts tests/unit/api
 git commit -m "feat(assistant): confirmEscalation param with deprecated autoEscalate mapping"
 ```
 

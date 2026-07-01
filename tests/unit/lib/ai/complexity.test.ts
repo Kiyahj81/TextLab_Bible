@@ -1,6 +1,22 @@
-import { describe, expect, it } from "vitest";
-import { COMPLEXITY_THRESHOLD, scoreComplexity } from "@/lib/ai/complexity";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { COMPLEXITY_THRESHOLD, classifyComplexityLLM, getRouterModel, scoreComplexity } from "@/lib/ai/complexity";
 import { detectConceptWords, extractSignals } from "@/lib/ai/signals";
+import { getOpenAi } from "@/lib/ai/openaiClient";
+
+vi.mock("@/lib/ai/openaiClient", () => ({ getOpenAi: vi.fn() }));
+const mockedGetOpenAi = vi.mocked(getOpenAi);
+
+beforeEach(() => {
+  vi.unstubAllEnvs();
+  mockedGetOpenAi.mockReset();
+});
+afterEach(() => vi.unstubAllEnvs());
+
+function clientReturning(outputText: string | undefined) {
+  const create = vi.fn().mockResolvedValue({ output_text: outputText });
+  // Only the surface classifyComplexityLLM touches.
+  return { client: { responses: { create } } as never, create };
+}
 
 const score = (p: string) => scoreComplexity(p, extractSignals(p));
 
@@ -112,5 +128,49 @@ describe("scoreComplexity", () => {
     const s = score(verbose);
     expect(s.score).toBe(2);
     expect(s.complex).toBe(true);
+  });
+});
+
+describe("getRouterModel", () => {
+  it("defaults to gpt-5-mini and honors the env override", () => {
+    expect(getRouterModel()).toBe("gpt-5-mini");
+    vi.stubEnv("OPENAI_ROUTER_MODEL", "custom-router");
+    expect(getRouterModel()).toBe("custom-router");
+  });
+});
+
+describe("classifyComplexityLLM", () => {
+  it("returns the parsed verdict on a valid response", async () => {
+    const { client, create } = clientReturning('{"complex": true, "reason": "contested exegesis"}');
+    mockedGetOpenAi.mockReturnValue(client);
+    const verdict = await classifyComplexityLLM("Is Romans 7 about Paul himself?");
+    expect(verdict).toEqual({ complex: true, reason: "contested exegesis" });
+    // Reasoning-model params + mandatory per-request overrides.
+    const [body, opts] = create.mock.calls[0];
+    expect(body.model).toBe("gpt-5-mini");
+    expect(body.reasoning).toEqual({ effort: "low" });
+    expect(body.temperature).toBeUndefined();
+    expect(opts).toEqual({ timeout: 2_000, maxRetries: 0 });
+  });
+
+  it("throws when no client is configured", async () => {
+    mockedGetOpenAi.mockReturnValue(null);
+    await expect(classifyComplexityLLM("anything")).rejects.toThrow();
+  });
+
+  it("throws on garbage output", async () => {
+    mockedGetOpenAi.mockReturnValue(clientReturning("not json").client);
+    await expect(classifyComplexityLLM("anything")).rejects.toThrow();
+  });
+
+  it("throws on schema-invalid output", async () => {
+    mockedGetOpenAi.mockReturnValue(clientReturning('{"complex": "yes"}').client);
+    await expect(classifyComplexityLLM("anything")).rejects.toThrow();
+  });
+
+  it("propagates API errors (timeout) unchanged", async () => {
+    const create = vi.fn().mockRejectedValue(new Error("Request timed out."));
+    mockedGetOpenAi.mockReturnValue({ responses: { create } } as never);
+    await expect(classifyComplexityLLM("anything")).rejects.toThrow("Request timed out.");
   });
 });

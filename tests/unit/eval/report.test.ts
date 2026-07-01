@@ -22,8 +22,8 @@ const sample: RunResult[] = [
     synthesisStatus: "ran",
     synthesisModel: "gpt-5-chat-latest",
     judgeStatus: "ran",
-    judgeModel: "anthropic/claude-sonnet-4.6",
-    faithfulness: { score: 1, claims: [{ statement: "God so loved the world", supported: true, reason: "matches John 3:16" }], model: "anthropic/claude-sonnet-4.6" }
+    judgeModel: "anthropic/claude-sonnet-5",
+    faithfulness: { score: 1, claims: [{ statement: "God so loved the world", supported: true, reason: "matches John 3:16" }], model: "anthropic/claude-sonnet-5" }
   }
 ];
 
@@ -55,7 +55,7 @@ describe("renderHtmlReport", () => {
   it("surfaces an explicit judge error instead of labeling it 'off'", () => {
     const errored: RunResult[] = [{
       ...sample[0], faithfulness: null, judgeStatus: "error",
-      judgeModel: "anthropic/claude-sonnet-4.6", judgeError: "model not found"
+      judgeModel: "anthropic/claude-sonnet-5", judgeError: "model not found"
     }];
     const html = renderHtmlReport(errored);
     expect(html).toContain("error");

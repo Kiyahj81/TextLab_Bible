@@ -667,6 +667,8 @@ describe("runRetrievalPlan", () => {
     const signals = extractSignals("Show John 1:1");
     const packet = await runRetrievalPlan(signals, "Show John 1:1", false);
     expect(packet.formattedEvidence).toContain('λόγος · λόγος · noun — nominative singular masculine · "word"');
+    // A successful token fetch is traced too (mirrors getPassage), not only failures.
+    expect(packet.toolTrace.some((t) => t.tool === "getPassageTokens" && !t.error)).toBe(true);
   });
 
   it("does NOT annotate a >25-verse passage", async () => {

@@ -40,4 +40,22 @@ describe("formatTokenAnnotations", () => {
     const lines = formatTokenAnnotations([tok({ partOfSpeech: "C-" })], { contentOnly: false });
     expect(lines).toHaveLength(1);
   });
+
+  it("keeps a negation particle even when tagged X- (meaning-critical)", () => {
+    // In the corpus a minority of οὐ/μή are tagged X- (particle); they must still be annotated.
+    const lines = formatTokenAnnotations(
+      [tok({ surface: "οὐ", lemma: "οὐ", partOfSpeech: "X-", gloss: "not", domainLabel: null, morphCode: null })],
+      { contentOnly: true }
+    );
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("οὐ");
+  });
+
+  it("still skips a non-negation X- particle when contentOnly", () => {
+    const lines = formatTokenAnnotations(
+      [tok({ surface: "ἄν", lemma: "ἄν", partOfSpeech: "X-", gloss: null, domainLabel: null, morphCode: null })],
+      { contentOnly: true }
+    );
+    expect(lines).toHaveLength(0);
+  });
 });

@@ -145,10 +145,13 @@ export async function runWithJudge(item: GoldenItem): Promise<RunResult> {
     synthesisStatus = "skipped-no-key";
   } else {
     try {
-      const intent = extractSignals(item.question).intent;
-      const routing = routeAssistantPrompt(item.question);          // no auto-escalation in eval
+      // Mirror the production path (answerBibleQuestion): compute signals once and
+      // forward them to the router so signal-derived heuristics (comparison intent,
+      // cross-book) inform routing metadata. autoEscalate stays off in eval.
+      const signals = extractSignals(item.question);
+      const routing = routeAssistantPrompt(item.question, { signals }); // no auto-escalation in eval
       synthesisModel = routing.modelUsed;
-      const synth = await synthesizeWithRefinement({ prompt: item.question, evidence, routing, intent });
+      const synth = await synthesizeWithRefinement({ prompt: item.question, evidence, routing, intent: signals.intent });
       if (synth) {
         answer = synth.answer;
         synthesisStatus = "ran";

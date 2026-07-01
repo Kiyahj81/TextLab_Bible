@@ -262,6 +262,20 @@ describe("extractSignals domainQuery", () => {
     expect(signals.topicWords).not.toContain("domain");
     expect(signals.topicWords).toContain("love");
   });
+
+  it("does not leak domain-marker words when an out-of-range marker is left in the text", () => {
+    // detectDomainQuery rejects the out-of-range marker, so its text survives — but the
+    // marker words themselves are never real search concepts.
+    const a = extractSignals("domain 200 love");
+    expect(a.domainQuery).toBeUndefined();
+    expect(a.topicWords).not.toContain("domain");
+    expect(a.topicWords).toContain("love");
+    const b = extractSignals("Louw-Nida 94.2 love");
+    expect(b.domainQuery).toBeUndefined();
+    expect(b.topicWords).not.toContain("louw");
+    expect(b.topicWords).not.toContain("nida");
+    expect(b.topicWords).toContain("love");
+  });
 });
 
 describe("detectIntent", () => {

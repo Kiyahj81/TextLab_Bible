@@ -294,10 +294,12 @@ function passageCall(
 
       // Enrichment is optional: a token-fetch failure must NOT drop the already-fetched
       // base passage. Fail open to the verse-text-only section with an error trace.
+      const tokenArgs = {
+        book: ref.book, chapter: ref.chapter, verseStart: shown[0].verse, verseEnd: shown[shown.length - 1].verse
+      };
       try {
-        const tokens = await getPassageTokens({
-          book: ref.book, chapter: ref.chapter, verseStart: shown[0].verse, verseEnd: shown[shown.length - 1].verse
-        });
+        const tokens = await getPassageTokens(tokenArgs);
+        traces.push({ tool: "getPassageTokens", args: tokenArgs }); // success trace (mirrors getPassage)
         const annotationsByVerse = new Map<number, string[]>();
         for (const t of tokens) {
           const [line] = formatTokenAnnotations([t], { contentOnly: enrich.contentOnly, targetLemmas: enrich.targetLemmas });
@@ -316,7 +318,7 @@ function passageCall(
       } catch (error) {
         traces.push({
           tool: "getPassageTokens",
-          args: { book: ref.book, chapter: ref.chapter, verseStart: shown[0].verse, verseEnd: shown[shown.length - 1].verse },
+          args: tokenArgs,
           error: error instanceof Error ? error.message : "Unknown error"
         });
         return { citations, section, traces };

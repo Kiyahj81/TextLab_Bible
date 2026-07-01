@@ -6,8 +6,15 @@ import type { PassageToken } from "@/lib/search/passageTokens";
 // 2-char Token.partOfSpeech values (see lib/morphology.ts POS_LABELS).
 export const ANNOTATION_SKIP_POS: readonly string[] = ["RA", "C-", "X-"];
 
+// Negation is meaning-critical (it can flip a clause) and is tagged inconsistently
+// in the corpus: οὐ/μή are usually adverbs (D-, annotated) but a real minority are
+// tagged particles (X-, in the skip list above). Always keep these so the negation
+// gets its per-token annotation regardless of POS tag.
+const NEGATION_LEMMAS: ReadonlySet<string> = new Set(["οὐ", "οὐκ", "οὐχ", "οὐχί", "οὔ", "μή"]);
+
 function isContentToken(t: PassageToken, targetLemmas?: ReadonlySet<string>): boolean {
   if (t.lemma && targetLemmas?.has(t.lemma)) return true; // always keep query targets
+  if (t.lemma && NEGATION_LEMMAS.has(t.lemma)) return true; // always keep negation (meaning-critical)
   return !ANNOTATION_SKIP_POS.includes(t.partOfSpeech ?? "");
 }
 

@@ -197,6 +197,10 @@ const BASE_STOP_WORDS: ReadonlySet<string> = new Set([
   "grammar", "grammatical", "parse", "noun", "nouns", "adjective", "adjectives", "adverb", "adverbs", "pronoun", "pronouns",
   "deponent", "optative", "vocative", "nominative", "genitive", "dative", "accusative", "singular", "plural",
   "feminine", "masculine", "neuter", "morphology", "morphological", "within", "context", "contextual",
+  // Louw-Nida domain-marker words — never real search concepts. Keeps them out of both
+  // search keywords and scholarly routing when an out-of-range marker (e.g. "domain 200 love",
+  // "Louw-Nida 94.2 love") is left in the text after detectDomainQuery rejects it.
+  "domain", "louw", "nida",
 ]);
 
 // Additional exclusions for KEYWORD/SEMANTIC SEARCH ONLY. Tune this for search quality;

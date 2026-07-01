@@ -37,14 +37,17 @@ Today retrieval runs before routing; deep retrieval requires the reverse.
 4. `runRetrievalPlan(signals, prompt, { semanticEnabled, deep })` — `deep: true` iff the routing decision is scholarly (manual or auto).
 5. `synthesizeWithRefinement` → `verifyGrounding` — unchanged.
 
+This reorder is a cross-file orchestration change, not a local refactor: it lands together across `lib/ai/assistant.ts`, `lib/ai/modelRouter.ts`, `lib/ai/retrievalPlanner.ts`, `eval/runner.ts`, and the assistant/route/planner test suites.
+
 ### New module: `lib/ai/complexity.ts`
 
 One unit with one job — judge whether a prompt needs deep, cross-text synthesis — offering two strategies:
 
 **`classifyComplexityLLM(prompt, signals): Promise<ComplexityVerdict>`**
-- One OpenAI chat call. Model from `OPENAI_ROUTER_MODEL` (default `gpt-5-mini`), strict JSON response `{ complex: boolean, reason: string }`.
-- **Parameters must match the reasoning-model family:** `max_completion_tokens` (not the deprecated `max_tokens`) with headroom for reasoning tokens (~500), `reasoning_effort: "minimal"`, and **no `temperature`** (reasoning models reject it — same failure class as the `gpt-5.3-chat-latest` note in `modelRouter.ts`). Determinism comes from the constrained JSON output, not sampling params. A live smoke test of the exact call is a required implementation step before merge.
-- Hard timeout ≈ 2 s (SDK per-request timeout), **no retry** — on timeout, API error, or unparseable/invalid JSON it **throws**; the caller falls back to the score. A classifier failure can never fail the question.
+- One **Responses API** call (`client.responses.create`, matching the synthesis pattern — not Chat Completions) with strict JSON-schema output `{ complex: boolean, reason: string }`. Model from `OPENAI_ROUTER_MODEL` (default `gpt-5-mini`).
+- **Parameters must match the reasoning-model family and the Responses API:** `max_output_tokens` with headroom for reasoning tokens (~500), `reasoning: { effort: "minimal" }`, and **no `temperature`** (reasoning models reject it — same failure class as the `gpt-5.3-chat-latest` note in `modelRouter.ts`). Determinism comes from the constrained JSON output, not sampling params. A live smoke test of the exact call is a required implementation step before merge.
+- **Per-request client overrides are mandatory:** the shared `getOpenAi()` client is deliberately configured at `timeout: 120 s / maxRetries: 1` (sized for long synthesis calls), so the classifier must pass per-request `{ timeout: ~2_000, maxRetries: 0 }` — without the override, the 2 s / no-retry contract silently doesn't hold.
+- Hard timeout ≈ 2 s, **no retry** — on timeout, API error, or unparseable/invalid JSON it **throws**; the caller falls back to the score. A classifier failure can never fail the question.
 - **Accepted degraded mode:** the score fallback is *stricter* than today's OR-gate (solo weak cues — bare "why", concept density, length — no longer escalate alone). On classifier failure those prompts stay default where today they'd at least get a scholarly recommendation. This is deliberate: the OR-gate's solo-weak-cue firing is exactly the over-firing this design removes, and keeping it alive as a failure fallback would mean maintaining two deterministic behaviors. The trade is bounded (fallback fires only on classifier failure; manual escalation and the score's ≥2 path still work) and must be **observable**: `RoutingDecision` carries a `routerSource: "llm" | "score" | "score-fallback"` field, surfaced in the routing metadata, so fallback frequency can be monitored.
 - The prompt instructs the classifier to judge whether the question requires interpretive synthesis across texts / contested exegesis (complex) vs. lookup, recitation, word study, or routine passage explanation (not complex). It receives the user prompt plus cheap signal context (intent, distinct book count) — no corpus evidence.
 
@@ -68,18 +71,18 @@ One unit with one job — judge whether a prompt needs deep, cross-text synthesi
 
 - Becomes `async`. Signature gains a `live: boolean` option; `autoEscalate` is replaced by `confirmEscalation` (see UX).
 - Decision order:
-  1. Manual `escalate: true` → scholarly (unchanged, short-circuits classification).
-  2. Live mode → `classifyComplexityLLM`; on throw → `scoreComplexity`. Non-live callers → `scoreComplexity` only.
+  1. Manual `escalate: true` → scholarly **and `deep: true`** (unchanged short-circuit; the deep flag is explicit, not implied).
+  2. Live mode → `classifyComplexityLLM`; on throw → `scoreComplexity`. Callers passing `live: false` → `scoreComplexity` only. (Production non-live never reaches the router at all — the pipeline returns the deterministic fallback with honest `modelUsed: "none"` metadata before routing, exactly as today; the score-only router path serves the eval runner and unit tests.)
   3. Complex + no `confirmEscalation` → **auto-escalate**: scholarly role, deep retrieval, first pass.
   4. Complex + `confirmEscalation` → default role, populate `recommendedUpgrade` (today's confirm flow).
   5. Not complex → default role.
-- `RoutingDecision` gains `deep: boolean` (true iff scholarly) and `routerSource: "llm" | "score" | "score-fallback"`. The `routingDecision` string names the decision source so the trace is always honest: "LLM router judged this complex…", "deterministic heuristic (classifier unavailable) …", "escalated at the user's request", etc.
+- `RoutingDecision` gains structured fields: `deep: boolean` (true iff scholarly), `routerSource: "llm" | "score" | "score-fallback"`, and `complexityScore?: number` (present when the score ran) — tests and evals assert on these, not on display text. The `routingDecision` string is rendered from them and names the decision source so the trace is always honest: "LLM router judged this complex…", "deterministic heuristic (classifier unavailable)…", "escalated at the user's request", etc. The existing confirm-flow `recommendedUpgrade.reason` copy ("…confirm before using the scholarly model") appears **only** in the `confirmEscalation` flow; the auto path's routing string says scholarly was used automatically.
 
 ### Deep retrieval mode (`lib/ai/retrievalPlanner.ts`)
 
-`runRetrievalPlan(signals, prompt, opts: { semanticEnabled: boolean; deep: boolean })` (positional params replaced by an options object). When `deep: true`:
+`runRetrievalPlan(signals, prompt, opts: { semanticEnabled: boolean; deep: boolean })` (positional params replaced by an options object; **all** callsites — production, eval runner, unit tests — are updated in the same change, no boolean overload kept). When `deep: true`:
 
-- `MAX_PLANNED_CALLS` 8 → **12** (wider deterministic breadth).
+- The **deterministic-call cap** `MAX_PLANNED_CALLS` 8 → **12**. Note this cap governs only the deterministic calls — semantic passes are added after the slice as extra slots, as today — so the deep total is up to 12 deterministic + the semantic pass(es).
 - **Scope policy (the substantive widening — review Finding 1).** Raising hit limits alone cannot help when `scopeFor` pins the prompt to one book/chapter: for "Is Romans 7 about Paul himself?" every semantic and keyword hit would still come from Romans 7, which is precisely the evidence the question already has. Deep mode therefore:
   - Keeps all deterministic scoped calls unchanged — explicit passage retrieval is retained, the cited passages stay primary.
   - Adds a **second, corpus-wide semantic pass** (no book/chapter scope, own plan key so dedup keeps both) alongside the scoped pass whenever the prompt's scope is pinned. Each pass keeps `SEMANTIC_HIT_LIMIT` (5). When the scope is already corpus-wide there is one pass with the limit raised to **10** instead.
@@ -87,13 +90,15 @@ One unit with one job — judge whether a prompt needs deep, cross-text synthesi
 
 Everything else is deliberately untouched: `MAX_EVIDENCE_CHARS` is tied to the saved-note persistence caps by construction; `maxEnrichChars()`, `MAX_WORD_SAMPLE`, citation caps, and the enrichment "degrade, never drop" contract all stay as-is. Deep mode widens **coverage**, never loosens **safety budgets** — a deep packet still assembles under the same evidence ceiling.
 
+**Known v1 limitation — order-based evidence assembly.** `assembleEvidence` keeps sections in plan order under the cap, and semantic sections are appended after deterministic ones, so an unusually large deep deterministic packet could crowd the corpus-wide semantic section out of the final evidence. Accepted for v1: realistic deep prompts (one reference plus searches) sit far below the 58 KB ceiling. If the eval report shows deep/semantic sections being truncated in practice, add cross-section prioritization (e.g. order the corpus-wide semantic section before keyword sections in deep mode) as a follow-up — not speculatively now.
+
 The non-live fallback path always uses standard depth (no routing ran, and its answer embeds evidence verbatim under the note caps).
 
 ## UX / API changes
 
 - **Auto-escalation becomes the default.** Complex questions go straight to scholarly + deep retrieval on the first pass, no confirmation round-trip.
-- Request param `autoEscalate` is replaced by `confirmEscalation?: boolean`. With it set, complex questions return `recommendedUpgrade` (today's behavior) instead of auto-escalating. `autoEscalate` remains in the zod schema as accepted-but-ignored for one release so stale clients don't 400; remove after.
-- The cookie-backed toggle in `components/AiAssistant.tsx` / `app/assistant/page.tsx` flips meaning to "Ask before using the scholarly model" (new cookie name; the old auto-scholarly cookie is simply ignored). Manual "use scholarly model" button (`escalate: true`) is unchanged.
+- Request param `autoEscalate` is replaced by `confirmEscalation?: boolean`. With it set, complex questions return `recommendedUpgrade` (today's behavior) instead of auto-escalating. Migration window (one release): `autoEscalate` stays in the zod schema; an **explicit** `autoEscalate: false` maps to `confirmEscalation: true` (the shipped UI only ever sent `true` or omitted the field, but this keeps any explicit opt-out meaningful); `true` or omission take the new auto default. Remove the param after.
+- The cookie-backed toggle in `components/AiAssistant.tsx` / `app/assistant/page.tsx` flips meaning to "Ask before using the scholarly model" (new cookie name, e.g. `textlab-assistant-confirm-scholarly`). The old `textlab-assistant-auto-scholarly` cookie is dropped **without** migration, deliberately: it could only ever encode "auto ON", which is the new default, so ignoring it changes no one's effective behavior — and mapping its *absence* to confirm-first would nullify the approved default flip for existing users. Manual "use scholarly model" button (`escalate: true`) is unchanged.
 - **Cost trade-off (accepted):** every question the classifier judges complex now costs a scholarly-model call plus wider retrieval without asking. The classifier call itself is negligible (~200 tokens on a mini model). `confirmEscalation` is the brake for cost-sensitive use.
 
 ## Error handling
@@ -109,11 +114,11 @@ The non-live fallback path always uses standard depth (no routing ran, and its a
 
 - **Unit — score:** table-driven over the weight matrix; threshold boundary cases; the named misfire examples (fruit-of-the-Spirit stays default; two-cue "why + tension" escalates; topic-survey/recite exclusions hold).
 - **Unit — classifier:** mocked OpenAI client — valid verdict routes; timeout → score fallback; garbage JSON → score fallback; verdict shape validated with zod.
-- **Unit — router:** manual escalate short-circuits; auto-escalate default; `confirmEscalation` restores the recommend flow; non-live uses score only; `deep` set iff scholarly.
+- **Unit — router:** manual escalate short-circuits (scholarly + deep); auto-escalate default; `confirmEscalation` restores the recommend flow; `live: false` uses score only; `deep` set iff scholarly. Existing `modelRouter.test.ts` cases that pin solo-weak-cue escalation (e.g. bare "why" framing recommending scholarly) are updated **intentionally** — the desired behavior changed; this is not accidental breakage.
 - **Unit — planner:** deep mode raises the plan-size cap; scoped prompts gain the corpus-wide semantic pass (distinct key, scoped pass unchanged); unscoped prompts get a single 10-hit pass; the corpus-wide pass runs for termless and all-exact-verse prompts in deep mode only; standard mode byte-identical to today's behavior; evidence/enrichment budgets unchanged in both modes.
 - **Unit — assistant:** pipeline reorder — scholarly routing produces a deep plan; non-live path never routes.
 - **Eval gate (key-free) — must be taught to see this feature (review Finding 2).** Today `eval/runner.ts` retrieves without routing and the dataset schema has no routing field, so the gate as-is cannot measure anything this PR changes. Two additions:
-  - The golden-item schema gains optional `expectedRouting: "default" | "scholarly"`. For items that declare it, the gate asserts `scoreComplexity`'s decision (deterministic, key-free; type-aware — only gated where declared). New golden items cover the named misfire/under-fire examples.
+  - The golden-item schema gains optional `expectedRouting: "default" | "scholarly"`. For items that declare it, the gate asserts `scoreComplexity`'s decision (deterministic, key-free; type-aware — only gated where declared). New golden items cover the named misfire/under-fire examples, and the classifier's live tests include short contested questions with no surface cues — the exact class the regexes miss: "Is Romans 7 about Paul himself?", "Does James contradict Paul on justification?", "Does Hebrews 6 teach that believers can fall away?", "What does 'works of the law' mean in Galatians?".
   - The runner mirrors the new production order: route via the deterministic score first, then `runRetrievalPlan` with the resulting depth — so recall/precision are measured over the packet the feature actually produces (deep's wider deterministic breadth is exercised even with `semanticEnabled=false`).
 - **Eval report:** same route-before-retrieve order using the real router (classifier when `OPENAI_API_KEY` is present); `RunResult` records `routerSource` and depth per item. The before/after run on this branch is the PR's headline measurement (same protocol as PR #54).
 - **Acceptance suite:** deep mode fires only on live scholarly routing; verify the pinned corpus counts don't move.
@@ -124,3 +129,5 @@ The non-live fallback path always uses standard depth (no routing ran, and its a
 - Item E (gloss-based English→lemma discovery) — separate follow-up PR.
 - Changing `DEFAULT_MODEL` / output-token budgets (option D) — evaluate after this ships.
 - New deterministic cues for interpretive-stance questions — only if the fallback path proves too weak in eval.
+- Selected-passage context for the classifier — the assistant API only accepts `prompt`/`sessionId`/escalation flags, so a "what does this mean?" question about a UI-selected passage can't inform routing unless the reference is in the prompt text. Named as a known limitation, not addressed here.
+- Cost brakes beyond `confirmEscalation` + the existing kill switch and API rate limit — `routerSource`/`deep` in routing metadata give the telemetry to justify one later if scholarly spend becomes a problem.

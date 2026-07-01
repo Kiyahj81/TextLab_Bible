@@ -609,20 +609,24 @@ export async function routeAssistantPrompt(
     routerSource = "score";
   }
 
+  // Decision-source phrase, reused across ALL branches so the persisted/displayed
+  // routingDecision string always names WHO decided (llm / score / fallback) — the
+  // spec requires the source be visible, not just the outcome.
+  const sourceLabel =
+    routerSource === "llm"
+      ? `the LLM router${llmReason ? ` (${llmReason})` : ""}`
+      : routerSource === "score-fallback"
+        ? "the deterministic score (LLM router unavailable)"
+        : "the deterministic score";
+
   if (complex && !confirmEscalation) {
-    const source =
-      routerSource === "llm"
-        ? `the LLM router judged this question complex${llmReason ? ` (${llmReason})` : ""}`
-        : routerSource === "score-fallback"
-          ? "the deterministic heuristic (classifier unavailable) scored this question complex"
-          : "the deterministic complexity score marked this question complex";
     return {
       modelRole: "scholarly",
       modelUsed: getModelForRole("scholarly"),
       deep: true,
       routerSource,
       complexityScore,
-      routingDecision: `Scholarly model used automatically: ${source}; deep retrieval enabled.`
+      routingDecision: `Scholarly model used automatically: ${sourceLabel} judged this question complex; deep retrieval enabled.`
     };
   }
 
@@ -637,8 +641,8 @@ export async function routeAssistantPrompt(
     routerSource,
     complexityScore,
     routingDecision: recommendedUpgrade
-      ? "Handled by the default model; scholarly mode is available on user-confirmed escalation."
-      : "Handled by the default model for normal retrieval planning and synthesis.",
+      ? `Handled by the default model; ${sourceLabel} judged this question complex, so scholarly mode is offered on confirmation.`
+      : `Handled by the default model; ${sourceLabel} judged this question routine.`,
     recommendedUpgrade
   };
 }
@@ -663,15 +667,34 @@ Also add `import type { Signals } from "@/lib/ai/signals";` if `detectConceptWor
 
 Run `npx tsc --noEmit --pretty false` to confirm both patches together leave the tree compiling.
 
+**Network-safety guard for the assistant suite (required — Task 3 is what makes the router able to call the live classifier).** `tests/unit/lib/ai/assistant.test.ts` currently mocks `@/lib/ai/modelRouter` but leaves `routeAssistantPrompt` REAL (it only overrides `isLiveAssistantEnabled`). After this task, the real router calls `classifyComplexityLLM` in live mode — and the suite's live tests force `isLiveAssistantEnabled()` true, so with `OPENAI_API_KEY` present in the shell a plain `npm run test:unit` would make a real network request from a unit test. Fully mocking the router here would force migrating every behavioral assertion (that's Task 5's coupled rework), so add the minimal offline guard instead: stub ONLY the network-calling classifier, keep the real `scoreComplexity`, so the real router still decides — deterministically, offline — via its score fallback. Add near the other hoisted mocks:
+
+```typescript
+// The router can now call the live classifier; force it offline in this suite so
+// no unit test makes a network request regardless of whether OPENAI_API_KEY is set.
+// scoreComplexity stays real, so the router's score fallback preserves every
+// existing behavioral outcome. Task 5 replaces this with a full routeAssistantPrompt
+// mock when it reworks this suite for the reorder.
+const { classifyComplexityLLM } = vi.hoisted(() => ({
+  classifyComplexityLLM: vi.fn(() => { throw new Error("classifier offline in unit tests"); })
+}));
+vi.mock("@/lib/ai/complexity", async (importOriginal) => {
+  const real = await (importOriginal as () => Promise<typeof import("@/lib/ai/complexity")>)();
+  return { ...real, classifyComplexityLLM };
+});
+```
+
+Every existing case still passes: `escalate: true` short-circuits before the classifier; the complex-prompt auto-escalate case reaches the same scholarly outcome via score fallback; simple-prompt live cases fall to default. No behavioral edits, no network egress.
+
 - [ ] **Step 4: Run tests + type check**
 
-Run: `npm run test:unit -- modelRouter && npx tsc --noEmit --pretty false`
-Expected: modelRouter tests PASS; tsc clean. Note on the other suites at this checkpoint: `route.ts` and `answerBibleQuestion`'s signatures are unchanged in Task 3 (only the router's internal call sites drop `autoEscalate` and gain `await`), so `tests/unit/api/*` stay green. The assistant suite also stays green — its one `autoEscalate` behavioral case uses a genuinely complex prompt, which now auto-escalates via the score path anyway (same scholarly outcome); its full mock rework and that case's removal land in Task 5. Don't hand-patch the assistant suite here.
+Run: `npm run test:unit -- modelRouter assistant && npx tsc --noEmit --pretty false`
+Expected: modelRouter + assistant PASS; tsc clean. `tests/unit/api/*` also stay green (route.ts and `answerBibleQuestion`'s signature are unchanged in Task 3 — only the router's internal call sites drop `autoEscalate` and gain `await`). The assistant suite passes with the offline guard above (no behavioral edits here; its full mock rework and the obsolete `autoEscalate` case's removal land in Task 5).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add lib/ai/modelRouter.ts lib/ai/assistant.ts eval/runner.ts tests/unit/lib/ai/modelRouter.test.ts
+git add lib/ai/modelRouter.ts lib/ai/assistant.ts eval/runner.ts tests/unit/lib/ai/modelRouter.test.ts tests/unit/lib/ai/assistant.test.ts
 git commit -m "feat(assistant): async router with LLM classifier, score fallback, structured routing fields"
 ```
 
@@ -924,7 +947,7 @@ git commit -m "feat(assistant): deep retrieval mode with corpus-wide semantic pa
 
 - [ ] **Step 1: Write/adjust the failing tests**
 
-`tests/unit/lib/ai/assistant.test.ts` currently mocks `@/lib/ai/modelRouter` by spreading `importOriginal()` and overriding ONLY `isLiveAssistantEnabled` — meaning `routeAssistantPrompt` is the REAL implementation today. That must change: with the Task 3 reorder, a live test run would otherwise call the real classifier (`classifyComplexityLLM`), which reaches out to OpenAI from a unit test. Replace the mock so `routeAssistantPrompt` is a hoisted `vi.fn()` too, and give it a default in `beforeEach`:
+After Task 3, `tests/unit/lib/ai/assistant.test.ts` mocks `@/lib/ai/modelRouter` (overriding `isLiveAssistantEnabled`) and carries the Task 3 offline guard that stubs `classifyComplexityLLM` while leaving the REAL `routeAssistantPrompt`. For the reorder assertions ("routes BEFORE retrieval and passes depth") it's cleaner to mock the router directly. **Remove the Task 3 `@/lib/ai/complexity` offline-guard mock** (it's no longer needed once the router itself is mocked — nothing reaches the classifier) and replace it: make `routeAssistantPrompt` a hoisted `vi.fn()` too, with a default in `beforeEach`:
 
 ```typescript
 const { isLiveAssistantEnabled, routeAssistantPrompt } = vi.hoisted(() => ({
@@ -1495,7 +1518,7 @@ export const goldenItemSchema = z.object({
 `eval/runner.ts` — in `runOnce`, route before retrieval and mirror production order:
 
 ```typescript
-import { isLiveAssistantEnabled, routeAssistantPrompt } from "@/lib/ai/modelRouter";
+import { isLiveAssistantEnabled, routeAssistantPrompt, type RoutingDecision } from "@/lib/ai/modelRouter";
 
 async function runOnce(
   item: GoldenItem,

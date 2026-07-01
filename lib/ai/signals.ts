@@ -41,13 +41,18 @@ export type DomainQuerySignal = { kind: "domain"; code: string } | { kind: "ln";
 // Anchored to an explicit Louw-Nida marker so ordinary text — including
 // chapter.verse notation like "John 3.16" — never trips domain retrieval.
 // Bare dotted refs are intentionally NOT detected here (the /search LN field
-// handles those). `domain N` validates 1..93.
+// handles those). Both forms validate the domain number as 1..93 (the LN form
+// guards the part before the dot); an out-of-range marker is treated as ordinary
+// text so the prompt falls back to normal topic extraction/search.
 const LN_REF_RE = /(?:louw[\s-]?nida|\bln)\s+(\d{1,2})\.(\d{1,3}[a-z]?)\b/i;
 const DOMAIN_NUM_RE = /(?:louw[\s-]?nida|\bln|\bdomain)\s+0*(\d{1,3})\b/i;
 
 export function detectDomainQuery(prompt: string): DomainQuerySignal | undefined {
   const lnMatch = LN_REF_RE.exec(prompt);
-  if (lnMatch) return { kind: "ln", ref: `${lnMatch[1]}.${lnMatch[2]}` };
+  if (lnMatch) {
+    const n = Number.parseInt(lnMatch[1], 10);
+    if (n >= 1 && n <= 93) return { kind: "ln", ref: `${lnMatch[1]}.${lnMatch[2]}` };
+  }
   const domMatch = DOMAIN_NUM_RE.exec(prompt);
   if (domMatch) {
     const n = Number.parseInt(domMatch[1], 10);
@@ -57,19 +62,23 @@ export function detectDomainQuery(prompt: string): DomainQuerySignal | undefined
 }
 
 function stripDomainMarkers(text: string): string {
-  // LN refs are always stripped (matches detectDomainQuery, which has no range
-  // guard for the LN form). Domain-number markers are only stripped when the
-  // captured number is in range 1..93 — mirroring detectDomainQuery's guard so an
-  // out-of-range "domain N" (which was NOT recognized as a domain query) is left
-  // intact for topic extraction. Use a fresh local regex (no shared /g state) and
-  // a replacer that returns the original match when out of range; the module-level
-  // DOMAIN_NUM_RE used by detectDomainQuery stays non-global.
+  // Both marker forms are stripped only when the captured domain number is in
+  // range 1..93 — mirroring detectDomainQuery's guard so an out-of-range marker
+  // (which was NOT recognized as a domain query) is left intact for topic
+  // extraction. Use fresh local regexes (no shared /g state) with a replacer that
+  // returns the original match when out of range; the module-level regexes used
+  // by detectDomainQuery stay non-global.
+  const inRange = (num: string) => {
+    const n = Number.parseInt(num, 10);
+    return n >= 1 && n <= 93;
+  };
   return text
-    .replace(LN_REF_RE, " ")
-    .replace(new RegExp(DOMAIN_NUM_RE.source, DOMAIN_NUM_RE.flags), (match, num: string) => {
-      const n = Number.parseInt(num, 10);
-      return n >= 1 && n <= 93 ? " " : match;
-    });
+    .replace(new RegExp(LN_REF_RE.source, LN_REF_RE.flags), (match, dom: string) =>
+      inRange(dom) ? " " : match
+    )
+    .replace(new RegExp(DOMAIN_NUM_RE.source, DOMAIN_NUM_RE.flags), (match, num: string) =>
+      inRange(num) ? " " : match
+    );
 }
 
 // English Bible terms → Greek lemma. Used by the retrieval planner to turn a
@@ -406,15 +415,23 @@ export function detectIntent(prompt: string): Intent {
     return "morphology";
   }
 
-  if (/(what does .+ mean|meaning of|how (is|are) .+ used|senses of|word study)/.test(lower)) {
+  // Word-study routes to the lexical / lexeme answer path. Explicit lexical cues
+  // (usage, "senses of", "word study") always qualify. A generic "what does X
+  // mean" / "meaning of X" qualifies only when it is NOT about a passage —
+  // "what does John 3:16 mean" is passage interpretation, not a word study —
+  // unless a Greek lemma is named ("what does νόμος mean in Romans 7"), which
+  // keeps the lexeme in focus.
+  const hasReference = detectReferences(prompt).length > 0;
+  const explicitLexicalCue = /(how (is|are) .+ used|senses of|word study)/.test(lower);
+  const genericMeaningQuery = /(what does .+ mean|meaning of)/.test(lower);
+  const namesGreekLemma = detectGreekWords(prompt).length > 0;
+  if (explicitLexicalCue || (genericMeaningQuery && (!hasReference || namesGreekLemma))) {
     return "word-study";
   }
 
   if (/(verses about|passages about|find verses|where does .+ (talk|speak))/.test(lower)) {
     return "topic-survey";
   }
-
-  const hasReference = detectReferences(prompt).length > 0;
 
   // Explicit "recite the text" requests — lead the answer with the verbatim verse.
   // Needs a passage reference, a recite verb, and NOT a word-survey or analysis framing,

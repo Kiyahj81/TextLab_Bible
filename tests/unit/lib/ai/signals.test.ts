@@ -222,6 +222,12 @@ describe("detectDomainQuery", () => {
     expect(detectDomainQuery("33.55")).toBeUndefined();
     expect(detectDomainQuery("domain 200 is out of range")).toBeUndefined();
   });
+  it("does NOT fire on an out-of-range LN ref (domain part > 93)", () => {
+    // The LN branch validates 1..93 like the domain-number branch, so an
+    // out-of-range marker falls back to normal retrieval instead of an empty LN search.
+    expect(detectDomainQuery("LN 99.1")).toBeUndefined();
+    expect(detectDomainQuery("Louw-Nida 94.2 in Matthew")).toBeUndefined();
+  });
 });
 
 describe("extractSignals domainQuery", () => {
@@ -241,11 +247,28 @@ describe("extractSignals domainQuery", () => {
     expect(signals.domainQuery).toBeUndefined();
     expect(signals.topicWords).toContain("law");
   });
+
+  it("leaves an out-of-range LN marker out of domainQuery and intact for topic extraction", () => {
+    const signals = extractSignals("what does LN 99.1 of love mean");
+    expect(signals.domainQuery).toBeUndefined();
+    expect(signals.topicWords).toContain("love");
+  });
 });
 
 describe("detectIntent", () => {
   it("classifies a meaning question as word-study", () => {
     expect(detectIntent("What does νόμος mean?")).toBe("word-study");
+  });
+
+  it("keeps a passage-meaning question as passage-study, not word-study", () => {
+    // The generic "what does X mean" form must not hijack passage interpretation
+    // into the lexical answer path when X is a passage reference.
+    expect(detectIntent("What does John 3:16 mean?")).toBe("passage-study");
+    expect(detectIntent("What does Romans 8 mean?")).toBe("passage-study");
+  });
+
+  it("still classifies a lemma meaning question as word-study even with a reference", () => {
+    expect(detectIntent("What does νόμος mean in Romans 7?")).toBe("word-study");
   });
 
   it("classifies an explicit recite/show request as passage-recite", () => {

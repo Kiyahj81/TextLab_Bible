@@ -695,7 +695,7 @@ The existing `tests/unit/lib/ai/retrievalPlanner.test.ts` mocks `@/lib/search` �
 ```typescript
 import { runRetrievalPlan } from "@/lib/ai/retrievalPlanner";
 import { extractSignals } from "@/lib/ai/signals";
-import { searchSemanticDetailed } from "@/lib/search";
+import { getPassage, searchSemanticDetailed } from "@/lib/search";
 
 describe("deep retrieval mode", () => {
   it("standard mode is unchanged: scoped semantic only, subject to the conceptual gate", async () => {
@@ -746,6 +746,23 @@ describe("deep retrieval mode", () => {
     const signals = extractSignals("verses about love in John 3");
     await runRetrievalPlan(signals, "verses about love in John 3", { semanticEnabled: false, deep: true });
     expect(vi.mocked(searchSemanticDetailed)).not.toHaveBeenCalled();
+  });
+
+  it("caps deterministic calls at 8 standard / 12 deep", async () => {
+    // 7 verse refs × 2 corpora = 14 candidate passage calls. Each single-verse
+    // passage call makes exactly one getPassage fetch (mocked non-empty), so the
+    // getPassage invocation count IS the executed deterministic-call count.
+    // Semantic is disabled so no other call type contributes.
+    const prompt = "John 1:1, John 2:2, John 3:3, John 4:4, John 5:5, John 6:6, John 7:7";
+    const signals = extractSignals(prompt);
+    expect(signals.references).toHaveLength(7);
+
+    await runRetrievalPlan(signals, prompt, { semanticEnabled: false });
+    expect(vi.mocked(getPassage).mock.calls).toHaveLength(8); // standard cap
+
+    vi.mocked(getPassage).mockClear();
+    await runRetrievalPlan(signals, prompt, { semanticEnabled: false, deep: true });
+    expect(vi.mocked(getPassage).mock.calls).toHaveLength(12); // deep cap
   });
 
   it("labels the semantic trace entries with scope and deep", async () => {
@@ -1360,6 +1377,35 @@ async function runOnce(
 
 Add the four fields to the `RunResult` type. In `runWithJudge`, delete the second `extractSignals`/`routeAssistantPrompt` pair (lines ~151–152) and use the `routing` returned by `runOnce` for `synthesisModel`/`synthesizeWithRefinement`.
 
+**Semantic-pass visibility:** the existing `semanticTraceFrom()` uses `.find()`, so with deep mode's two semantic passes it silently keeps only the first and discards both scope labels. Replace it with a per-pass array so report output can distinguish scoped from corpus-wide:
+
+```typescript
+export type SemanticPassTrace = {
+  scope: string | null;          // "scoped" | "corpus-wide" from the trace label
+  deep: boolean;
+  rerankStatus: string | null;
+  rerankCandidateCount: number | null;
+};
+
+function semanticPassesFrom(evidence: EvidencePacket): SemanticPassTrace[] {
+  return evidence.toolTrace
+    .filter((t) => t.tool === "searchSemantic")
+    .map((t) => {
+      const args = t.args as unknown as
+        | { scope?: string; deep?: boolean; rerankStatus?: string; rerankCandidateCount?: number }
+        | undefined;
+      return {
+        scope: args?.scope ?? null,
+        deep: args?.deep ?? false,
+        rerankStatus: args?.rerankStatus ?? null,
+        rerankCandidateCount: typeof args?.rerankCandidateCount === "number" ? args.rerankCandidateCount : null
+      };
+    });
+}
+```
+
+`RunResult` gains `semanticPasses: SemanticPassTrace[]` (set in `runOnce` from the packet). Keep the existing scalar `rerankStatus`/`rerankCandidateCount` fields for backward compatibility, derived as `semanticPasses[0] ?? null` values, and delete `semanticTraceFrom()`. Surface `semanticPasses` in the JSON report output (`eval/report.ts` render) so deep runs show both passes.
+
 `eval/gate.ts` — after the per-item metric loop, add:
 
 ```typescript
@@ -1546,22 +1592,31 @@ git commit -m "feat(assistant): classifier live smoke script (smoke:classifier)"
 - `README.md`: update the assistant pipeline description — routing now precedes retrieval; LLM complexity router (env `OPENAI_ROUTER_MODEL`, default gpt-5-mini) with deterministic weighted-score fallback; auto-escalation default with ask-first toggle; deep retrieval on scholarly routing. Keep the document coherent for a newcomer.
 - `docs/PROJECT_STATE.md`: record this feature as current state (routing/retrieval section), note the new env var and `smoke:classifier` script.
 
-- [ ] **Step 2: Full local gate**
+- [ ] **Step 2: Commit the docs BEFORE the cross-branch eval procedure**
+
+Step 6 switches branches and requires a clean tree — uncommitted doc edits from Step 1 would block it (or bleed across branches):
+
+```bash
+git add README.md docs/PROJECT_STATE.md
+git commit -m "docs: routing/deep-retrieval pipeline state after LLM router feature"
+```
+
+- [ ] **Step 3: Full local gate**
 
 Run: `npm run verify`
 Expected: lint clean (`--max-warnings=0`), tsc clean, build ok, coverage ≥ 80/80/75/65. New `lib/ai/complexity.ts` branches (classifier catch paths, score cues) must be covered by the Task 1–2 tests — if branch coverage dips, add targeted cases for uncovered branches (e.g. env-override paths).
 
-- [ ] **Step 3: DB-backed suites**
+- [ ] **Step 4: DB-backed suites**
 
 Run: `npm run eval:gate` then `npm run test:integration` (`.env.test` at the throwaway Neon branch)
 Expected: gate 26/26-style pass including the six `routing · *` checks; integration green.
 
-- [ ] **Step 4: Acceptance sync check**
+- [ ] **Step 5: Acceptance sync check**
 
 Run: `npm run test:acceptance`
 Expected: green. Deep mode fires only on live scholarly routing and the acceptance flow's default prompts stay default-routed, but the Task 8 label change ("Ask before using the scholarly model…") WILL break any assertion pinned to the old toggle text — Task 8 step 4 should already have updated `scripts/acceptance-test.js`; this run proves it.
 
-- [ ] **Step 5: Before/after eval report (PR headline measurement)**
+- [ ] **Step 6 (last — needs the clean tree from Step 2): Before/after eval report (PR headline measurement)**
 
 **Both runs must measure the IDENTICAL dataset** (the branch adds six routing items — 20 vs 26 items makes aggregate recall/precision/faithfulness incomparable), and each run's output must be saved aside before the next run overwrites `eval/output/report.*`:
 
@@ -1589,13 +1644,6 @@ cp eval/output/report.html eval/output/snapshots/report-after.html
 ```
 
 Record both faithfulness/recall/precision summaries (26 items each) in the PR description (same protocol as PR #54). Needs `OPENAI_API_KEY` + `AI_GATEWAY_API_KEY` in `.env.test`.
-
-- [ ] **Step 6: Commit docs + final state**
-
-```bash
-git add README.md docs/PROJECT_STATE.md
-git commit -m "docs: routing/deep-retrieval pipeline state after LLM router feature"
-```
 
 ---
 

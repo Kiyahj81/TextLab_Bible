@@ -82,10 +82,11 @@ describe("scoreComplexity", () => {
   });
 
   it("length alone scores 1 → not complex", () => {
-    // 31 filler words, deliberately free of concept words, refs, and cue phrasings.
+    // 33 words composed almost entirely of BASE_STOP_WORDS: verified against the
+    // real extractor — concepts ["once","minds"] (2 < 3), no refs, no cue phrasings.
     const verbose =
-      "Please give me a very long and complete explanation over many words of everything " +
-      "that was going on at that time and in that place among all of those people there";
+      "Could you tell me all of those things once more and then some more after that " +
+      "so that we can have them all here with us before they are out of our minds";
     expect(verbose.trim().split(/\s+/).length).toBeGreaterThan(30);
     expect(detectConceptWords(verbose).length).toBeLessThan(3);
     const s = score(verbose);
@@ -126,10 +127,11 @@ describe("scoreComplexity", () => {
   });
 
   it("why-framing plus length crosses the threshold", () => {
-    // 32 filler words + "why did", free of concept words and refs: 1 + 1 = 2.
+    // 34 stopword-heavy words + "why did": verified against the real extractor —
+    // concepts ["well"] (1 < 3), so the score is exactly why(1) + length(1) = 2.
     const verbose =
-      "Why did the people who were listening at that time react in the way that they did " +
-      "when they heard all of the things that were being said to them back then?";
+      "Why did they do all of those things when there were so many of them out there " +
+      "and what could any of us have done about it before then and after that as well";
     expect(verbose.trim().split(/\s+/).length).toBeGreaterThan(30);
     expect(detectConceptWords(verbose).length).toBeLessThan(3);
     const s = score(verbose);
@@ -1572,13 +1574,18 @@ git checkout main
 git checkout feat/assistant-llm-router-deep-retrieval -- eval/dataset/golden-set.json
 npm run eval:report
 mkdir -p eval/output/snapshots
-cp eval/output/report.* eval/output/snapshots/  # then rename with a -before suffix
-git checkout -- eval/dataset/golden-set.json    # restore main's dataset
+cp eval/output/report.json eval/output/snapshots/report-before.json
+cp eval/output/report.html eval/output/snapshots/report-before.html
+# Restore main's dataset in BOTH the index and the working tree — the branch-
+# qualified checkout above staged the branch's copy, so a bare `git checkout --`
+# would "restore" from the already-replaced index (a no-op):
+git restore --source=HEAD --staged --worktree eval/dataset/golden-set.json
 
 # AFTER — the branch as-is:
 git checkout feat/assistant-llm-router-deep-retrieval
 npm run eval:report
-# rename the fresh eval/output/report.* copies with an -after suffix alongside the before files
+cp eval/output/report.json eval/output/snapshots/report-after.json
+cp eval/output/report.html eval/output/snapshots/report-after.html
 ```
 
 Record both faithfulness/recall/precision summaries (26 items each) in the PR description (same protocol as PR #54). Needs `OPENAI_API_KEY` + `AI_GATEWAY_API_KEY` in `.env.test`.

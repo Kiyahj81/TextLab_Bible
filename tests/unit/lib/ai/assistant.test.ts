@@ -60,6 +60,19 @@ describe("answerBibleQuestion orchestration", () => {
     expect(answer.grounded).toBe(true);
   });
 
+  it("does not claim a scholarly/model pass on the non-live fallback even when escalation is requested", async () => {
+    // isLiveAssistantEnabled() is false here, so no model call happens — the routing
+    // metadata must not advertise the scholarly pass that escalate would have selected.
+    const answer = await answerBibleQuestion("deep synthesis please", { escalate: true });
+
+    expect(synthesizeWithRefinement).not.toHaveBeenCalled();
+    expect(answer.mode).toBe("fallback");
+    expect(answer.modelRole).toBe("default");
+    expect(answer.modelUsed).toBe("none");
+    expect(answer.routingDecision).toMatch(/disabled|no model call/i);
+    expect(answer.recommendedUpgrade).toBeUndefined();
+  });
+
   it("returns the synthesized answer when live and synthesis succeeds", async () => {
     isLiveAssistantEnabled.mockReturnValue(true);
     synthesizeWithRefinement.mockResolvedValue({

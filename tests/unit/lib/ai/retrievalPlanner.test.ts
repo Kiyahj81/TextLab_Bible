@@ -680,6 +680,22 @@ describe("runRetrievalPlan", () => {
     expect(getPassageTokens).not.toHaveBeenCalled();
   });
 
+  it("focuses passage annotations on an English→Greek mapped lemma (targetLemmas)", async () => {
+    getPassage.mockResolvedValue({
+      corpus: "SBLGNT",
+      references: [{ book: "John", chapter: 21, verse: 15, reference: "John 21:15", text: "ἀγαπᾷς με" }]
+    });
+    // POS is a normally-skipped category; the token is kept only because its lemma is the
+    // mapped target ("love" → ἀγάπη). Before the fix targetLemmas was empty for this
+    // English-concept prompt, so the annotation was dropped.
+    getPassageTokens.mockResolvedValue([
+      { surface: "ἀγάπην", lemma: "ἀγάπη", morphCode: "N-ASF", partOfSpeech: "C-", gloss: "love", domainLabel: null, verse: 15, wordIndex: 1 }
+    ]);
+    const signals = extractSignals("How is love used in John 21?");
+    const packet = await runRetrievalPlan(signals, "How is love used in John 21?", false);
+    expect(packet.formattedEvidence).toContain("ἀγάπην · ἀγάπη");
+  });
+
   it("does NOT enrich a cross-chapter passage (getPassageTokens is single-chapter only)", async () => {
     // getPassageTokens can only encode one chapter, so passageCall gates enrichment on
     // !crossChapter. Pin that: a cross-chapter ref must not reach the token helper.

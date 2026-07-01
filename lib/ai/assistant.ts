@@ -44,11 +44,6 @@ export async function answerBibleQuestion(
   // Compute signals first so they can be forwarded to the router for complexity
   // detection (auto-escalation) without re-running signal extraction later.
   const signals = extractSignals(prompt);
-  const routing = routeAssistantPrompt(prompt, {
-    escalate: options.escalate ?? false,
-    autoEscalate: options.autoEscalate ?? false,
-    signals
-  });
   // Resolve live-mode once and pass it into retrieval. Remote semantic retrieval
   // embeds the prompt via OpenAI, so it must honor the same kill switch as synthesis
   // (no embedding egress/spend when live is disabled) — and skipping it also frees its
@@ -57,8 +52,22 @@ export async function answerBibleQuestion(
   const evidence = await runRetrievalPlan(signals, prompt, live);
 
   if (!live) {
-    return fallbackAnswer(prompt, evidence, routing);
+    // No model call happens when live synthesis is disabled, so report honest routing
+    // metadata for the deterministic fallback — never the (possibly escalated) routing a
+    // live pass would have used, which would falsely claim a scholarly/model pass ran.
+    return fallbackAnswer(prompt, evidence, {
+      modelRole: "default",
+      modelUsed: "none",
+      routingDecision:
+        "Live synthesis is disabled, so TextLab returned the deterministic local retrieval fallback (no model call was made)."
+    });
   }
+
+  const routing = routeAssistantPrompt(prompt, {
+    escalate: options.escalate ?? false,
+    autoEscalate: options.autoEscalate ?? false,
+    signals
+  });
 
   try {
     const result = await synthesizeWithRefinement({ prompt, evidence, routing, intent: signals.intent });

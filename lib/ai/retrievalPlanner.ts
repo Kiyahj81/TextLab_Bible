@@ -602,7 +602,15 @@ function buildPlan(signals: Signals, prompt: string, semanticEnabled: boolean): 
     add(domainCall(signals.domainQuery, scope));
   }
 
-  const targetLemmas = new Set(signals.greekWords);
+  // Passage enrichment focuses annotations on the query's target lemmas. Include the
+  // lemmas the deterministic English→Greek mapping will study below, so an English concept
+  // prompt like "How is love used in John 21?" (signals.greekWords is empty) still targets
+  // the mapped lemma (ἀγάπη) in its passage annotations.
+  const mappedGreekLemmas = topicTerms.deterministicWords.flatMap((word) => {
+    const mapped = ENGLISH_TO_GREEK_LEMMA[word];
+    return mapped ? (Array.isArray(mapped) ? mapped : [mapped]) : [];
+  });
+  const targetLemmas = new Set([...signals.greekWords, ...mappedGreekLemmas]);
   const contentOnly = signals.intent !== "morphology";
   for (const ref of signals.references) {
     add(passageCall("SBLGNT", ref, { contentOnly, targetLemmas }));

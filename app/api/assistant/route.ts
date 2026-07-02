@@ -29,10 +29,10 @@ const assistantSchema = z.object({
   escalate: z.boolean().optional(),
   // Ask-first preference: complex questions return recommendedUpgrade instead of
   // auto-escalating. Auto-escalation is the DEFAULT when this is unset.
-  confirmEscalation: z.boolean().optional(),
-  // DEPRECATED (remove after one release): pre-auto-default clients sent this.
-  // An explicit `false` was an opt-out of auto-scholarly and must stay one.
-  autoEscalate: z.boolean().optional()
+  // (A pre-auto-default client's legacy `autoEscalate` key is not in this schema
+  // and is silently stripped by zod; such a stale request falls through to the
+  // auto-escalation default, and the durable opt-out lives in the confirm cookie.)
+  confirmEscalation: z.boolean().optional()
 });
 
 export async function POST(request: Request) {
@@ -60,9 +60,7 @@ export async function POST(request: Request) {
     }
   }
 
-  const { prompt, sessionId: requestedSessionId = "", escalate = false } = valid.data;
-  const confirmEscalation =
-    valid.data.confirmEscalation ?? (valid.data.autoEscalate === false ? true : false);
+  const { prompt, sessionId: requestedSessionId = "", escalate = false, confirmEscalation = false } = valid.data;
 
   const { sessionId, userMessagePromise } = await startAssistantExchange({
     userId,

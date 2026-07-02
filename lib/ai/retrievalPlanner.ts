@@ -22,8 +22,10 @@ export type EvidencePacket = {
   formattedEvidence: string;
 };
 
-// Bounds the number of DB-backed tool calls a single prompt can trigger.
-const MAX_PLANNED_CALLS = 8;
+// Bounds the number of DETERMINISTIC DB-backed tool calls a single prompt can
+// trigger; semantic passes are added after the slice as extra slots (see below).
+const MAX_PLANNED_CALLS_STANDARD = 8;
+const MAX_PLANNED_CALLS_DEEP = 12;
 // Per-call CITATION sample. Citations stay bounded (save-note caps at 50, the
 // synthesis payload slices to 20) even when the evidence text is complete.
 const MAX_SECTION_LINES = 10;
@@ -45,6 +47,8 @@ const MAX_EVIDENCE_CHARS = 58_000;
 const MAX_TOTAL_CITATIONS = 40;
 // Semantic search: how many fused hits to expand, and the ± window per hit.
 const SEMANTIC_HIT_LIMIT = 5;
+// Deep mode with no pinned scope: one corpus-wide pass, but wider.
+const SEMANTIC_HIT_LIMIT_DEEP_UNSCOPED = 10;
 const SEMANTIC_WINDOW = 2;
 const BROAD_ENTITY_TOPIC_WORDS: ReadonlySet<string> = new Set(["jesus", "christ", "god", "lord"]);
 const TEACH_FRAMING_TOPIC_WORDS: ReadonlySet<string> = new Set(["teach", "teaches", "taught", "teaching"]);
@@ -531,7 +535,12 @@ async function expandOnSpineWindow(
   }));
 }
 
-function semanticCall(prompt: string, keywords: string, scope: Scope): PlannedCall {
+function semanticCall(
+  prompt: string,
+  keywords: string,
+  scope: Scope,
+  opts: { limit: number; scopeLabel: "scoped" | "corpus-wide"; deep: boolean }
+): PlannedCall {
   // Record `keywords` (the FTS half's query) in the trace so the grounding context
   // and user-visible tool-trace reflect that a keyword FTS pass ran alongside KNN.
   const args: { query: string; keywords?: string; book?: string; chapter?: number } = { query: prompt };
@@ -539,8 +548,8 @@ function semanticCall(prompt: string, keywords: string, scope: Scope): PlannedCa
   if (scope.book) args.book = scope.book;
   if (scope.chapter !== undefined) args.chapter = scope.chapter;
   return {
-    key: `semantic:${scope.book ?? ""}|${scope.chapter ?? ""}`,
-    errorTrace: { tool: "searchSemantic", args },
+    key: `semantic:${opts.scopeLabel}|${scope.book ?? ""}|${scope.chapter ?? ""}`,
+    errorTrace: { tool: "searchSemantic", args: { ...args, scope: opts.scopeLabel, deep: opts.deep } },
     run: async () => {
       const semantic = await searchSemanticDetailed({
         query: prompt,
@@ -549,13 +558,15 @@ function semanticCall(prompt: string, keywords: string, scope: Scope): PlannedCa
         // Honor the same chapter scope as the deterministic calls: a prompt like
         // "verses about love in John 3" must not pull semantic hits from other chapters.
         chapter: scope.chapter,
-        limit: SEMANTIC_HIT_LIMIT
+        limit: opts.limit
       });
       const hits = semantic.results;
       const traceArgs = {
         ...args,
         rerankStatus: semantic.rerank.status,
-        rerankCandidateCount: semantic.rerank.candidateCount
+        rerankCandidateCount: semantic.rerank.candidateCount,
+        scope: opts.scopeLabel,
+        deep: opts.deep
       };
       const lines: string[] = [];
       const citations: AssistantCitation[] = [];
@@ -587,7 +598,7 @@ function semanticCall(prompt: string, keywords: string, scope: Scope): PlannedCa
   };
 }
 
-function buildPlan(signals: Signals, prompt: string, semanticEnabled: boolean): PlannedCall[] {
+function buildPlan(signals: Signals, prompt: string, semanticEnabled: boolean, deep: boolean): PlannedCall[] {
   const calls: PlannedCall[] = [];
   const seen = new Set<string>();
   const add = (call: PlannedCall) => {
@@ -639,33 +650,55 @@ function buildPlan(signals: Signals, prompt: string, semanticEnabled: boolean): 
   }
 
   // Bound the DETERMINISTIC calls to the budget.
-  const plan = calls.slice(0, MAX_PLANNED_CALLS);
+  const plan = calls.slice(0, deep ? MAX_PLANNED_CALLS_DEEP : MAX_PLANNED_CALLS_STANDARD);
 
-  // Semantic retrieval runs in ADDITION to the deterministic budget (at most one
-  // extra call), never inside it. This deliberately resolves the tension between two
-  // failure modes: placing it inside the slice either let many topic words crowd it
-  // out, or — when the embedding index is empty/partial (live on, but searchSemantic
-  // returns [])— let an empty semantic call displace a deterministic search exactly
-  // when the index is degraded. As a separate slot it can do neither; an empty result
-  // simply contributes no section. Total evidence stays bounded by MAX_EVIDENCE_CHARS.
-  if (semanticEnabled && shouldRunSemantic(signals)) {
-    // FTS keywords = topic words PLUS matched English phrase terms. Without the phrase
-    // terms a phrase-only prompt ("What is sexual immorality?") would pass empty
-    // keywords and silently skip the FTS half — leaving it vector-only, unlike its
-    // single-word equivalent which gets full KNN+FTS.
+  // Semantic retrieval runs in ADDITION to the deterministic budget, never inside
+  // it (see the comment above for why). Deep mode's SCOPE POLICY: raising limits
+  // inside a pinned scope cannot supply cross-text evidence, so deep adds a
+  // corpus-wide pass. The corpus-wide pass ignores shouldRunSemantic — deep
+  // interpretive prompts often have no extractable topic words, and a deep
+  // question pinned to exact verses still needs cross-text evidence. The KNN half
+  // embeds the whole prompt; with no keyword terms the FTS half is skipped
+  // downstream, so an empty `keywords` string stays safe.
+  if (semanticEnabled) {
     const keywords = [...topicTerms.semanticKeywordTerms, ...(signals.phraseTerms ?? [])].join(" ");
-    plan.push(semanticCall(prompt, keywords, scope));
+    const scopePinned = scope.book !== undefined || scope.chapter !== undefined;
+    if (deep) {
+      if (scopePinned) {
+        if (shouldRunSemantic(signals)) {
+          plan.push(semanticCall(prompt, keywords, scope, { limit: SEMANTIC_HIT_LIMIT, scopeLabel: "scoped", deep }));
+        }
+        plan.push(semanticCall(prompt, keywords, {}, { limit: SEMANTIC_HIT_LIMIT, scopeLabel: "corpus-wide", deep }));
+      } else {
+        plan.push(
+          semanticCall(prompt, keywords, {}, { limit: SEMANTIC_HIT_LIMIT_DEEP_UNSCOPED, scopeLabel: "corpus-wide", deep })
+        );
+      }
+    } else if (shouldRunSemantic(signals)) {
+      // Label from the actual scope: a standard pass with no pinned scope IS
+      // corpus-wide and must not be trace-labeled "scoped".
+      plan.push(
+        semanticCall(prompt, keywords, scope, {
+          limit: SEMANTIC_HIT_LIMIT,
+          scopeLabel: scopePinned ? "scoped" : "corpus-wide",
+          deep
+        })
+      );
+    }
   }
 
   return plan;
 }
 
+export type RetrievalOptions = { semanticEnabled?: boolean; deep?: boolean };
+
 export async function runRetrievalPlan(
   signals: Signals,
   prompt = "",
-  semanticEnabled = true
+  opts: RetrievalOptions = {}
 ): Promise<EvidencePacket> {
-  const plan = buildPlan(signals, prompt, semanticEnabled);
+  const { semanticEnabled = true, deep = false } = opts;
+  const plan = buildPlan(signals, prompt, semanticEnabled, deep);
   const citations: AssistantCitation[] = [];
   const toolTrace: ToolTraceEntry[] = [];
   const sections: string[] = [];

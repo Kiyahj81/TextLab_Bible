@@ -49,7 +49,7 @@ export async function answerBibleQuestion(
   // (no embedding egress/spend when live is disabled) — and skipping it also frees its
   // planner slot for deterministic searches in the local-fallback path.
   const live = isLiveAssistantEnabled();
-  const evidence = await runRetrievalPlan(signals, prompt, live);
+  const evidence = await runRetrievalPlan(signals, prompt, { semanticEnabled: live });
 
   if (!live) {
     // No model call happens when live synthesis is disabled, so report honest routing

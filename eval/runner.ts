@@ -83,7 +83,7 @@ async function runOnce(
   semanticEnabled: boolean
 ): Promise<{ result: RunResult; evidence: EvidencePacket }> {
   const signals = extractSignals(item.question);
-  const evidence = await runRetrievalPlan(signals, item.question, semanticEnabled);
+  const evidence = await runRetrievalPlan(signals, item.question, { semanticEnabled });
   const retrieved = uniqueReferences(evidence);
 
   const claims = evidence.citations.map((c) => ({

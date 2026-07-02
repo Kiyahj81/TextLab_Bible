@@ -12,6 +12,9 @@ export type AssistantMessageMetadata = {
   recommendedUpgrade?: AssistantAnswer["recommendedUpgrade"];
   citations: AssistantAnswer["citations"];
   toolTrace: AssistantAnswer["toolTrace"];
+  deep: AssistantAnswer["deep"];
+  routerSource: AssistantAnswer["routerSource"];
+  complexityScore?: AssistantAnswer["complexityScore"];
 };
 
 export async function startAssistantExchange(input: {
@@ -57,7 +60,10 @@ export async function finishAssistantExchange(input: {
     routingDecision: input.answer.routingDecision,
     recommendedUpgrade: input.answer.recommendedUpgrade,
     citations: input.answer.citations,
-    toolTrace: input.answer.toolTrace
+    toolTrace: input.answer.toolTrace,
+    deep: input.answer.deep,
+    routerSource: input.answer.routerSource,
+    complexityScore: input.answer.complexityScore
   };
 
   const assistantWrite = prisma.aiMessage.create({

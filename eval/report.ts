@@ -3,7 +3,7 @@ import { aggregate, type Aggregate } from "@/eval/metrics";
 import { GLOBAL_GATES, TYPE_GATES } from "@/eval/thresholds";
 import { canonicalizeReference } from "@/eval/references";
 import type { QueryType } from "@/eval/dataset/schema";
-import type { RunResult } from "@/eval/runner";
+import type { RunResult, SemanticPassTrace } from "@/eval/runner";
 
 function esc(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -28,6 +28,19 @@ function meanFaithfulness(results: RunResult[]): number | null {
   return scored.length === 0 ? null : scored.reduce((a, b) => a + b, 0) / scored.length;
 }
 
+// Deep mode runs TWO semantic passes (scoped + corpus-wide) — each RunResult
+// already carries its own `semanticPasses` array (see eval/runner.ts), but that's
+// buried one item at a time inside `results`. Surface it as its own top-level
+// section too, so a reviewer scanning the JSON report can see at a glance which
+// items went deep and whether both passes (not just the first) actually ran.
+function semanticPassSummary(
+  results: RunResult[]
+): Array<{ id: string; deep: boolean; passes: SemanticPassTrace[] }> {
+  return results
+    .filter((r) => r.semanticPasses.length > 0)
+    .map((r) => ({ id: r.item.id, deep: r.deep, passes: r.semanticPasses }));
+}
+
 export function renderJsonReport(results: RunResult[]): string {
   return JSON.stringify(
     {
@@ -35,6 +48,7 @@ export function renderJsonReport(results: RunResult[]): string {
       gates: { global: GLOBAL_GATES, byType: TYPE_GATES },
       summary: summaryOf(results),
       meanFaithfulness: meanFaithfulness(results),
+      semanticPasses: semanticPassSummary(results),
       results
     },
     null,

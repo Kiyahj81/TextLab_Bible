@@ -17,6 +17,8 @@ export const goldenItemSchema = z.object({
   queryType: z.enum(QUERY_TYPES),
   goldenReferences: z.array(z.string().min(1)).min(1),
   mustContainLemma: z.string().min(1).optional(),
+  // Asserted against the DETERMINISTIC score's routing in the key-free gate.
+  expectedRouting: z.enum(["default", "scholarly"]).optional(),
   notes: z.string().optional()
 });
 

@@ -3,7 +3,7 @@ import { extractSignals } from "@/lib/ai/signals";
 import { runRetrievalPlan, type EvidencePacket } from "@/lib/ai/retrievalPlanner";
 import { verifyGrounding } from "@/lib/ai/grounding";
 import { synthesizeWithRefinement } from "@/lib/ai/synthesis";
-import { routeAssistantPrompt } from "@/lib/ai/modelRouter";
+import { isLiveAssistantEnabled, routeAssistantPrompt, type RoutingDecision } from "@/lib/ai/modelRouter";
 import { contextPrecision, contextRecall } from "@/eval/metrics";
 import { canonicalizeReference } from "@/eval/references";
 import { judgeFaithfulness, type FaithfulnessResult } from "@/eval/judge";
@@ -24,8 +24,13 @@ export type RunResult = {
   citationsResolve: boolean;        // every emitted citation resolves to a real verse
   lemmaRequired: boolean;
   lemmaFound: boolean;
-  rerankStatus: string | null;      // from the searchSemantic tool-trace entry, if any
+  rerankStatus: string | null;      // from the FIRST searchSemantic tool-trace entry, if any (back-compat)
   rerankCandidateCount: number | null;
+  modelRole: string;
+  routerSource: string;
+  deep: boolean;
+  complexityScore: number | null;
+  semanticPasses: SemanticPassTrace[];
   // Explicit, separate statuses (Finding 3) — never inferred from output presence:
   synthesisStatus: SynthesisStatus;
   synthesisModel: string | null;
@@ -63,27 +68,53 @@ function uniqueReferences(evidence: EvidencePacket): string[] {
   return out;
 }
 
-// Pull the rerank status/candidate count the semantic call recorded in the tool trace
-// (Finding 5: per-hit RRF source / rank position are not exposed; these trace fields are).
-function semanticTraceFrom(evidence: EvidencePacket): { rerankStatus: string | null; rerankCandidateCount: number | null } {
-  const entry = evidence.toolTrace.find((t) => t.tool === "searchSemantic");
-  // ToolTraceEntry.args is Record<string, unknown> | undefined. Cast through unknown
-  // to narrow to the specific shape we expect from the rerank trace fields.
-  const args = entry?.args as unknown as { rerankStatus?: string; rerankCandidateCount?: number } | undefined;
-  return {
-    rerankStatus: args?.rerankStatus ?? null,
-    rerankCandidateCount: typeof args?.rerankCandidateCount === "number" ? args.rerankCandidateCount : null
-  };
+export type SemanticPassTrace = {
+  scope: string | null;          // "scoped" | "corpus-wide" from the trace label
+  deep: boolean;
+  rerankStatus: string | null;
+  rerankCandidateCount: number | null;
+};
+
+// Pull the rerank status/candidate count/scope for EVERY searchSemantic tool-trace
+// entry (Finding 5: per-hit RRF source / rank position are not exposed; these trace
+// fields are). Deep mode runs TWO semantic passes (scoped + corpus-wide) — a .find()
+// here would silently keep only the first and discard both scope labels, so this
+// returns the full per-pass array instead.
+function semanticPassesFrom(evidence: EvidencePacket): SemanticPassTrace[] {
+  return evidence.toolTrace
+    .filter((t) => t.tool === "searchSemantic")
+    .map((t) => {
+      // ToolTraceEntry.args is Record<string, unknown> | undefined. Cast through
+      // unknown to narrow to the specific shape we expect from the trace fields.
+      const args = t.args as unknown as
+        | { scope?: string; deep?: boolean; rerankStatus?: string; rerankCandidateCount?: number }
+        | undefined;
+      return {
+        scope: args?.scope ?? null,
+        deep: args?.deep ?? false,
+        rerankStatus: args?.rerankStatus ?? null,
+        rerankCandidateCount: typeof args?.rerankCandidateCount === "number" ? args.rerankCandidateCount : null
+      };
+    });
 }
 
-// Core: ONE retrieval, all metrics derived from it. Returns the packet too so the
-// judged path can synthesize from the same evidence.
+// Core: route THEN retrieve, mirroring production order (answerBibleQuestion routes
+// before calling runRetrievalPlan) — deep mode changes the retrieval plan itself
+// (a second, corpus-wide semantic pass), so routing after retrieval would never
+// exercise that path. All metrics are derived from the resulting evidence. Returns
+// the packet and routing decision too so the judged path can synthesize from the
+// same evidence without re-deriving either.
 async function runOnce(
   item: GoldenItem,
   semanticEnabled: boolean
-): Promise<{ result: RunResult; evidence: EvidencePacket }> {
+): Promise<{ result: RunResult; evidence: EvidencePacket; routing: RoutingDecision }> {
   const signals = extractSignals(item.question);
-  const evidence = await runRetrievalPlan(signals, item.question, { semanticEnabled });
+  // Gate mode is key-free by contract: semanticEnabled=false forces live=false so
+  // only the pure deterministic score runs (no classifier egress). Report mode
+  // uses the real router when a key is configured.
+  const live = semanticEnabled && isLiveAssistantEnabled();
+  const routing = await routeAssistantPrompt(item.question, { signals, live });
+  const evidence = await runRetrievalPlan(signals, item.question, { semanticEnabled, deep: routing.deep });
   const retrieved = uniqueReferences(evidence);
 
   const claims = evidence.citations.map((c) => ({
@@ -98,7 +129,8 @@ async function runOnce(
   const lemmaFound = lemmaRequired
     ? evidence.formattedEvidence.includes(item.mustContainLemma as string)
     : false;
-  const semanticTrace = semanticTraceFrom(evidence);
+  const semanticPasses = semanticPassesFrom(evidence);
+  const firstPass = semanticPasses[0] ?? null;
 
   const result: RunResult = {
     item,
@@ -110,19 +142,25 @@ async function runOnce(
     citationsResolve: report.grounded,
     lemmaRequired,
     lemmaFound,
-    rerankStatus: semanticTrace.rerankStatus,
-    rerankCandidateCount: semanticTrace.rerankCandidateCount,
+    rerankStatus: firstPass?.rerankStatus ?? null,
+    rerankCandidateCount: firstPass?.rerankCandidateCount ?? null,
+    modelRole: routing.modelRole,
+    routerSource: routing.routerSource,
+    deep: routing.deep,
+    complexityScore: routing.complexityScore ?? null,
+    semanticPasses,
     synthesisStatus: "not-run",
     synthesisModel: null,
     judgeStatus: "not-run",
     judgeModel: null,
     faithfulness: null
   };
-  return { result, evidence };
+  return { result, evidence, routing };
 }
 
-// GATE mode: deterministic, DB-only (semanticEnabled=false → no embedding egress,
-// no rerank, key-free, reproducible). Synthesis/judge are "not-run".
+// GATE mode: deterministic, DB-only (semanticEnabled=false → live stays false, so
+// routing runs the pure score with no classifier egress, and retrieval sees no
+// embedding/rerank calls either). Synthesis/judge are "not-run".
 export async function runDeterministic(item: GoldenItem): Promise<RunResult> {
   const { result } = await runOnce(item, false);
   return result;
@@ -134,7 +172,7 @@ export async function runDeterministic(item: GoldenItem): Promise<RunResult> {
 // records an EXPLICIT status (Finding 3) — a missing key, wrong model slug,
 // timeout, or provider error is labeled, never inferred from output presence.
 export async function runWithJudge(item: GoldenItem): Promise<RunResult> {
-  const { result, evidence } = await runOnce(item, true);
+  const { result, evidence, routing } = await runOnce(item, true);
 
   // --- Synthesis (OPENAI_API_KEY) ---
   let synthesisStatus: SynthesisStatus;
@@ -145,13 +183,14 @@ export async function runWithJudge(item: GoldenItem): Promise<RunResult> {
     synthesisStatus = "skipped-no-key";
   } else {
     try {
-      // Mirror the production path (answerBibleQuestion): compute signals once and
-      // forward them to the router so signal-derived heuristics (comparison intent,
-      // cross-book) inform routing metadata. autoEscalate stays off in eval.
-      const signals = extractSignals(item.question);
-      const routing = await routeAssistantPrompt(item.question, { signals, live: false }); // no auto-escalation in eval
+      // Routing already ran INSIDE runOnce, before retrieval (mirroring the
+      // production order) — reuse that decision rather than re-invoking the
+      // router, which would re-hit the live classifier a second time in report
+      // mode. RoutingDecision doesn't carry `intent`, so it is re-derived locally
+      // here; extractSignals is pure/sync (no egress), so recomputing it is cheap.
       synthesisModel = routing.modelUsed;
-      const synth = await synthesizeWithRefinement({ prompt: item.question, evidence, routing, intent: signals.intent });
+      const { intent } = extractSignals(item.question);
+      const synth = await synthesizeWithRefinement({ prompt: item.question, evidence, routing, intent });
       if (synth) {
         answer = synth.answer;
         synthesisStatus = "ran";

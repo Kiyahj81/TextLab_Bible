@@ -20,6 +20,11 @@ function res(over: Partial<RunResult> & { item: GoldenItem }): RunResult {
     lemmaFound: false,
     rerankStatus: null,
     rerankCandidateCount: null,
+    modelRole: "default",
+    routerSource: "score",
+    deep: false,
+    complexityScore: null,
+    semanticPasses: [],
     synthesisStatus: "not-run",
     synthesisModel: null,
     judgeStatus: "not-run",
@@ -69,5 +74,17 @@ describe("evaluateGate", () => {
       res({ item: item("d", "domain"), recall: 0, precision: 0 })
     ]);
     expect(out.passed).toBe(true);
+  });
+
+  it("gates routing expectations only for items that declare expectedRouting", () => {
+    const outcome = evaluateGate([
+      res({ item: item("r-pass", "conceptual", { expectedRouting: "scholarly" }), modelRole: "scholarly" }),
+      res({ item: item("r-fail", "conceptual", { expectedRouting: "scholarly" }), modelRole: "default" }),
+      res({ item: item("r-undeclared", "conceptual") }) // no expectedRouting → no routing check
+    ]);
+    const routing = outcome.checks.filter((c) => c.label.startsWith("routing"));
+    expect(routing).toHaveLength(2);
+    expect(routing.find((c) => c.label.includes("r-pass"))?.passed).toBe(true);
+    expect(routing.find((c) => c.label.includes("r-fail"))?.passed).toBe(false);
   });
 });

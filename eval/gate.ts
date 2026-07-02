@@ -68,5 +68,15 @@ export function evaluateGate(results: RunResult[]): GateOutcome {
     }
   }
 
+  // --- Routing expectations (deterministic score) — items that declare one ---
+  for (const r of results) {
+    if (!r.item.expectedRouting) continue;
+    checks.push({
+      label: `routing · ${r.item.id} (${r.item.queryType})`,
+      passed: r.modelRole === r.item.expectedRouting,
+      detail: `${r.modelRole} via ${r.routerSource}${r.complexityScore !== null ? ` (score ${r.complexityScore})` : ""} (expected ${r.item.expectedRouting})`
+    });
+  }
+
   return { passed: checks.every((c) => c.passed), checks };
 }

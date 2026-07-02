@@ -184,3 +184,37 @@ R2-1 is the one real must-fix (a one-line coverage regression on the deep path).
 - **R2-7 fixed** (`2b46b6c`): `ROUTER_TIMEOUT_MS` exported from `lib/ai/complexity.ts` and imported by the smoke script.
 
 **No open findings remain.** Outstanding pre-merge work is operational, not review: the smoke run in a prod-like environment (per the round-1 §8.1 recommendation), the acceptance suite, and the double-run before/after `eval:report`.
+
+---
+
+# Pre-merge verification results (2026-07-02)
+
+All operational checks are complete.
+
+## Acceptance suite: PASS
+
+All 13 interactions green against the Neon test branch, including the branch-touched paths (assistant retrieval-first answer + trace + citations, non-live `modelUsed: "none"` assertion, topical/semantic prompt, generated-study-note save). Pinned corpus counts unchanged (40 λόγος hits).
+
+## Classifier smoke: PASS — and it changed a mandated constraint
+
+- **Local** (TLS-intercepted box): 4/4 verdicts correct, 0 API errors; all calls initially over the 2000 ms budget.
+- **Prod-like** (GitHub Actions run 28575290108, clean network): 4/4 verdicts correct — but **3 of 4 calls exceeded 2000 ms** (observed 1.7–3.2 s), killing the "dev-box TLS is the anomaly" hypothesis. At 2000 ms production would usually pay the full timeout AND fall back to the score — worst point on the tradeoff curve.
+- **Consequence:** `ROUTER_TIMEOUT_MS` widened 2000 → 3000 ms (`14ea1a1`), revising the round-1 §8.1 "keep 2000 ms" recommendation on new evidence. Spec/README/PROJECT_STATE synced; local rerun at 3000 ms: 3/4 within budget even behind TLS interception. Queued follow-up: run standard-depth retrieval concurrently with routing and top up on a scholarly verdict, making the budget mostly free in wall-clock terms.
+
+## Before/after `eval:report` headline numbers
+
+Shared 20 golden items, both pipelines fully healthy end-to-end. Before = `main` (4ebf793) run locally with `EVAL_JUDGE_TIMEOUT_MS=90000`; after = branch (`01842f4`) on CI (run 28597720323, 25/26 synthesized, 25 judged, rerank applied on 16). Venue asymmetry forced by the CI finding below; disclosed per protocol.
+
+| | recall | precision | faithfulness |
+|---|---|---|---|
+| before (main) | 0.975 | 0.467 | 0.833 (20 judged) |
+| after (branch) | **0.975** | 0.465 | 0.851 (19 judged) |
+
+- **Retrieval-neutral on the existing golden set:** recall identical; precision −0.002. Only 2 of 20 shared items changed at all — both LLM-routed scholarly/deep: `reconciliation-conceptual` (precision 0.17→0.13 from the corpus-wide semantic hits; recall still 1.00) and `justification-faith-conceptual` (retrieval unchanged; faithfulness 0.67→1.00).
+- The 6 new routing items all matched their score `expectedRouting`; 5 items routed deep in the after run.
+- **No flap exclusions needed:** all run-to-run routing differences were classifier-*timeout* fallbacks, never verdict changes — across every double-run performed (2 local + CI), the LLM's verdicts were 100% consistent whenever the call completed.
+- Known live-mode override (documented in schema/golden set): the LLM consistently routes `routing-why-alone-default` scholarly; the gate's score assertion is unaffected.
+
+## Operational finding (pre-existing, NOT this branch): main's weekly eval report has been silently broken since ≥ June 26
+
+Four consecutive CI runs from `main` (June 26 scheduled run 28232195887 + three dispatches 2026-07-02) failed **every** OpenAI call with `Premature close` — synthesis 0/20, judge 0/20, semantic retrieval dead — while the workflow stayed green because `eval:report` is deliberately non-blocking. The June 26 report's stored numbers (recall 0.852 / precision 0.464) are deterministic-only retrieval, not the hybrid pipeline. Same secrets/workflow succeeded on the branch's second CI attempt, so this is flaky Actions↔OpenAI connectivity, not keys or code. **Follow-up (separate from this branch):** add a health check to `weekly-eval-report.yml` — fail or prominently annotate the run when zero items reach `synthesisStatus: "ran"` — so a degraded report can never sit green for weeks again.

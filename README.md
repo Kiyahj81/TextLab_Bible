@@ -222,7 +222,7 @@ Milestone 3 Phase 6 added a two-tier quality harness over `eval/dataset/golden-s
 
 `npm run eval:report` is the non-blocking hybrid quality report. It runs the full retrieval pipeline with semantic retrieval, synthesis, rerank, and LLM-as-judge faithfulness scoring when the relevant keys are present. It writes self-contained HTML and JSON output under `eval/output/`.
 
-`npm run smoke:classifier` is a live, pre-merge smoke test for the LLM complexity classifier (`lib/ai/complexity.ts`): it exercises the exact production call (Responses API, strict JSON schema, reasoning effort "low", 2s timeout, no retry) against the real model over a small fixed prompt set, and exits non-zero on any mismatch or failure. It requires `OPENAI_API_KEY`.
+`npm run smoke:classifier` is a live, pre-merge smoke test for the LLM complexity classifier (`lib/ai/complexity.ts`): it exercises the exact production call (Responses API, strict JSON schema, reasoning effort "low", 2s timeout, no retry) against the real model over a small fixed prompt set. It gates on the classifier **contract** — a wrong verdict or a non-timeout API error (400 / bad JSON / missing key) exits non-zero. A timeout is reported as a warning with the latency distribution and does **not** fail the gate: in production a classifier timeout falls back to the deterministic score, and dev-box round-trip latency is not signal about the classifier itself. It requires `OPENAI_API_KEY`.
 
 GitHub Actions automation is present and configured:
 

@@ -231,7 +231,10 @@ async function run() {
     await answerPre.filter({ hasText: "4 hit(s)" }).waitFor();
     await answerPre.filter({ hasText: "John 1:14" }).waitFor();
     await page.getByText("Local fallback").waitFor();
-    await page.getByText("gpt-5-chat-latest").waitFor();
+    // Live synthesis is disabled here, so no routing runs and no model is called: the
+    // answer honestly reports modelUsed "none" (rendered "default — none"), NOT the
+    // default model name. Regex tolerates the em-dash separator between role and model.
+    await page.getByText(/default\s+\S+\s+none/).waitFor();
     await page.getByText('searchLemma({"lemma":"λόγος","book":"John","chapter":1})').waitFor();
     await page.getByText("John 1:1, SBLGNT").first().waitFor();
     // Live mode is disabled in acceptance, so this answer comes from the

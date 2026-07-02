@@ -13,7 +13,13 @@ on:
     # to taste. Note: scheduled runs on free runners can be delayed under load
     # and only run from the default branch's copy of this file.
     - cron: "0 7 * * 5"
-  workflow_dispatch: {} # allow on-demand runs from the Actions tab
+  workflow_dispatch: # allow on-demand runs from the Actions tab
+    inputs:
+      router_model:
+        description: "Override OPENAI_ROUTER_MODEL for a router-model A/B (blank = repo default gpt-5-mini)"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read # least privilege: the report neither commits nor needs write scope
@@ -72,6 +78,9 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           # Voyage rerank + faithfulness judge (Vercel AI Gateway):
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+          # Blank on schedule and when the dispatch input is empty → getRouterModel()
+          # uses the repo default (gpt-5-mini). Set only for an on-demand router A/B.
+          OPENAI_ROUTER_MODEL: ${{ inputs.router_model }}
           # Per-attempt judge budget. Now redundant with the code default (raised
           # to 90s on 2026-07-02 after 30s also aborted local runs), kept as an
           # explicit record of the value this workflow depends on.

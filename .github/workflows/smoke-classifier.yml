@@ -16,7 +16,13 @@ name: Classifier Smoke Test
 # PR trigger would only double the live API spend (fork PRs get no secret anyway).
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      router_model:
+        description: "Override OPENAI_ROUTER_MODEL for a clean-runner A/B (blank = repo default gpt-5-mini)"
+        required: false
+        default: ""
+        type: string
   push:
     paths:
       - "lib/ai/complexity.ts"
@@ -60,4 +66,7 @@ jobs:
       - name: Run classifier smoke test
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          # Blank on push/schedule and when the dispatch input is empty → getRouterModel()
+          # falls back to the repo default (gpt-5-mini). Set only for a dispatch A/B.
+          OPENAI_ROUTER_MODEL: ${{ inputs.router_model }}
         run: npm run smoke:classifier

@@ -15,7 +15,7 @@
 // verdict, a non-timeout API error (400 / bad JSON / no client), or no verdict even
 // under the relaxed probe. Calls that only completed over the 2000ms budget are
 // reported as a latency datapoint to re-check in a production-like network.
-import { classifyComplexityLLM, getRouterModel } from "@/lib/ai/complexity";
+import { classifyComplexityLLM, getRouterModel, ROUTER_TIMEOUT_MS } from "@/lib/ai/complexity";
 import { extractSignals } from "@/lib/ai/signals";
 
 const PROMPTS: Array<{ prompt: string; expect: boolean }> = [
@@ -25,12 +25,16 @@ const PROMPTS: Array<{ prompt: string; expect: boolean }> = [
   { prompt: "Find verses about hope", expect: false }
 ];
 
-const PROD_BUDGET_MS = 2_000; // mandated production per-request timeout (ROUTER_TIMEOUT_MS)
+const PROD_BUDGET_MS = ROUTER_TIMEOUT_MS; // the mandated production per-request budget (never a stale copy)
 const RELAXED_TIMEOUT_MS = 10_000; // generous enough to validate correctness on a slow network
 
+// Narrow to the OpenAI SDK's typed connection-timeout (APIConnectionTimeoutError, whose
+// message is "Request timed out."). A broad /timeout/i would misclassify e.g. a gateway
+// 504 "upstream request timeout" as a budget timeout, sending a real API failure to the
+// relaxed probe and mislabeling it as a latency datapoint.
 function isTimeout(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
-  return err.name === "APIConnectionTimeoutError" || /timed out|timeout/i.test(err.message);
+  return err.name === "APIConnectionTimeoutError" || /request timed out/i.test(err.message);
 }
 
 async function main() {

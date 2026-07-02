@@ -2,10 +2,11 @@ name: Classifier Smoke Test
 
 # Live smoke test for the LLM complexity classifier (scripts/smoke-classifier.ts).
 # Purpose here: a PRODUCTION-LIKE latency datapoint. The local dev box sits behind
-# TLS interception that inflates round-trips past the 2000ms router budget, so only
+# TLS interception that inflates round-trips past the 3000ms router budget, so only
 # a run from a clean network (this runner) can tell whether the mandated budget is
 # realistic in production. The script itself gates on classifier CORRECTNESS (wrong
-# verdicts / API errors fail; over-budget calls are reported as warnings).
+# verdicts / real contract errors fail; over-budget calls and recovered transient
+# connection drops are reported as warnings, not failures).
 #
 # Triggers: manual dispatch (Actions tab) plus any push that touches the classifier
 # itself, the smoke script, or this workflow — so a change to the classifier code or
@@ -32,7 +33,7 @@ concurrency:
 jobs:
   smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 10 # 4 prompts, ≤12s worst case each (2s prod probe + 10s relaxed)
+    timeout-minutes: 10 # 4 prompts, ≤13s worst case each (3s prod probe + 10s relaxed)
     env:
       # prisma.config.ts requires these via env() at config LOAD, and npm ci's
       # postinstall runs `prisma generate` — so placeholders must exist before

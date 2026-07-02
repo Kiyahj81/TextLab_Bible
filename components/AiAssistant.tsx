@@ -84,6 +84,10 @@ export function AiAssistant({
     // retire the legacy cookie. This gives the "remove after one release" migration a
     // completion mechanism — once no legacy cookies remain, the dual-read in
     // app/assistant/page.tsx and resolveConfirmScholarly's legacy arm can be dropped.
+    // Accepted tradeoff (2026-07-02 review, R2-5): expiring the legacy cookie removes
+    // rollback safety — a rollback after this runs reverts the preference to the old
+    // default until the user re-toggles (which rewrites the legacy cookie). Self-healing
+    // and low-stakes; preferred over keeping the dual-read alive an extra release.
     expirePrefCookie(ASSISTANT_AUTO_SCHOLARLY_COOKIE);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

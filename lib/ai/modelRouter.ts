@@ -30,16 +30,26 @@ const DEFAULT_MODEL = "gpt-5-chat-latest";  // Testing different models for best
 const SCHOLARLY_MODEL = "gpt-5.4";
 
 const DEFAULT_MAX_OUTPUT_TOKENS = 2_400;
+// Scholarly answers are longer and interpretive, and deep retrieval feeds the
+// scholarly path MORE evidence — so the 2400 default truncated them mid-JSON,
+// which failed to parse and dropped the answer to the local fallback. A larger
+// budget for the scholarly role only (option D's output-budget half). ~6000
+// tokens ≈ 24 KB, well under the generated-study-note MAX_ANSWER cap (64 KB).
+const SCHOLARLY_MAX_OUTPUT_TOKENS = 6_000;
 
 // Lower than the model default (~1.0) to curb sampling noise — including the
 // occasional foreign-language token leak in the prose. Tunable per-environment;
 // 0 (fully deterministic) is valid, so the guard accepts >= 0 (unlike tokens).
 const DEFAULT_TEMPERATURE = 0.3;  // Testing different temperatures for best answers. This may be changed.
 
-export function getMaxOutputTokens(): number {
-  const raw = Number.parseInt(process.env.OPENAI_MAX_OUTPUT_TOKENS?.trim() ?? "", 10);
+// Role-aware output budget. Each role has its own env override so tuning one never
+// bleeds into the other; an unset/invalid override falls back to that role's default.
+export function getMaxOutputTokens(role: ModelRole = "default"): number {
+  const envVar = role === "scholarly" ? "OPENAI_SCHOLARLY_MAX_OUTPUT_TOKENS" : "OPENAI_MAX_OUTPUT_TOKENS";
+  const fallback = role === "scholarly" ? SCHOLARLY_MAX_OUTPUT_TOKENS : DEFAULT_MAX_OUTPUT_TOKENS;
+  const raw = Number.parseInt(process.env[envVar]?.trim() ?? "", 10);
   if (Number.isFinite(raw) && raw > 0) return raw;
-  return DEFAULT_MAX_OUTPUT_TOKENS;
+  return fallback;
 }
 
 export function getTemperature(): number {

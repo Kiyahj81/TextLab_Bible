@@ -120,18 +120,36 @@ describe("getModelForRole", () => {
 });
 
 describe("getMaxOutputTokens", () => {
-  it("defaults to 2400", () => {
+  it("defaults to 2400 for the default model (no role / explicit default)", () => {
     expect(getMaxOutputTokens()).toBe(2400);
+    expect(getMaxOutputTokens("default")).toBe(2400);
   });
 
-  it("honors a valid env override", () => {
+  it("gives the scholarly model a larger budget (6000)", () => {
+    // Scholarly answers are longer and deep retrieval feeds more evidence, so the
+    // 2400 default truncated them into the local fallback — see option D.
+    expect(getMaxOutputTokens("scholarly")).toBe(6000);
+  });
+
+  it("honors a valid default-model env override", () => {
     vi.stubEnv("OPENAI_MAX_OUTPUT_TOKENS", "500");
     expect(getMaxOutputTokens()).toBe(500);
+    expect(getMaxOutputTokens("default")).toBe(500);
+    // The default override does NOT bleed into the scholarly budget.
+    expect(getMaxOutputTokens("scholarly")).toBe(6000);
   });
 
-  it("falls back to the default for invalid values", () => {
+  it("honors a valid scholarly-model env override", () => {
+    vi.stubEnv("OPENAI_SCHOLARLY_MAX_OUTPUT_TOKENS", "9000");
+    expect(getMaxOutputTokens("scholarly")).toBe(9000);
+    expect(getMaxOutputTokens("default")).toBe(2400);
+  });
+
+  it("falls back to the role default for invalid values", () => {
     vi.stubEnv("OPENAI_MAX_OUTPUT_TOKENS", "not-a-number");
-    expect(getMaxOutputTokens()).toBe(2400);
+    vi.stubEnv("OPENAI_SCHOLARLY_MAX_OUTPUT_TOKENS", "-5");
+    expect(getMaxOutputTokens("default")).toBe(2400);
+    expect(getMaxOutputTokens("scholarly")).toBe(6000);
   });
 });
 

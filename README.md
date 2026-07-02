@@ -172,7 +172,8 @@ Most npm scripts set `NODE_OPTIONS=--use-system-ca` so Node trusts the Windows c
 | `OPENAI_DEFAULT_MODEL` | Optional | Default live synthesis model. |
 | `OPENAI_SCHOLARLY_MODEL` | Optional | Model used for scholarly escalation (auto-routed or user-confirmed). |
 | `OPENAI_ROUTER_MODEL` | Optional | Model used by the live complexity-routing classifier that decides scholarly escalation; defaults to `gpt-5.4-mini`. |
-| `OPENAI_REQUEST_TIMEOUT_MS`, `OPENAI_MAX_OUTPUT_TOKENS`, `OPENAI_TEMPERATURE` | Optional | Runtime bounds and sampling settings for synthesis. |
+| `OPENAI_REQUEST_TIMEOUT_MS`, `OPENAI_MAX_OUTPUT_TOKENS`, `OPENAI_TEMPERATURE` | Optional | Runtime bounds and sampling settings for synthesis. `OPENAI_MAX_OUTPUT_TOKENS` caps the **default** model (2400); the scholarly model has a larger default budget. |
+| `OPENAI_SCHOLARLY_MAX_OUTPUT_TOKENS` | Optional | Output-token cap for the **scholarly** model; defaults to `6000` (scholarly answers are longer and deep retrieval feeds more evidence). |
 | `TEXTLAB_ASSISTANT_DISABLE_LIVE` | Optional | Set to `1` to force local fallback even when an OpenAI key is present. |
 | `AI_GATEWAY_API_KEY` | Optional | Enables Voyage rerank and the eval report judge through Vercel AI Gateway. |
 | `RERANK_MODEL`, `RERANK_TIMEOUT_MS` | Optional | Rerank model and timeout overrides. |

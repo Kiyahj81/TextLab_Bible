@@ -132,7 +132,7 @@ The non-live fallback path always uses standard depth (no routing ran, and its a
 
 - LLM classification of **intent** (retrieval planning stays fully regex-driven) — revisit if routing quality still disappoints.
 - Item E (gloss-based English→lemma discovery) — separate follow-up PR.
-- Changing `DEFAULT_MODEL` / output-token budgets (option D) — evaluate after this ships.
+- Changing `DEFAULT_MODEL` (option D, model-identity half) — evaluate after this ships. **Update 2026-07-02:** option D's *output-budget* half was implemented in PR #55 — the scholarly model now gets 6000 output tokens (`OPENAI_SCHOLARLY_MAX_OUTPUT_TOKENS`) vs the default model's 2400, after a deep-retrieval scholarly answer truncated into the local fallback at 2400. Swapping the *default model* to gpt-5.4 remains deferred (needs an eval:report A/B).
 - New deterministic cues for interpretive-stance questions — only if the fallback path proves too weak in eval.
 - Selected-passage context for the classifier — the assistant API only accepts `prompt`/`sessionId`/escalation flags, so a "what does this mean?" question about a UI-selected passage can't inform routing unless the reference is in the prompt text. Named as a known limitation, not addressed here.
 - Cost brakes beyond `confirmEscalation` + the existing kill switch and API rate limit — `routerSource`/`deep` in routing metadata give the telemetry to justify one later if scholarly spend becomes a problem.

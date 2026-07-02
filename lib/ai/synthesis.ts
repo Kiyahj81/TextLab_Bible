@@ -258,7 +258,7 @@ export async function synthesizeWithRefinement(input: SynthesisInput): Promise<S
   const first = await client.responses.create({
     model: routing.modelUsed,
     instructions: instructions,
-    max_output_tokens: getMaxOutputTokens(),
+    max_output_tokens: getMaxOutputTokens(routing.modelRole),
     temperature: getTemperature(),
     tools: [REFINEMENT_TOOL],
     tool_choice: "auto",
@@ -288,7 +288,7 @@ export async function synthesizeWithRefinement(input: SynthesisInput): Promise<S
   const second = await client.responses.create({
     model: routing.modelUsed,
     instructions: instructions,
-    max_output_tokens: getMaxOutputTokens(),
+    max_output_tokens: getMaxOutputTokens(routing.modelRole),
     temperature: getTemperature(),
     text: { format: SYNTHESIS_OUTPUT_FORMAT },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

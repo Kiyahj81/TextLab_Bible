@@ -6,7 +6,12 @@ import { useEffect, useState } from "react";
 import { formatToolTrace, type ToolTraceEntry } from "@/lib/ai/toolTrace";
 import type { AssistantMode, ModelRole, RecommendedUpgrade } from "@/lib/ai/modelRouter";
 import { useAutoDismissString } from "@/lib/useAutoDismissStatus";
-import { ASSISTANT_CONFIRM_SCHOLARLY_COOKIE, writePrefCookie } from "@/lib/readerPrefs";
+import {
+  ASSISTANT_AUTO_SCHOLARLY_COOKIE,
+  ASSISTANT_CONFIRM_SCHOLARLY_COOKIE,
+  expirePrefCookie,
+  writePrefCookie
+} from "@/lib/readerPrefs";
 
 type AssistantResponse = {
   answer: string;
@@ -74,6 +79,12 @@ export function AiAssistant({
     if (!document.cookie.includes(`${ASSISTANT_CONFIRM_SCHOLARLY_COOKIE}=`)) {
       writePrefCookie(ASSISTANT_CONFIRM_SCHOLARLY_COOKIE, initialConfirmScholarly ? "1" : "0");
     }
+    // The new confirm cookie now carries the preference (the server already folded
+    // the legacy value into initialConfirmScholarly via resolveConfirmScholarly), so
+    // retire the legacy cookie. This gives the "remove after one release" migration a
+    // completion mechanism — once no legacy cookies remain, the dual-read in
+    // app/assistant/page.tsx and resolveConfirmScholarly's legacy arm can be dropped.
+    expirePrefCookie(ASSISTANT_AUTO_SCHOLARLY_COOKIE);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -339,10 +350,17 @@ export function AiAssistant({
                 ) : null}
               </details>
             ) : null}
-            {!restoredView && response?.recommendedUpgrade && response.modelRole !== "scholarly" ? (
+            {/* Manual escalation is always available when the answer isn't already
+                scholarly — decoupled from recommendedUpgrade so a prompt the router
+                judged routine (or a classifier-outage score-fallback that no longer
+                recommends an upgrade) can still be re-run with the scholarly model.
+                recommendedUpgrade only changes the framing, not availability. */}
+            {!restoredView && response && response.modelRole !== "scholarly" ? (
               <div className="mb-4 flex flex-wrap items-center gap-3 rounded-md border border-accent-300 bg-accent-50 p-3 text-sm">
                 <span className="text-slate-700">
-                  This question may benefit from the scholarly model ({response.recommendedUpgrade.model}).
+                  {response.recommendedUpgrade
+                    ? `This question may benefit from the scholarly model (${response.recommendedUpgrade.model}).`
+                    : "Want a deeper, cross-text answer? Re-run this question with the scholarly model."}
                 </span>
                 <button
                   type="button"

@@ -73,7 +73,10 @@ describe("AiAssistant scholarly escalation", () => {
     expect(screen.queryByRole("button", { name: /use scholarly model/i })).toBeNull();
   });
 
-  it("does not offer escalation when no upgrade is recommended", async () => {
+  it("offers manual escalation even when no upgrade is recommended (decoupled)", async () => {
+    // Manual escalation is decoupled from recommendedUpgrade: a non-scholarly answer
+    // the router judged routine (or a score-fallback that no longer recommends an
+    // upgrade) can still be re-run with the scholarly model.
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
@@ -89,7 +92,17 @@ describe("AiAssistant scholarly escalation", () => {
     fireEvent.click(screen.getByRole("button", { name: /ask assistant/i }));
 
     await screen.findByText("default answer");
-    expect(screen.queryByRole("button", { name: /use scholarly model/i })).toBeNull();
+    const escalateButton = await screen.findByRole("button", { name: /use scholarly model/i });
+    fireEvent.click(escalateButton);
+    await waitFor(() => expect(fetchMock().mock.calls.length).toBe(2));
+    expect(JSON.parse(fetchMock().mock.calls[1][1].body as string).escalate).toBe(true);
+  });
+
+  it("expires the legacy auto-scholarly cookie on mount so the migration can be retired", () => {
+    document.cookie = "textlab-assistant-auto-scholarly=1; path=/";
+    document.cookie = "textlab-assistant-confirm-scholarly=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+    render(<AiAssistant initialNotes={[]} />);
+    expect(document.cookie).not.toContain("textlab-assistant-auto-scholarly=");
   });
 });
 

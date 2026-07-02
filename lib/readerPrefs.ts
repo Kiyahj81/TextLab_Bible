@@ -54,6 +54,13 @@ export function writePrefCookie(name: string, value: string): void {
   document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${ONE_YEAR_SECONDS}; samesite=lax`;
 }
 
+// Client-only eraser: expire a preference cookie immediately (max-age=0). Used to
+// retire a migrated legacy cookie so its dual-read/migration code can be removed.
+export function expirePrefCookie(name: string): void {
+  if (typeof document === "undefined") return;
+  document.cookie = `${name}=; path=/; max-age=0; samesite=lax`;
+}
+
 export const ASSISTANT_AUTO_SCHOLARLY_COOKIE = "textlab-assistant-auto-scholarly";
 
 export function parseAutoScholarly(value: string | null | undefined): boolean {

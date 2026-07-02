@@ -91,7 +91,14 @@ const CLASSIFIER_INSTRUCTIONS = [
 // Throws on ANY failure (no client, timeout, API error, bad JSON, schema
 // mismatch). The router catches and falls back to scoreComplexity — a
 // classifier failure can never fail the question.
-export async function classifyComplexityLLM(prompt: string, signals?: Signals): Promise<ComplexityVerdict> {
+export async function classifyComplexityLLM(
+  prompt: string,
+  signals?: Signals,
+  // `timeoutMs` overrides the mandated production budget (ROUTER_TIMEOUT_MS). Production
+  // never sets it; the live smoke test uses a relaxed value to VALIDATE verdict
+  // correctness independently of a given network's round-trip latency.
+  opts?: { timeoutMs?: number }
+): Promise<ComplexityVerdict> {
   const client = getOpenAi();
   if (!client) throw new Error("OpenAI client unavailable for complexity routing.");
 
@@ -111,7 +118,7 @@ export async function classifyComplexityLLM(prompt: string, signals?: Signals): 
       text: { format: ROUTER_OUTPUT_FORMAT },
       input
     },
-    { timeout: ROUTER_TIMEOUT_MS, maxRetries: 0 }
+    { timeout: opts?.timeoutMs ?? ROUTER_TIMEOUT_MS, maxRetries: 0 }
   );
 
   return verdictSchema.parse(JSON.parse(res.output_text ?? ""));

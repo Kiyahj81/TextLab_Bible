@@ -153,6 +153,14 @@ describe("classifyComplexityLLM", () => {
     expect(opts).toEqual({ timeout: 2_000, maxRetries: 0 });
   });
 
+  it("honors a timeoutMs override (used by the smoke test's relaxed probe) but keeps maxRetries 0", async () => {
+    const { client, create } = clientReturning('{"complex": false, "reason": "lookup"}');
+    mockedGetOpenAi.mockReturnValue(client);
+    await classifyComplexityLLM("What does John 1:1 say?", undefined, { timeoutMs: 10_000 });
+    const [, opts] = create.mock.calls[0];
+    expect(opts).toEqual({ timeout: 10_000, maxRetries: 0 });
+  });
+
   it("throws when no client is configured", async () => {
     mockedGetOpenAi.mockReturnValue(null);
     await expect(classifyComplexityLLM("anything")).rejects.toThrow();

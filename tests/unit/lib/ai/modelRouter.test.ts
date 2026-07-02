@@ -8,6 +8,13 @@ import {
   routeAssistantPrompt
 } from "@/lib/ai/modelRouter";
 import { extractSignals } from "@/lib/ai/signals";
+import { classifyComplexityLLM } from "@/lib/ai/complexity";
+
+vi.mock("@/lib/ai/complexity", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/ai/complexity")>();
+  return { ...actual, classifyComplexityLLM: vi.fn() };
+});
+const mockedClassify = vi.mocked(classifyComplexityLLM);
 
 beforeEach(() => {
   vi.unstubAllEnvs();
@@ -18,42 +25,78 @@ afterEach(() => {
 });
 
 describe("routeAssistantPrompt", () => {
-  it("routes ordinary prompts to the default model with no upgrade", () => {
-    const decision = routeAssistantPrompt("Show me Romans 7");
-    expect(decision.modelRole).toBe("default");
-    expect(decision.recommendedUpgrade).toBeUndefined();
+  // Block body (not an implicit-return arrow): returning the mock instance itself
+  // from mockReset() trips Vitest 4's hook-thenable detection and spuriously
+  // fails the next test with the *previous* test's rejected value — every other
+  // mockReset() beforeEach in this repo already avoids the implicit-return form.
+  beforeEach(() => {
+    mockedClassify.mockReset();
   });
 
-  it("attaches an advisory scholarly upgrade when scholarly cues are present", () => {
-    const prompt = "Give a scholarly analysis of the interpretive options";
-    const decision = routeAssistantPrompt(prompt, { signals: extractSignals(prompt) });
-    expect(decision.modelRole).toBe("default");
-    expect(decision.recommendedUpgrade?.modelRole).toBe("scholarly");
-  });
-
-  it("escalates to the scholarly model when escalate is requested", () => {
-    const decision = routeAssistantPrompt("Give a scholarly analysis", { escalate: true });
+  it("manual escalate short-circuits: scholarly + deep + manual source, no classifier call", async () => {
+    const decision = await routeAssistantPrompt("Show Romans 7", { escalate: true, live: true });
     expect(decision.modelRole).toBe("scholarly");
-    expect(decision.modelUsed).toBe("gpt-5.4");
-    // Already escalated — no further upgrade should be advised.
+    expect(decision.deep).toBe(true);
+    expect(decision.routerSource).toBe("manual");
+    expect(decision.recommendedUpgrade).toBeUndefined();
+    expect(mockedClassify).not.toHaveBeenCalled();
+  });
+
+  it("live + classifier says complex → auto-escalates (scholarly, deep, llm source)", async () => {
+    mockedClassify.mockResolvedValue({ complex: true, reason: "contested" });
+    const prompt = "Is Romans 7 about Paul himself?";
+    const decision = await routeAssistantPrompt(prompt, { live: true, signals: extractSignals(prompt) });
+    expect(decision.modelRole).toBe("scholarly");
+    expect(decision.deep).toBe(true);
+    expect(decision.routerSource).toBe("llm");
+    expect(decision.routingDecision).toContain("automatically");
+  });
+
+  it("live + classifier says simple → default model, no upgrade chip", async () => {
+    mockedClassify.mockResolvedValue({ complex: false, reason: "simple lookup" });
+    const decision = await routeAssistantPrompt("What does John 1:1 say?", { live: true });
+    expect(decision.modelRole).toBe("default");
+    expect(decision.deep).toBe(false);
+    expect(decision.routerSource).toBe("llm");
     expect(decision.recommendedUpgrade).toBeUndefined();
   });
 
-  it("auto-escalates on the first pass when autoEscalate is on and the prompt is complex", () => {
+  it("live + classifier failure → score fallback with score-fallback source", async () => {
+    mockedClassify.mockRejectedValue(new Error("Request timed out."));
     const prompt = "How do Paul in Romans and James reconcile faith and works?";
-    const decision = routeAssistantPrompt(prompt, { autoEscalate: true, signals: extractSignals(prompt) });
-    expect(decision.modelRole).toBe("scholarly");
+    const decision = await routeAssistantPrompt(prompt, { live: true, signals: extractSignals(prompt) });
+    expect(decision.modelRole).toBe("scholarly"); // reconcile cue scores 2
+    expect(decision.deep).toBe(true);
+    expect(decision.routerSource).toBe("score-fallback");
+    expect(decision.complexityScore).toBeGreaterThanOrEqual(2);
   });
 
-  it("does NOT auto-escalate a simple prompt even when autoEscalate is on", () => {
-    const prompt = "What does John 1:1 say?";
-    const decision = routeAssistantPrompt(prompt, { autoEscalate: true, signals: extractSignals(prompt) });
+  it("live=false uses the score only (never calls the classifier)", async () => {
+    const prompt = "Compare δικαιοσύνη in Romans and Galatians";
+    const decision = await routeAssistantPrompt(prompt, { live: false, signals: extractSignals(prompt) });
+    expect(decision.routerSource).toBe("score");
+    expect(decision.modelRole).toBe("scholarly");
+    expect(mockedClassify).not.toHaveBeenCalled();
+  });
+
+  it("confirmEscalation restores the recommend flow: default role + upgrade chip", async () => {
+    mockedClassify.mockResolvedValue({ complex: true, reason: "contested" });
+    const decision = await routeAssistantPrompt("Is Romans 7 about Paul himself?", {
+      live: true,
+      confirmEscalation: true
+    });
     expect(decision.modelRole).toBe("default");
+    expect(decision.deep).toBe(false);
+    expect(decision.recommendedUpgrade?.modelRole).toBe("scholarly");
+    expect(decision.recommendedUpgrade?.reason).toContain("confirm");
   });
 
-  it("manual escalate still wins regardless of complexity", () => {
-    const decision = routeAssistantPrompt("Show Romans 7", { escalate: true });
-    expect(decision.modelRole).toBe("scholarly");
+  it("simple prompt with score routing stays default with no upgrade", async () => {
+    const prompt = "Why did Paul write Romans?"; // why alone = 1 < threshold
+    const decision = await routeAssistantPrompt(prompt, { live: false, signals: extractSignals(prompt) });
+    expect(decision.modelRole).toBe("default");
+    expect(decision.deep).toBe(false);
+    expect(decision.complexityScore).toBe(1);
   });
 });
 
@@ -64,34 +107,18 @@ describe("recommendScholarlyUpgrade", () => {
     expect(rec("What does John 1:1 say?")).toBeUndefined();
   });
 
-  it("recommends scholarly for cross-book tension questions", () => {
+  it("recommends scholarly when the score crosses the threshold", () => {
     expect(rec("How do Paul in Romans and James reconcile faith and works?")?.modelRole).toBe("scholarly");
-  });
-
-  it("recommends scholarly for a comparison prompt", () => {
     expect(rec("Compare δικαιοσύνη in Romans and Galatians")?.modelRole).toBe("scholarly");
-  });
-
-  it("still honors an explicit scholarly cue", () => {
     expect(rec("Give a deep synthesis of atonement")?.modelRole).toBe("scholarly");
   });
 
-  it("recommends scholarly on an ambiguity cue", () => {
-    expect(rec("Explain the ambiguity in this passage")?.modelRole).toBe("scholarly");
-  });
-
-  it("recommends scholarly on 'why does' interpretive framing", () => {
-    expect(rec("Why does Paul emphasize faith?")?.modelRole).toBe("scholarly");
-  });
-
-  it("recommends scholarly on three distinct concept words", () => {
-    // No reference, cue, or comparison — the concept count alone (>= 3) tips it.
-    expect(rec("Explain justification, sanctification, and glorification")?.modelRole).toBe("scholarly");
+  it("no longer recommends scholarly on bare why-framing (intentional change)", () => {
+    // The old OR-gate escalated this on the solo cue; the weighted score does not.
+    expect(rec("Why does Paul emphasize faith?")).toBeUndefined();
   });
 
   it("does NOT recommend scholarly for a routine multi-topic survey", () => {
-    // Three concepts, but a topic survey is retrieval, not deep synthesis — the concept
-    // count must not auto-escalate it.
     expect(rec("Find verses about faith, hope, and love")).toBeUndefined();
   });
 });

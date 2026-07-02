@@ -29,6 +29,19 @@ vi.mock("@/lib/ai/modelRouter", async (importOriginal) => {
   return { ...real, isLiveAssistantEnabled };
 });
 
+// The router can now call the live classifier; force it offline in this suite so
+// no unit test makes a network request regardless of whether OPENAI_API_KEY is set.
+// scoreComplexity stays real, so the router's score fallback preserves every
+// existing behavioral outcome. Task 5 replaces this with a full routeAssistantPrompt
+// mock when it reworks this suite for the reorder.
+const { classifyComplexityLLM } = vi.hoisted(() => ({
+  classifyComplexityLLM: vi.fn(() => { throw new Error("classifier offline in unit tests"); })
+}));
+vi.mock("@/lib/ai/complexity", async (importOriginal) => {
+  const real = await (importOriginal as () => Promise<typeof import("@/lib/ai/complexity")>)();
+  return { ...real, classifyComplexityLLM };
+});
+
 import { answerBibleQuestion, detectBookFromPrompt } from "@/lib/ai/assistant";
 
 const packet: EvidencePacket = {

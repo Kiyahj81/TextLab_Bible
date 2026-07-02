@@ -28,7 +28,9 @@ const evidence: EvidencePacket = {
 const routing = {
   modelRole: "default" as const,
   modelUsed: "gpt-5-chat-latest",
-  routingDecision: ""
+  routingDecision: "",
+  deep: false,
+  routerSource: "none" as const
 };
 
 beforeEach(() => {

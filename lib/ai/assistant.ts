@@ -58,15 +58,17 @@ export async function answerBibleQuestion(
     return fallbackAnswer(prompt, evidence, {
       modelRole: "default",
       modelUsed: "none",
+      deep: false,
+      routerSource: "none",
       routingDecision:
         "Live synthesis is disabled, so TextLab returned the deterministic local retrieval fallback (no model call was made)."
     });
   }
 
-  const routing = routeAssistantPrompt(prompt, {
+  const routing = await routeAssistantPrompt(prompt, {
     escalate: options.escalate ?? false,
-    autoEscalate: options.autoEscalate ?? false,
-    signals
+    signals,
+    live: true
   });
 
   try {

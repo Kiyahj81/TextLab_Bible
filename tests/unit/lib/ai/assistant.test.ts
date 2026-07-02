@@ -23,25 +23,19 @@ vi.mock("@/lib/ai/synthesis", () => ({
 const { verifyGrounding } = vi.hoisted(() => ({ verifyGrounding: vi.fn() }));
 vi.mock("@/lib/ai/grounding", () => ({ verifyGrounding }));
 
-const { isLiveAssistantEnabled } = vi.hoisted(() => ({ isLiveAssistantEnabled: vi.fn(() => false) }));
+const { isLiveAssistantEnabled, routeAssistantPrompt } = vi.hoisted(() => ({
+  isLiveAssistantEnabled: vi.fn(() => false),
+  routeAssistantPrompt: vi.fn()
+}));
 vi.mock("@/lib/ai/modelRouter", async (importOriginal) => {
   const real = await (importOriginal as () => Promise<typeof import("@/lib/ai/modelRouter")>)();
-  return { ...real, isLiveAssistantEnabled };
+  return { ...real, isLiveAssistantEnabled, routeAssistantPrompt };
 });
 
-// The router can now call the live classifier; force it offline in this suite so
-// no unit test makes a network request regardless of whether OPENAI_API_KEY is set.
-// scoreComplexity stays real, so the router's score fallback preserves every
-// existing behavioral outcome. Task 5 replaces this with a full routeAssistantPrompt
-// mock when it reworks this suite for the reorder.
-const { classifyComplexityLLM } = vi.hoisted(() => ({
-  classifyComplexityLLM: vi.fn(() => { throw new Error("classifier offline in unit tests"); })
-}));
-vi.mock("@/lib/ai/complexity", async (importOriginal) => {
-  const real = await (importOriginal as () => Promise<typeof import("@/lib/ai/complexity")>)();
-  return { ...real, classifyComplexityLLM };
-});
-
+// Use the hoisted `routeAssistantPrompt` mock variable DIRECTLY in the tests
+// (exactly as the existing file uses `isLiveAssistantEnabled`). Do NOT also
+// `import { routeAssistantPrompt } from "@/lib/ai/modelRouter"` — that would
+// redeclare the identifier already bound by the vi.hoisted destructuring above.
 import { answerBibleQuestion, detectBookFromPrompt } from "@/lib/ai/assistant";
 
 const packet: EvidencePacket = {
@@ -59,6 +53,13 @@ beforeEach(() => {
   verifyGrounding.mockResolvedValue({ grounded: true, verdicts: [] });
   runRetrievalPlan.mockResolvedValue(packet);
   isLiveAssistantEnabled.mockReturnValue(false);
+  routeAssistantPrompt.mockResolvedValue({
+    modelRole: "default",
+    modelUsed: "gpt-5-chat-latest",
+    deep: false,
+    routerSource: "score",
+    routingDecision: "Handled by the default model for normal retrieval planning and synthesis."
+  });
 });
 
 describe("answerBibleQuestion orchestration", () => {
@@ -84,6 +85,43 @@ describe("answerBibleQuestion orchestration", () => {
     expect(answer.modelUsed).toBe("none");
     expect(answer.routingDecision).toMatch(/disabled|no model call/i);
     expect(answer.recommendedUpgrade).toBeUndefined();
+    expect(answer.deep).toBe(false);
+    expect(answer.routerSource).toBe("none");
+  });
+
+  it("routes BEFORE retrieval and passes the routing depth into the planner", async () => {
+    isLiveAssistantEnabled.mockReturnValue(true);
+    routeAssistantPrompt.mockResolvedValue({
+      modelRole: "scholarly", modelUsed: "gpt-5.4", deep: true, routerSource: "llm",
+      routingDecision: "Scholarly model used automatically: test."
+    });
+    synthesizeWithRefinement.mockResolvedValue({ answer: "x", claims: [], citations: [], toolTrace: [] });
+
+    await answerBibleQuestion("Is Romans 7 about Paul?");
+    expect(runRetrievalPlan).toHaveBeenCalledWith(
+      expect.anything(), "Is Romans 7 about Paul?", { semanticEnabled: true, deep: true }
+    );
+  });
+
+  it("non-live path never routes: routerSource none, deep false, standard retrieval", async () => {
+    isLiveAssistantEnabled.mockReturnValue(false);
+    const answer = await answerBibleQuestion("What does John 1:1 say?");
+    expect(answer.modelUsed).toBe("none");
+    expect(answer.routerSource).toBe("none");
+    expect(answer.deep).toBe(false);
+    expect(routeAssistantPrompt).not.toHaveBeenCalled();
+    expect(runRetrievalPlan).toHaveBeenCalledWith(
+      expect.anything(), expect.anything(), { semanticEnabled: false }
+    );
+  });
+
+  it("forwards confirmEscalation to the router", async () => {
+    isLiveAssistantEnabled.mockReturnValue(true);
+    synthesizeWithRefinement.mockResolvedValue({ answer: "x", claims: [], citations: [], toolTrace: [] });
+    await answerBibleQuestion("prompt", { confirmEscalation: true });
+    expect(routeAssistantPrompt).toHaveBeenCalledWith(
+      "prompt", expect.objectContaining({ confirmEscalation: true, live: true })
+    );
   });
 
   it("returns the synthesized answer when live and synthesis succeeds", async () => {
@@ -108,29 +146,18 @@ describe("answerBibleQuestion orchestration", () => {
 
   it("routes to the scholarly model when escalation is requested", async () => {
     isLiveAssistantEnabled.mockReturnValue(true);
+    routeAssistantPrompt.mockResolvedValue({
+      modelRole: "scholarly", modelUsed: "gpt-5.4", deep: true, routerSource: "manual",
+      routingDecision: "Escalated to the scholarly model at the user's request."
+    });
     synthesizeWithRefinement.mockResolvedValue({ answer: "SCHOLARLY", claims: [], citations: [], toolTrace: [] });
 
     const answer = await answerBibleQuestion("deep synthesis please", { escalate: true });
 
+    expect(routeAssistantPrompt).toHaveBeenCalledWith(
+      "deep synthesis please", expect.objectContaining({ escalate: true, live: true })
+    );
     expect(answer.modelRole).toBe("scholarly");
-    expect(synthesizeWithRefinement).toHaveBeenCalledWith(
-      expect.objectContaining({ routing: expect.objectContaining({ modelRole: "scholarly" }) })
-    );
-  });
-
-  it("auto-escalates on the first pass when autoEscalate is on and the prompt is complex", async () => {
-    isLiveAssistantEnabled.mockReturnValue(true);
-    synthesizeWithRefinement.mockResolvedValue({ answer: "AUTO-SCHOLARLY", claims: [], citations: [], toolTrace: [] });
-
-    const answer = await answerBibleQuestion(
-      "How do Paul in Romans and James reconcile faith and works?",
-      { autoEscalate: true }
-    );
-
-    expect(answer.modelRole).toBe("scholarly");
-    expect(synthesizeWithRefinement).toHaveBeenCalledWith(
-      expect.objectContaining({ routing: expect.objectContaining({ modelRole: "scholarly" }) })
-    );
   });
 
   it("falls back when live synthesis returns null", async () => {

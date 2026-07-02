@@ -27,7 +27,9 @@ const answer: AssistantAnswer = {
   grounded: true,
   modelRole: "default",
   modelUsed: "gpt-5-chat-latest",
-  routingDecision: "Handled by the default model"
+  routingDecision: "Handled by the default model",
+  deep: false,
+  routerSource: "score"
 };
 
 describe("assistant exchange persistence", () => {

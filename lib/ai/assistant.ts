@@ -3,6 +3,7 @@ import {
   type AssistantMode,
   type ModelRole,
   type RecommendedUpgrade,
+  type RouterSource,
   type RoutingDecision,
   isLiveAssistantEnabled,
   routeAssistantPrompt
@@ -35,26 +36,27 @@ export type AssistantAnswer = {
   routingDecision: string;
   recommendedUpgrade?: RecommendedUpgrade;
   sessionId?: string;
+  deep: boolean;
+  routerSource: RouterSource;
+  complexityScore?: number;
 };
 
 export async function answerBibleQuestion(
   prompt: string,
-  options: { escalate?: boolean; autoEscalate?: boolean } = {}
+  // `autoEscalate?` is accepted but ignored here for ONE task only: it keeps the
+  // current route call (`answerBibleQuestion(prompt, { escalate, autoEscalate })`)
+  // and its route-suite assertions compiling+passing until Task 7 migrates the
+  // API to confirmEscalation. Task 7 removes `autoEscalate?` from this signature.
+  options: { escalate?: boolean; confirmEscalation?: boolean; autoEscalate?: boolean } = {}
 ): Promise<AssistantAnswer> {
-  // Compute signals first so they can be forwarded to the router for complexity
-  // detection (auto-escalation) without re-running signal extraction later.
   const signals = extractSignals(prompt);
-  // Resolve live-mode once and pass it into retrieval. Remote semantic retrieval
-  // embeds the prompt via OpenAI, so it must honor the same kill switch as synthesis
-  // (no embedding egress/spend when live is disabled) — and skipping it also frees its
-  // planner slot for deterministic searches in the local-fallback path.
   const live = isLiveAssistantEnabled();
-  const evidence = await runRetrievalPlan(signals, prompt, { semanticEnabled: live });
 
   if (!live) {
-    // No model call happens when live synthesis is disabled, so report honest routing
-    // metadata for the deterministic fallback — never the (possibly escalated) routing a
-    // live pass would have used, which would falsely claim a scholarly/model pass ran.
+    // No model call happens when live synthesis is disabled — no routing runs
+    // either. Report honest metadata (routerSource "none") and retrieve at
+    // standard depth with semantic search off (no embedding egress/spend).
+    const evidence = await runRetrievalPlan(signals, prompt, { semanticEnabled: false });
     return fallbackAnswer(prompt, evidence, {
       modelRole: "default",
       modelUsed: "none",
@@ -65,11 +67,15 @@ export async function answerBibleQuestion(
     });
   }
 
+  // Route FIRST so scholarly routing can widen retrieval (deep mode) — the
+  // whole point of the reorder; see the design spec.
   const routing = await routeAssistantPrompt(prompt, {
     escalate: options.escalate ?? false,
+    confirmEscalation: options.confirmEscalation ?? false,
     signals,
     live: true
   });
+  const evidence = await runRetrievalPlan(signals, prompt, { semanticEnabled: true, deep: routing.deep });
 
   try {
     const result = await synthesizeWithRefinement({ prompt, evidence, routing, intent: signals.intent });
@@ -165,6 +171,9 @@ type WithMarkdownInput = {
   modelUsed: string;
   routingDecision: string;
   recommendedUpgrade?: RecommendedUpgrade;
+  deep: boolean;
+  routerSource: RouterSource;
+  complexityScore?: number;
 };
 
 function withMarkdown(input: WithMarkdownInput): AssistantAnswer {

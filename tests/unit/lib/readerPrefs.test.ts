@@ -68,3 +68,30 @@ describe("parseAutoScholarly", () => {
     expect(ASSISTANT_AUTO_SCHOLARLY_COOKIE).toBe("textlab-assistant-auto-scholarly");
   });
 });
+
+import {
+  ASSISTANT_CONFIRM_SCHOLARLY_COOKIE,
+  parseConfirmScholarly,
+  resolveConfirmScholarly
+} from "@/lib/readerPrefs";
+
+describe("parseConfirmScholarly", () => {
+  it("treats '1' as enabled and everything else as disabled", () => {
+    expect(parseConfirmScholarly("1")).toBe(true);
+    expect(parseConfirmScholarly("0")).toBe(false);
+    expect(parseConfirmScholarly(undefined)).toBe(false);
+  });
+  it("exposes a stable cookie name", () => {
+    expect(ASSISTANT_CONFIRM_SCHOLARLY_COOKIE).toBe("textlab-assistant-confirm-scholarly");
+  });
+});
+
+describe("resolveConfirmScholarly", () => {
+  it("new cookie wins; legacy '0' maps to confirm-first; '1'/absent → auto", () => {
+    expect(resolveConfirmScholarly("1", "1")).toBe(true);
+    expect(resolveConfirmScholarly("0", "0")).toBe(false);
+    expect(resolveConfirmScholarly(undefined, "0")).toBe(true); // explicit opt-out preserved
+    expect(resolveConfirmScholarly(undefined, "1")).toBe(false); // auto stays auto
+    expect(resolveConfirmScholarly(undefined, undefined)).toBe(false); // new default
+  });
+});

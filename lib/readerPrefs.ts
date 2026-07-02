@@ -59,3 +59,21 @@ export const ASSISTANT_AUTO_SCHOLARLY_COOKIE = "textlab-assistant-auto-scholarly
 export function parseAutoScholarly(value: string | null | undefined): boolean {
   return value === "1";
 }
+
+export const ASSISTANT_CONFIRM_SCHOLARLY_COOKIE = "textlab-assistant-confirm-scholarly";
+
+export function parseConfirmScholarly(value: string | null | undefined): boolean {
+  return value === "1";
+}
+
+// Migration: the legacy auto-scholarly cookie wrote "1" (auto ON) and "0"
+// (explicit opt-out). New confirm cookie wins when present; a legacy "0" is a
+// deliberate opt-out of auto-scholarly and maps to confirm-first; "1" or absence
+// takes the new automatic default.
+export function resolveConfirmScholarly(
+  confirmCookie: string | undefined,
+  legacyAutoCookie: string | undefined
+): boolean {
+  if (confirmCookie !== undefined) return parseConfirmScholarly(confirmCookie);
+  return legacyAutoCookie === "0";
+}

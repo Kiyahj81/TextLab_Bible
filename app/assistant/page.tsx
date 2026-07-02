@@ -3,7 +3,12 @@ import { DismissibleIntro } from "@/components/DismissibleIntro";
 import { assistantGuardrailsDisplay } from "@/lib/ai/assistantGuardrailsDisplay";
 import { requirePageAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { introCookieName, ASSISTANT_AUTO_SCHOLARLY_COOKIE, parseAutoScholarly } from "@/lib/readerPrefs";
+import {
+  introCookieName,
+  ASSISTANT_AUTO_SCHOLARLY_COOKIE,
+  ASSISTANT_CONFIRM_SCHOLARLY_COOKIE,
+  resolveConfirmScholarly
+} from "@/lib/readerPrefs";
 import { cookies } from "next/headers";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +17,10 @@ export default async function AssistantPage() {
   const userId = await requirePageAuth();
   const cookieStore = await cookies();
   const introDismissed = cookieStore.get(introCookieName("assistant"))?.value === "1";
-  const autoScholarly = parseAutoScholarly(cookieStore.get(ASSISTANT_AUTO_SCHOLARLY_COOKIE)?.value);
+  const confirmScholarly = resolveConfirmScholarly(
+    cookieStore.get(ASSISTANT_CONFIRM_SCHOLARLY_COOKIE)?.value,
+    cookieStore.get(ASSISTANT_AUTO_SCHOLARLY_COOKIE)?.value
+  );
   const generatedNotes = await prisma.generatedStudyNote.findMany({
     where: { userId },
     orderBy: { createdAt: "desc" },
@@ -37,7 +45,7 @@ export default async function AssistantPage() {
       </details>
 
       <AiAssistant
-        autoScholarly={autoScholarly}
+        confirmScholarly={confirmScholarly}
         initialNotes={generatedNotes.map((note) => ({
           id: note.id,
           prompt: note.prompt,

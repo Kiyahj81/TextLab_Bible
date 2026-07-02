@@ -2,11 +2,11 @@
 
 import { Check, Copy, Download, Loader2, Save, Send, Sparkles } from "lucide-react";
 import type { SubmitEvent } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { formatToolTrace, type ToolTraceEntry } from "@/lib/ai/toolTrace";
 import type { AssistantMode, ModelRole, RecommendedUpgrade } from "@/lib/ai/modelRouter";
 import { useAutoDismissString } from "@/lib/useAutoDismissStatus";
-import { ASSISTANT_AUTO_SCHOLARLY_COOKIE, writePrefCookie } from "@/lib/readerPrefs";
+import { ASSISTANT_CONFIRM_SCHOLARLY_COOKIE, writePrefCookie } from "@/lib/readerPrefs";
 
 type AssistantResponse = {
   answer: string;
@@ -46,10 +46,10 @@ type RestoredView = {
 
 export function AiAssistant({
   initialNotes,
-  autoScholarly: initialAutoScholarly = false
+  confirmScholarly: initialConfirmScholarly = false
 }: {
   initialNotes: GeneratedStudyNoteRow[];
-  autoScholarly?: boolean;
+  confirmScholarly?: boolean;
 }) {
   const [prompt, setPrompt] = useState("");
   const [responsePrompt, setResponsePrompt] = useState("");
@@ -62,12 +62,20 @@ export function AiAssistant({
   const [savingNote, setSavingNote] = useState(false);
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
   const [copyCitationsStatus, setCopyCitationsStatus] = useState<string | null>(null);
-  const [autoScholarly, setAutoScholarly] = useState(initialAutoScholarly);
+  const [confirmScholarly, setConfirmScholarly] = useState(initialConfirmScholarly);
 
   // error stays persistent — user retries before it should clear.
   useAutoDismissString(saveStatus, setSaveStatus);
   useAutoDismissString(copyStatus, setCopyStatus);
   useAutoDismissString(copyCitationsStatus, setCopyCitationsStatus);
+
+  useEffect(() => {
+    // One-time durable migration of the legacy auto-scholarly preference.
+    if (!document.cookie.includes(`${ASSISTANT_CONFIRM_SCHOLARLY_COOKIE}=`)) {
+      writePrefCookie(ASSISTANT_CONFIRM_SCHOLARLY_COOKIE, initialConfirmScholarly ? "1" : "0");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function runPrompt(promptText: string, escalate: boolean) {
     if (loading || !promptText.trim()) return;
@@ -84,7 +92,7 @@ export function AiAssistant({
           // Server schema rejects null on optional fields — only attach when set.
           ...(response?.sessionId ? { sessionId: response.sessionId } : {}),
           ...(escalate ? { escalate: true } : {}),
-          ...(autoScholarly && !escalate ? { autoEscalate: true } : {})
+          ...(confirmScholarly && !escalate ? { confirmEscalation: true } : {})
         })
       });
 
@@ -240,14 +248,14 @@ export function AiAssistant({
           <label className="mt-3 flex items-center gap-2 text-sm text-slate-700">
             <input
               type="checkbox"
-              checked={autoScholarly}
+              checked={confirmScholarly}
               onChange={(e) => {
-                setAutoScholarly(e.target.checked);
-                writePrefCookie(ASSISTANT_AUTO_SCHOLARLY_COOKIE, e.target.checked ? "1" : "0");
+                setConfirmScholarly(e.target.checked);
+                writePrefCookie(ASSISTANT_CONFIRM_SCHOLARLY_COOKIE, e.target.checked ? "1" : "0");
               }}
             />
-            Automatically use the scholarly model when a question warrants it
-            <span className="text-slate-500">(may be slower / more thorough)</span>
+            Ask before using the scholarly model when a question looks complex
+            <span className="text-slate-500">(off = complex questions escalate automatically)</span>
           </label>
           {error ? <p role="alert" className="mt-2 text-sm text-red-700">{error}</p> : null}
         </form>

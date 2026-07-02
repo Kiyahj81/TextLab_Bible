@@ -1,0 +1,57 @@
+name: Classifier Smoke Test
+
+# Live smoke test for the LLM complexity classifier (scripts/smoke-classifier.ts).
+# Purpose here: a PRODUCTION-LIKE latency datapoint. The local dev box sits behind
+# TLS interception that inflates round-trips past the 2000ms router budget, so only
+# a run from a clean network (this runner) can tell whether the mandated budget is
+# realistic in production. The script itself gates on classifier CORRECTNESS (wrong
+# verdicts / API errors fail; over-budget calls are reported as warnings).
+#
+# Triggers: manual dispatch (Actions tab, once this file is on main) plus a push
+# that touches this file — which gives the branch introducing it one immediate run
+# without re-running on every subsequent push.
+
+on:
+  workflow_dispatch: {}
+  push:
+    paths:
+      - ".github/workflows/smoke-classifier.yml"
+
+permissions:
+  contents: read # read-only job: calls the model API, never writes repo or DB
+
+concurrency:
+  group: smoke-classifier
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10 # 4 prompts, ≤12s worst case each (2s prod probe + 10s relaxed)
+    env:
+      # prisma.config.ts requires these via env() at config LOAD, and npm ci's
+      # postinstall runs `prisma generate` — so placeholders must exist before
+      # install. The smoke test never touches a database.
+      DATABASE_URL: "postgresql://placeholder:placeholder@localhost:5432/placeholder"
+      DIRECT_URL: "postgresql://placeholder:placeholder@localhost:5432/placeholder"
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci # postinstall runs `prisma generate` (placeholder URLs above)
+
+      # The npm script loads config via `--env-file=.env`, and Node throws if the
+      # file is absent — an EMPTY file is valid. The real key comes from the step
+      # `env:` (environment takes precedence), keeping secrets off disk.
+      - name: Create empty .env (script requires the file to exist)
+        run: touch .env
+
+      - name: Run classifier smoke test
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: npm run smoke:classifier

@@ -69,9 +69,9 @@ jobs:
           # Blank on push/schedule and when the dispatch input is empty → getRouterModel()
           # falls back to the repo default (gpt-5.4-mini). Set only for a dispatch A/B.
           OPENAI_ROUTER_MODEL: ${{ inputs.router_model }}
-        # One retry after a 60s pause. The Actions<->OpenAI path intermittently drops
-        # EVERY connection for ~a minute ("Premature close" storms), which fails both
-        # the initial call and the script's in-script relaxed probe. The script already
-        # tolerates an ISOLATED drop; this covers a short TOTAL storm without masking a
-        # persistent outage — if the retry also fails, the step (and job) fails.
-        run: npm run smoke:classifier || (echo "smoke failed; retrying once after 60s (likely a transient connectivity storm)..." && sleep 60 && npm run smoke:classifier)
+        # No outer retry: the script itself re-runs the whole probe once after 60s, but
+        # ONLY when a run's failures are purely connectivity/latency (a "Premature close"
+        # storm) — never when a verdict is wrong or the contract is violated, so a real
+        # classifier failure can't be masked by a nondeterministic re-run. Exit 1 = a
+        # genuine failure (or a storm that didn't clear); the job fails.
+        run: npm run smoke:classifier

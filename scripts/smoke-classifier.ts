@@ -6,18 +6,21 @@
 // classifier prompt, not a variant.
 //
 // GATE SEMANTICS: this validates the classifier CONTRACT (prompt, schema, correct
-// verdicts) — and it ALWAYS validates verdicts, never passing on zero. Each prompt
-// is first tried at the mandated production budget (ROUTER_TIMEOUT_MS, imported
-// below). If THAT times out (e.g. behind a TLS-intercepting proxy that inflates
-// round-trips) OR the connection drops mid-flight (a "Premature close"/reset — a
-// network blip, not a contract failure), the verdict is re-validated once via a
-// relaxed-timeout probe: dev-box latency and isolated CI transients are not signal
-// about the classifier's correctness, and in production a timeout just falls back to
-// the deterministic score. Hard failures (exit 1): a wrong verdict, a real contract
-// error (400 / bad JSON / no client), no verdict even under the relaxed probe, or a
-// connection fault that RECURS on the relaxed probe (persistent, not a blip). Calls
-// that only completed over the production budget are reported as a latency datapoint
-// to re-check in a production-like network.
+// verdicts) and ALWAYS validates verdicts, never passing on zero. Two independent
+// retry layers, both scoped so they can NEVER mask a real classifier failure:
+//   1. Per-prompt relaxed probe. A prompt whose prod-budget call times out or hits an
+//      isolated connection drop is re-tried once at a relaxed timeout. If it recovers,
+//      the verdict is still validated (a timeout is a latency datapoint; a recovered
+//      drop is CI noise) — neither counts as a failure.
+//   2. Whole-probe retry. If a full run's ONLY failures are connectivity/latency
+//      (connection drops or timeouts that recurred on the relaxed probe) — i.e. zero
+//      wrong verdicts and zero contract errors — the whole probe is re-run once after
+//      a pause, because the Actions<->OpenAI path intermittently drops every connection
+//      for ~a minute ("Premature close" storms) that clear on their own.
+// HARD failures (exit 1, NEVER retried): a wrong verdict, or a real contract error
+// (400 / bad JSON / no client / schema mismatch). These exit 1 immediately, so a
+// nondeterministic re-run can never turn a genuine classifier failure green. A
+// connectivity storm that does NOT clear on the whole-probe retry also exits 1.
 import { classifyComplexityLLM, getRouterModel, ROUTER_TIMEOUT_MS } from "@/lib/ai/complexity";
 import { extractSignals } from "@/lib/ai/signals";
 
@@ -30,6 +33,9 @@ const PROMPTS: Array<{ prompt: string; expect: boolean }> = [
 
 const PROD_BUDGET_MS = ROUTER_TIMEOUT_MS; // the mandated production per-request budget (never a stale copy)
 const RELAXED_TIMEOUT_MS = 10_000; // generous enough to validate correctness on a slow network
+const STORM_RETRY_DELAY_MS = 60_000; // observed: total "Premature close" storms clear within ~a minute
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 // Narrow to the OpenAI SDK's typed connection-timeout (APIConnectionTimeoutError, whose
 // message is "Request timed out."). A broad /timeout/i would misclassify e.g. a gateway
@@ -44,9 +50,7 @@ function isTimeout(err: unknown): boolean {
 // request never received a complete response, so the classifier CONTRACT was never
 // exercised — distinct from a 400/bad-JSON (a real contract failure that must
 // hard-fail) and from a timeout (handled above). The OpenAI SDK wraps these as
-// APIConnectionError. Retried once via the relaxed probe; a fault that recurs there
-// is treated as persistent (hard fail), so only an isolated blip is tolerated —
-// this is what stops a flaky Actions<->OpenAI drop from false-reddening the gate.
+// APIConnectionError. Treated as connectivity, never as a contract error.
 function isTransientConnection(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   return (
@@ -55,14 +59,28 @@ function isTransientConnection(err: unknown): boolean {
   );
 }
 
-async function main() {
-  console.log(`Classifier smoke test — model: ${getRouterModel()}\n`);
-  let mismatches = 0; // wrong verdict → hard fail
-  let hardErrors = 0; // non-timeout API error → hard fail
-  let unresolved = 0; // no verdict even under the relaxed probe → hard fail
-  let overBudget = 0; // completed, but only after exceeding the production budget
-  let transientRetried = 0; // recovered from an isolated connection drop via the relaxed probe
-  let validated = 0; // verdicts actually obtained (strict or relaxed)
+type ProbeResult = {
+  mismatches: number; // wrong verdict — HARD (never retried)
+  contractErrors: number; // 400 / bad JSON / no client / schema mismatch — HARD (never retried)
+  connectionErrors: number; // connection dropped on BOTH attempts — RETRYABLE (connectivity)
+  unresolved: number; // timed out on BOTH attempts — RETRYABLE (latency)
+  overBudget: number; // recovered on the relaxed probe after a prod-budget timeout — not a failure
+  transientRetried: number; // recovered on the relaxed probe after a connection drop — not a failure
+  validated: number; // verdicts actually obtained (strict or relaxed)
+};
+
+// Runs the full prompt set once and prints a per-run summary line. Classifies every
+// failure into a HARD bucket (wrong verdict / contract error) or a RETRYABLE bucket
+// (connection drop / timeout that recurred on the relaxed probe); main() decides on
+// the whole-probe retry from those buckets.
+async function runProbe(): Promise<ProbeResult> {
+  let mismatches = 0;
+  let contractErrors = 0;
+  let connectionErrors = 0;
+  let unresolved = 0;
+  let overBudget = 0;
+  let transientRetried = 0;
+  let validated = 0;
 
   for (const { prompt, expect } of PROMPTS) {
     const signals = extractSignals(prompt);
@@ -78,15 +96,15 @@ async function main() {
       const timedOut = isTimeout(err);
       const transient = !timedOut && isTransientConnection(err);
       if (!timedOut && !transient) {
-        // Real contract error (400 / bad JSON / no client) — hard fail, no retry.
-        hardErrors++;
+        // Real contract error (400 / bad JSON / no client) — HARD, no relaxed probe.
+        contractErrors++;
         console.log(`FAIL [${Date.now() - started}ms] "${prompt}" — ${err instanceof Error ? err.message : String(err)}`);
         continue;
       }
-      // Timeout at the production budget, or an isolated connection drop — either way
-      // re-validate the verdict once via the relaxed probe. A timeout is a latency
-      // datapoint; a recovered drop is CI noise. Both, if they RECUR on the relaxed
-      // probe below, surface as a hard failure (unresolved / persistent fault).
+      // Timeout at the production budget, or an isolated connection drop — re-validate
+      // the verdict once via the relaxed probe. A timeout is a latency datapoint; a
+      // recovered drop is CI noise. If EITHER recurs on the relaxed probe below, it
+      // becomes a RETRYABLE failure (unresolved / connectionErrors), not a hard one.
       if (timedOut) overBudget++;
       else transientRetried++;
       relaxed = true;
@@ -98,8 +116,11 @@ async function main() {
         if (isTimeout(err2)) {
           unresolved++;
           console.log(`FAIL [>${RELAXED_TIMEOUT_MS}ms] "${prompt}" — no verdict even under the relaxed probe`);
+        } else if (isTransientConnection(err2)) {
+          connectionErrors++;
+          console.log(`FAIL "${prompt}" — connection dropped on both attempts: ${err2 instanceof Error ? err2.message : String(err2)}`);
         } else {
-          hardErrors++;
+          contractErrors++;
           console.log(`FAIL "${prompt}" — ${err2 instanceof Error ? err2.message : String(err2)}`);
         }
         continue;
@@ -115,23 +136,44 @@ async function main() {
   }
 
   console.log(
-    `\n${PROMPTS.length} prompts — ${validated} verdict(s) validated, ${mismatches} wrong, ${hardErrors} API error(s), ${unresolved} unresolved, ${overBudget} over the ${PROD_BUDGET_MS}ms budget, ${transientRetried} transient retry(ies).`
+    `\n${PROMPTS.length} prompts — ${validated} validated, ${mismatches} wrong, ${contractErrors} contract error(s), ${connectionErrors} connection drop(s), ${unresolved} unresolved, ${overBudget} over the ${PROD_BUDGET_MS}ms budget, ${transientRetried} transient retry(ies).`
   );
-  const failures = mismatches + hardErrors + unresolved;
-  if (failures === 0 && overBudget > 0) {
+  return { mismatches, contractErrors, connectionErrors, unresolved, overBudget, transientRetried, validated };
+}
+
+async function main() {
+  console.log(`Classifier smoke test — model: ${getRouterModel()}\n`);
+
+  let r = await runProbe();
+  const hardOf = (x: ProbeResult) => x.mismatches + x.contractErrors;
+  const retryableOf = (x: ProbeResult) => x.connectionErrors + x.unresolved;
+
+  // Whole-probe retry — ONLY when this run failed purely on connectivity/latency (no
+  // wrong verdicts, no contract errors). A hard failure exits 1 with no retry, so a
+  // nondeterministic re-run can never mask a genuine classifier failure.
+  if (hardOf(r) === 0 && retryableOf(r) > 0) {
     console.log(
-      `Note: ${overBudget} call(s) exceeded the ${PROD_BUDGET_MS}ms budget on this network and were validated via the relaxed probe. In production a timeout falls back to the deterministic score; re-check the budget in a production-like environment.`
+      `\nAll ${retryableOf(r)} failure(s) were connectivity/latency (0 wrong verdicts, 0 contract errors) — likely a transient storm. Retrying the whole probe once after ${STORM_RETRY_DELAY_MS / 1000}s...\n`
+    );
+    await sleep(STORM_RETRY_DELAY_MS);
+    r = await runProbe();
+  }
+
+  const failures = hardOf(r) + retryableOf(r);
+  if (failures === 0 && r.overBudget > 0) {
+    console.log(
+      `Note: ${r.overBudget} call(s) exceeded the ${PROD_BUDGET_MS}ms budget on this network and were validated via the relaxed probe. In production a timeout falls back to the deterministic score; re-check the budget in a production-like environment.`
     );
   }
-  if (failures === 0 && transientRetried > 0) {
+  if (failures === 0 && r.transientRetried > 0) {
     console.log(
-      `Note: ${transientRetried} call(s) hit a transient connection drop and recovered on the relaxed probe (isolated CI network blip, not a classifier fault).`
+      `Note: ${r.transientRetried} call(s) hit a transient connection drop and recovered on the relaxed probe (isolated CI network blip, not a classifier fault).`
     );
   }
   console.log(
     failures === 0
       ? "\nSmoke test passed (all verdicts validated and correct)."
-      : `\nSmoke test FAILED — ${failures} failure(s) (wrong verdicts / API errors / unresolved).`
+      : `\nSmoke test FAILED — ${failures} failure(s): ${r.mismatches} wrong verdict(s), ${r.contractErrors} contract error(s), ${r.connectionErrors} connection drop(s), ${r.unresolved} unresolved.`
   );
   process.exit(failures === 0 ? 0 : 1);
 }

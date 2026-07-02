@@ -1240,6 +1240,25 @@ describe("deep retrieval mode", () => {
     expect(calls[1][0]).toMatchObject({ book: undefined, chapter: undefined, limit: 5 }); // corpus-wide
   });
 
+  it("deep + pinned scope dedups a verse returned by BOTH the scoped and corpus-wide passes", async () => {
+    // The corpus-wide pass spans the pinned scope too, so both passes surface John
+    // 3:16; without cross-pass dedup it appears twice in the evidence (burning the
+    // MAX_EVIDENCE_CHARS budget and skewing synthesis) and twice in the citations.
+    searchSemanticDetailed.mockResolvedValue(
+      semanticResult([{ reference: "John 3:16", corpus: "WEB", text: "loved" }])
+    );
+    const signals = extractSignals("verses about love in John 3");
+    const packet = await runRetrievalPlan(signals, "verses about love in John 3", {
+      semanticEnabled: true,
+      deep: true
+    });
+    // Both searches still ran (two traces preserved), but the shared verse is emitted once.
+    expect(searchSemanticDetailed.mock.calls).toHaveLength(2);
+    const headerCount = packet.formattedEvidence.match(/#### John 3:16 \(semantic hit\)/g)?.length ?? 0;
+    expect(headerCount).toBe(1);
+    expect(packet.citations.filter((c) => c.reference === "John 3:16")).toHaveLength(1);
+  });
+
   it("deep + pinned scope runs the corpus-wide pass even for termless prompts (relaxed gate)", async () => {
     // Proper nouns are filtered → no topic words → standard gate would skip semantic
     // entirely. NOTE: "…about Paul himself?" is NOT termless ("himself" survives as a

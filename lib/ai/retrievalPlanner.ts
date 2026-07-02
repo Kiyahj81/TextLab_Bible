@@ -539,7 +539,12 @@ function semanticCall(
   prompt: string,
   keywords: string,
   scope: Scope,
-  opts: { limit: number; scopeLabel: "scoped" | "corpus-wide"; deep: boolean }
+  // `seenRefs` is a set SHARED across the deep-mode passes: the corpus-wide pass
+  // searches the whole corpus, which INCLUDES the pinned scope, so without it the
+  // scoped and corpus-wide passes emit the same verse twice (duplicate evidence
+  // blocks that burn the MAX_EVIDENCE_CHARS budget and duplicate citation rows).
+  // A hit whose reference is already claimed by an earlier pass is skipped entirely.
+  opts: { limit: number; scopeLabel: "scoped" | "corpus-wide"; deep: boolean; seenRefs?: Set<string> }
 ): PlannedCall {
   // Record `keywords` (the FTS half's query) in the trace so the grounding context
   // and user-visible tool-trace reflect that a keyword FTS pass ran alongside KNN.
@@ -574,6 +579,10 @@ function semanticCall(
       hits.forEach((hit, i) => {
         const window = windows[i];
         if (window.length === 0) return;
+        // Cross-pass dedup (deep mode): don't re-emit a verse an earlier pass already
+        // claimed. Skipping the whole hit drops both its evidence block and its citation.
+        if (opts.seenRefs?.has(hit.reference)) return;
+        opts.seenRefs?.add(hit.reference);
         lines.push(`#### ${hit.reference} (semantic hit)`);
         for (const v of window) {
           lines.push(`- ${v.reference}, SBLGNT: ${v.sblText}`);
@@ -665,10 +674,17 @@ function buildPlan(signals: Signals, prompt: string, semanticEnabled: boolean, d
     const scopePinned = scope.book !== undefined || scope.chapter !== undefined;
     if (deep) {
       if (scopePinned) {
+        // Shared across both passes so the corpus-wide pass (which spans the pinned
+        // scope too) never re-emits a verse the scoped pass already returned.
+        const seenRefs = new Set<string>();
         if (shouldRunSemantic(signals)) {
-          plan.push(semanticCall(prompt, keywords, scope, { limit: SEMANTIC_HIT_LIMIT, scopeLabel: "scoped", deep }));
+          plan.push(
+            semanticCall(prompt, keywords, scope, { limit: SEMANTIC_HIT_LIMIT, scopeLabel: "scoped", deep, seenRefs })
+          );
         }
-        plan.push(semanticCall(prompt, keywords, {}, { limit: SEMANTIC_HIT_LIMIT, scopeLabel: "corpus-wide", deep }));
+        plan.push(
+          semanticCall(prompt, keywords, {}, { limit: SEMANTIC_HIT_LIMIT, scopeLabel: "corpus-wide", deep, seenRefs })
+        );
       } else {
         plan.push(
           semanticCall(prompt, keywords, {}, { limit: SEMANTIC_HIT_LIMIT_DEEP_UNSCOPED, scopeLabel: "corpus-wide", deep })

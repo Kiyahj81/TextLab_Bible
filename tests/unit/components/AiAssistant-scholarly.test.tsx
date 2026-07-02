@@ -98,6 +98,30 @@ describe("AiAssistant scholarly escalation", () => {
     expect(JSON.parse(fetchMock().mock.calls[1][1].body as string).escalate).toBe(true);
   });
 
+  it("hides the scholarly button on a non-live fallback (modelUsed none) — escalation can't work", async () => {
+    // Live synthesis disabled → modelUsed "none"; answerBibleQuestion exits before
+    // routing, so escalation is impossible. Offering the button would only re-run the
+    // same fallback, so it must be hidden.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          ...defaultResponse,
+          mode: "fallback",
+          modelUsed: "none",
+          recommendedUpgrade: undefined,
+          routingDecision: "Live synthesis is disabled, so TextLab returned the deterministic local retrieval fallback (no model call was made)."
+        })
+      })
+    );
+    render(<AiAssistant initialNotes={[]} />);
+    fireEvent.change(screen.getByPlaceholderText(/Show me every use/i), { target: { value: "simple question" } });
+    fireEvent.click(screen.getByRole("button", { name: /ask assistant/i }));
+    await screen.findByText("default answer");
+    expect(screen.queryByRole("button", { name: /use scholarly model/i })).toBeNull();
+  });
+
   it("expires the legacy auto-scholarly cookie on mount so the migration can be retired", () => {
     document.cookie = "textlab-assistant-auto-scholarly=1; path=/";
     document.cookie = "textlab-assistant-confirm-scholarly=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";

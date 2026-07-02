@@ -350,12 +350,14 @@ export function AiAssistant({
                 ) : null}
               </details>
             ) : null}
-            {/* Manual escalation is always available when the answer isn't already
-                scholarly — decoupled from recommendedUpgrade so a prompt the router
-                judged routine (or a classifier-outage score-fallback that no longer
-                recommends an upgrade) can still be re-run with the scholarly model.
-                recommendedUpgrade only changes the framing, not availability. */}
-            {!restoredView && response && response.modelRole !== "scholarly" ? (
+            {/* Manual escalation is available when the answer isn't already scholarly
+                AND live synthesis actually ran — decoupled from recommendedUpgrade so a
+                prompt the router judged routine (or a classifier-outage score-fallback
+                that no longer recommends an upgrade) can still be re-run with the
+                scholarly model. Excluded when modelUsed is "none" (non-live fallback):
+                escalation would re-run the same fallback because answerBibleQuestion
+                exits before routing when live synthesis is disabled. */}
+            {!restoredView && response && response.modelRole !== "scholarly" && response.modelUsed !== "none" ? (
               <div className="mb-4 flex flex-wrap items-center gap-3 rounded-md border border-accent-300 bg-accent-50 p-3 text-sm">
                 <span className="text-slate-700">
                   {response.recommendedUpgrade

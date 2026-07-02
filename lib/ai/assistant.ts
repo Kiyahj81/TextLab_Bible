@@ -1,9 +1,6 @@
 import { createMarkdownExport } from "@/lib/export/markdown";
 import {
   type AssistantMode,
-  type ModelRole,
-  type RecommendedUpgrade,
-  type RouterSource,
   type RoutingDecision,
   isLiveAssistantEnabled,
   routeAssistantPrompt
@@ -23,7 +20,11 @@ import { type ToolTraceEntry } from "@/lib/ai/toolTrace";
 
 export { detectBookFromPrompt };
 
-export type AssistantAnswer = {
+// The routing fields (modelRole, modelUsed, routingDecision, deep, routerSource,
+// complexityScore, recommendedUpgrade) come straight from RoutingDecision via
+// intersection so a new routing field can never silently drop from one of the
+// parallel answer/metadata declarations without a type error.
+export type AssistantAnswer = RoutingDecision & {
   answer: string;
   citations: AssistantCitation[];
   markdown: string;
@@ -31,14 +32,7 @@ export type AssistantAnswer = {
   mode: AssistantMode;
   grounded: boolean;
   groundingReport?: GroundingReport;
-  modelRole: ModelRole;
-  modelUsed: string;
-  routingDecision: string;
-  recommendedUpgrade?: RecommendedUpgrade;
   sessionId?: string;
-  deep: boolean;
-  routerSource: RouterSource;
-  complexityScore?: number;
 };
 
 export async function answerBibleQuestion(
@@ -155,7 +149,7 @@ function fallbackAnswer(prompt: string, evidence: EvidencePacket, routing: Routi
   });
 }
 
-type WithMarkdownInput = {
+type WithMarkdownInput = RoutingDecision & {
   title: string;
   answer: string;
   citations: AssistantCitation[];
@@ -163,13 +157,6 @@ type WithMarkdownInput = {
   mode: AssistantMode;
   grounded: boolean;
   groundingReport?: GroundingReport;
-  modelRole: ModelRole;
-  modelUsed: string;
-  routingDecision: string;
-  recommendedUpgrade?: RecommendedUpgrade;
-  deep: boolean;
-  routerSource: RouterSource;
-  complexityScore?: number;
 };
 
 function withMarkdown(input: WithMarkdownInput): AssistantAnswer {

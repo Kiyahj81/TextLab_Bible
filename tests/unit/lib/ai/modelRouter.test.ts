@@ -4,7 +4,6 @@ import {
   getModelForRole,
   getTemperature,
   isLiveAssistantEnabled,
-  recommendScholarlyUpgrade,
   routeAssistantPrompt
 } from "@/lib/ai/modelRouter";
 import { extractSignals } from "@/lib/ai/signals";
@@ -61,14 +60,20 @@ describe("routeAssistantPrompt", () => {
     expect(decision.recommendedUpgrade).toBeUndefined();
   });
 
-  it("live + classifier failure → score fallback with score-fallback source", async () => {
+  it("live + classifier failure → score fallback with score-fallback source (and warns)", async () => {
     mockedClassify.mockRejectedValue(new Error("Request timed out."));
+    // The fallback must be observable, not silent — assert the warn fires AND keep
+    // test output pristine by suppressing it through the spy.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const prompt = "How do Paul in Romans and James reconcile faith and works?";
     const decision = await routeAssistantPrompt(prompt, { live: true, signals: extractSignals(prompt) });
     expect(decision.modelRole).toBe("scholarly"); // reconcile cue scores 2
     expect(decision.deep).toBe(true);
     expect(decision.routerSource).toBe("score-fallback");
     expect(decision.complexityScore).toBeGreaterThanOrEqual(2);
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn.mock.calls[0][0]).toContain("Request timed out.");
+    warn.mockRestore();
   });
 
   it("live=false uses the score only (never calls the classifier)", async () => {
@@ -97,29 +102,6 @@ describe("routeAssistantPrompt", () => {
     expect(decision.modelRole).toBe("default");
     expect(decision.deep).toBe(false);
     expect(decision.complexityScore).toBe(1);
-  });
-});
-
-describe("recommendScholarlyUpgrade", () => {
-  const rec = (p: string) => recommendScholarlyUpgrade(p, extractSignals(p));
-
-  it("returns undefined for a simple lookup", () => {
-    expect(rec("What does John 1:1 say?")).toBeUndefined();
-  });
-
-  it("recommends scholarly when the score crosses the threshold", () => {
-    expect(rec("How do Paul in Romans and James reconcile faith and works?")?.modelRole).toBe("scholarly");
-    expect(rec("Compare δικαιοσύνη in Romans and Galatians")?.modelRole).toBe("scholarly");
-    expect(rec("Give a deep synthesis of atonement")?.modelRole).toBe("scholarly");
-  });
-
-  it("no longer recommends scholarly on bare why-framing (intentional change)", () => {
-    // The old OR-gate escalated this on the solo cue; the weighted score does not.
-    expect(rec("Why does Paul emphasize faith?")).toBeUndefined();
-  });
-
-  it("does NOT recommend scholarly for a routine multi-topic survey", () => {
-    expect(rec("Find verses about faith, hope, and love")).toBeUndefined();
   });
 });
 

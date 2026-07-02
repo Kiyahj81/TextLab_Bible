@@ -2,6 +2,7 @@
 // One job: judge whether a prompt needs deep, cross-text synthesis.
 // Two strategies: a pure weighted score (deterministic floor — eval gate, kill
 // switch, classifier failure) and an LLM classifier (live path, added in Task 2).
+import type OpenAI from "openai";
 import { z } from "zod";
 import { detectConceptWords, type Signals } from "@/lib/ai/signals";
 import { getOpenAi } from "@/lib/ai/openaiClient";
@@ -97,7 +98,7 @@ export async function classifyComplexityLLM(prompt: string, signals?: Signals): 
   const distinctBooks = new Set((signals?.references ?? []).map((r) => r.book)).size;
   const context = `intent: ${signals?.intent ?? "unknown"}; distinct books referenced: ${distinctBooks}`;
 
-  const inputItems = [
+  const input: OpenAI.Responses.ResponseInput = [
     { role: "user", content: [{ type: "input_text", text: `${context}\n\nQuestion to classify:\n${prompt}` }] }
   ];
 
@@ -108,8 +109,7 @@ export async function classifyComplexityLLM(prompt: string, signals?: Signals): 
       max_output_tokens: ROUTER_MAX_OUTPUT_TOKENS,
       reasoning: { effort: "low" },
       text: { format: ROUTER_OUTPUT_FORMAT },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      input: inputItems as any
+      input
     },
     { timeout: ROUTER_TIMEOUT_MS, maxRetries: 0 }
   );

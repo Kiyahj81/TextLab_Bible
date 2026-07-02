@@ -63,11 +63,6 @@ export function isLiveAssistantEnabled() {
 const CONFIRM_UPGRADE_REASON =
   "This question looks like it needs deeper, cross-text synthesis; confirm before using the scholarly model.";
 
-export function recommendScholarlyUpgrade(prompt: string, signals?: Signals): RecommendedUpgrade | undefined {
-  if (!scoreComplexity(prompt, signals).complex) return undefined;
-  return { modelRole: "scholarly", model: getModelForRole("scholarly"), reason: CONFIRM_UPGRADE_REASON };
-}
-
 export async function routeAssistantPrompt(
   prompt: string,
   options: { escalate?: boolean; confirmEscalation?: boolean; signals?: Signals; live?: boolean } = {}
@@ -99,7 +94,16 @@ export async function routeAssistantPrompt(
       complex = verdict.complex;
       llmReason = verdict.reason;
       routerSource = "llm";
-    } catch {
+    } catch (error) {
+      // Fail open to the deterministic score, but never silently: a misconfigured
+      // OPENAI_ROUTER_MODEL (or one that rejects reasoning:{effort:"low"}) 400s on
+      // EVERY live request and would permanently, invisibly degrade routing to the
+      // stricter score. One warn line makes that failure mode observable in logs.
+      console.warn(
+        `[assistant] complexity classifier unavailable; falling back to deterministic score: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
       const scored = scoreComplexity(prompt, signals);
       complex = scored.complex;
       complexityScore = scored.score;

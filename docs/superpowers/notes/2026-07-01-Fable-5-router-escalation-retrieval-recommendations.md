@@ -27,7 +27,7 @@ I've now got the full picture of routing and retrieval. Here's my assessment and
 
   For the retrieval misses (your "sometimes 3"):
 
-  E. Dynamic English--lemma discovery via glosses. Topical retrieval currently lives or dies by the ~60-entry hand-curated ENGLISH_TO_GREEK_LEMMA map; anything unmapped falls back to WEB keyword FTS. You already have MACULA glosses per token -- a searchGloss(englishWord) step could discover candidate lemmas for any English content word (e.g. "neighbor") and then run the precise lemma search. That's the general fix for the love-neighbor-style thin-retrieval failures, without endless map curation.
+  E. Dynamic English--lemma discovery via glosses. Topical retrieval currently lives or dies by the ~60-entry hand-curated ENGLISH_TO_GREEK_LEMMA map; anything unmapped falls back to WEB keyword FTS. You already have MACULA glosses per token -- a searchGloss(englishWord) step could discover candidate lemmas for any English content word (e.g. "neighbor" --> πλησίον) and then run the precise lemma search. That's the general fix for the love-neighbor-style thin-retrieval failures, without endless map curation.
 
   F. Give the refinement round real tools. The synthesis model can currently fetch only an adjacent passage (getPassage, one round). Letting it also call searchLemma/searchKeyword once would let it fill the exact gap it notices ("the question mentions the Good Samaritan but I have no Luke 10") instead of writing around it or importing unretrieved content. The grounding verifier still backstops everything, so the safety story is unchanged. (Your 2026-05-27 agentic-tool-calling spec is essentially this, deliberately shelved -- this would be a minimal, capped revival.)
 
@@ -39,7 +39,7 @@ I've now got the full picture of routing and retrieval. Here's my assessment and
   My recommendation: merge PR 54 as-is, and do A+B+E as fresh follow-up work on top of main. Here's the reasoning:
 
   Why not add to PR 54:
-  - It's already large (36 files, ~2,700 lines) and in a finished state: two external review passes addressed, npm run verify green, eval gate 20/20, acceptance synced, and Ã¢ most importantly Ã¢ a published before/after faithfulness measurement (0.64 --> 0.93) that describes exactly the code in the PR. Piling routing and retrieval changes on top invalidates the reviews and muddies what that snapshot measured.
+  - It's already large (36 files, ~2,700 lines) and in a finished state: two external review passes addressed, npm run verify green, eval gate 20/20, acceptance synced, and -- most importantly -- a published before/after faithfulness measurement (0.64 --> 0.93) that describes exactly the code in the PR. Piling routing and retrieval changes on top invalidates the reviews and muddies what that snapshot measured.
   - A+B+E are behavior changes that deserve their own eval snapshot. The clean experiment is: Stage 1 merged = the new baseline; routing/retrieval work measured against it. If you mix them into PR 54, you can never tell which change bought what.
   - PR 54 is pure improvement over main already. Holding a merged-ready +0.30 faithfulness gain hostage to new work just delays shipping value and grows rebase risk.
 
@@ -52,7 +52,7 @@ I've now got the full picture of routing and retrieval. Here's my assessment and
 
   They're independent, so if you want speed we could even run them in parallel worktrees -- but sequential (A+B first, it's the smaller one and your primary pain) is the simpler default.
 
-  So the concrete sequence: you merge PR 54 whenever you're ready (per your usual gate Ã¢ that's your call, not mine), then I'll start with A+B: brainstorm/spec the cue weights and the deep-retrieval knobs, write the plan, then implement. Want me to start drafting the A+B design now while you handle the merge?
+  So the concrete sequence: you merge PR 54 whenever you're ready (per your usual gate -- that's your call, not mine), then I'll start with A+B: brainstorm/spec the cue weights and the deep-retrieval knobs, write the plan, then implement. Want me to start drafting the A+B design now while you handle the merge?
 ------
   We were about to start working on A+B and E on new PRs (A+B together and then E). PR 54 merged and we were back on main.
   

@@ -232,9 +232,11 @@ async function run() {
     await answerPre.filter({ hasText: "John 1:14" }).waitFor();
     await page.getByText("Local fallback").waitFor();
     // Live synthesis is disabled here, so no routing runs and no model is called: the
-    // answer honestly reports modelUsed "none" (rendered "default — none"), NOT the
-    // default model name. Regex tolerates the em-dash separator between role and model.
-    await page.getByText(/default\s+\S+\s+none/).waitFor();
+    // answer honestly reports modelUsed "none", rendered as the "role — model" label
+    // (AiAssistant.tsx: `{modelRole} — {modelUsed}`), i.e. "default — none" — NOT the
+    // default model name. Match the exact em-dash separator (not a loose `\S+`) so a
+    // formatting regression in that label is still caught.
+    await page.getByText(/default\s+—\s+none/).waitFor();
     await page.getByText('searchLemma({"lemma":"λόγος","book":"John","chapter":1})').waitFor();
     await page.getByText("John 1:1, SBLGNT").first().waitFor();
     // Live mode is disabled in acceptance, so this answer comes from the

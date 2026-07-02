@@ -535,16 +535,29 @@ async function expandOnSpineWindow(
   }));
 }
 
+// True iff `reference` falls within every pinned dimension of `scope` (book, and
+// chapter when the scope pins one). An empty scope pins nothing → never "within".
+function isWithinScope(reference: string, scope: Scope): boolean {
+  if (scope.book === undefined && scope.chapter === undefined) return false;
+  const parsed = parseReference(reference);
+  if (!parsed) return false; // unparseable → don't exclude (safe default)
+  if (scope.book !== undefined && parsed.book !== scope.book) return false;
+  if (scope.chapter !== undefined && parsed.chapter !== scope.chapter) return false;
+  return true;
+}
+
 function semanticCall(
   prompt: string,
   keywords: string,
   scope: Scope,
-  // `seenRefs` is a set SHARED across the deep-mode passes: the corpus-wide pass
-  // searches the whole corpus, which INCLUDES the pinned scope, so without it the
-  // scoped and corpus-wide passes emit the same verse twice (duplicate evidence
-  // blocks that burn the MAX_EVIDENCE_CHARS budget and duplicate citation rows).
-  // A hit whose reference is already claimed by an earlier pass is skipped entirely.
-  opts: { limit: number; scopeLabel: "scoped" | "corpus-wide"; deep: boolean; seenRefs?: Set<string> }
+  // `excludeScope` (deep corpus-wide pass only): the pinned scope the SCOPED pass
+  // already covers. The corpus-wide pass searches the whole corpus — which spans the
+  // pinned scope — so without exclusion its top hits are the same in-scope verses,
+  // producing duplicate evidence/citations AND leaving deep mode with no cross-text
+  // coverage. We over-fetch, drop in-scope hits, and keep the top `limit` survivors,
+  // so the two deep passes are DISJOINT by construction (no shared state / no
+  // completion-order race) and the corpus-wide pass always contributes cross-text hits.
+  opts: { limit: number; scopeLabel: "scoped" | "corpus-wide"; deep: boolean; excludeScope?: Scope }
 ): PlannedCall {
   // Record `keywords` (the FTS half's query) in the trace so the grounding context
   // and user-visible tool-trace reflect that a keyword FTS pass ran alongside KNN.
@@ -556,6 +569,9 @@ function semanticCall(
     key: `semantic:${opts.scopeLabel}|${scope.book ?? ""}|${scope.chapter ?? ""}`,
     errorTrace: { tool: "searchSemantic", args: { ...args, scope: opts.scopeLabel, deep: opts.deep } },
     run: async () => {
+      // Over-fetch when excluding a scope so filtering still yields a full `limit` of
+      // cross-text hits (backfill), then drop in-scope hits and take the top survivors.
+      const fetchLimit = opts.excludeScope ? opts.limit + SEMANTIC_HIT_LIMIT : opts.limit;
       const semantic = await searchSemanticDetailed({
         query: prompt,
         keywords,
@@ -563,9 +579,11 @@ function semanticCall(
         // Honor the same chapter scope as the deterministic calls: a prompt like
         // "verses about love in John 3" must not pull semantic hits from other chapters.
         chapter: scope.chapter,
-        limit: opts.limit
+        limit: fetchLimit
       });
-      const hits = semantic.results;
+      const hits = opts.excludeScope
+        ? semantic.results.filter((h) => !isWithinScope(h.reference, opts.excludeScope!)).slice(0, opts.limit)
+        : semantic.results;
       const traceArgs = {
         ...args,
         rerankStatus: semantic.rerank.status,
@@ -579,10 +597,6 @@ function semanticCall(
       hits.forEach((hit, i) => {
         const window = windows[i];
         if (window.length === 0) return;
-        // Cross-pass dedup (deep mode): don't re-emit a verse an earlier pass already
-        // claimed. Skipping the whole hit drops both its evidence block and its citation.
-        if (opts.seenRefs?.has(hit.reference)) return;
-        opts.seenRefs?.add(hit.reference);
         lines.push(`#### ${hit.reference} (semantic hit)`);
         for (const v of window) {
           lines.push(`- ${v.reference}, SBLGNT: ${v.sblText}`);
@@ -674,16 +688,20 @@ function buildPlan(signals: Signals, prompt: string, semanticEnabled: boolean, d
     const scopePinned = scope.book !== undefined || scope.chapter !== undefined;
     if (deep) {
       if (scopePinned) {
-        // Shared across both passes so the corpus-wide pass (which spans the pinned
-        // scope too) never re-emits a verse the scoped pass already returned.
-        const seenRefs = new Set<string>();
         if (shouldRunSemantic(signals)) {
           plan.push(
-            semanticCall(prompt, keywords, scope, { limit: SEMANTIC_HIT_LIMIT, scopeLabel: "scoped", deep, seenRefs })
+            semanticCall(prompt, keywords, scope, { limit: SEMANTIC_HIT_LIMIT, scopeLabel: "scoped", deep })
           );
         }
+        // Corpus-wide pass EXCLUDES the pinned scope (which the scoped pass covers), so
+        // it adds distinct cross-text evidence and can never duplicate the scoped pass.
         plan.push(
-          semanticCall(prompt, keywords, {}, { limit: SEMANTIC_HIT_LIMIT, scopeLabel: "corpus-wide", deep, seenRefs })
+          semanticCall(prompt, keywords, {}, {
+            limit: SEMANTIC_HIT_LIMIT,
+            scopeLabel: "corpus-wide",
+            deep,
+            excludeScope: scope
+          })
         );
       } else {
         plan.push(

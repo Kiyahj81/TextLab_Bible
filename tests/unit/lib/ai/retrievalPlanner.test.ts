@@ -1237,26 +1237,37 @@ describe("deep retrieval mode", () => {
     const calls = searchSemanticDetailed.mock.calls;
     expect(calls).toHaveLength(2);
     expect(calls[0][0]).toMatchObject({ book: "John", chapter: 3, limit: 5 });   // scoped
-    expect(calls[1][0]).toMatchObject({ book: undefined, chapter: undefined, limit: 5 }); // corpus-wide
+    // Corpus-wide over-fetches (5 + SEMANTIC_HIT_LIMIT) so it can backfill cross-text
+    // hits after excluding the pinned scope.
+    expect(calls[1][0]).toMatchObject({ book: undefined, chapter: undefined, limit: 10 });
   });
 
-  it("deep + pinned scope dedups a verse returned by BOTH the scoped and corpus-wide passes", async () => {
-    // The corpus-wide pass spans the pinned scope too, so both passes surface John
-    // 3:16; without cross-pass dedup it appears twice in the evidence (burning the
-    // MAX_EVIDENCE_CHARS budget and skewing synthesis) and twice in the citations.
-    searchSemanticDetailed.mockResolvedValue(
-      semanticResult([{ reference: "John 3:16", corpus: "WEB", text: "loved" }])
-    );
+  it("deep + pinned scope: corpus-wide pass excludes in-scope hits and adds distinct cross-text evidence", async () => {
+    // The scoped pass covers John 3. The corpus-wide pass must EXCLUDE John 3 (so it
+    // never duplicates the scoped pass) and instead surface cross-text verses. Its top
+    // hit here is in-scope (John 3:16 → dropped); the next is cross-text (Rom 5:8 → kept).
+    searchSemanticDetailed
+      .mockResolvedValueOnce(semanticResult([{ reference: "John 3:16", corpus: "WEB", text: "loved" }])) // scoped
+      .mockResolvedValueOnce(
+        semanticResult([
+          { reference: "John 3:16", corpus: "WEB", text: "loved" }, // in-scope → excluded from corpus-wide
+          { reference: "Rom 5:8", corpus: "WEB", text: "while we were sinners" } // cross-text → kept
+        ])
+      );
     const signals = extractSignals("verses about love in John 3");
     const packet = await runRetrievalPlan(signals, "verses about love in John 3", {
       semanticEnabled: true,
       deep: true
     });
-    // Both searches still ran (two traces preserved), but the shared verse is emitted once.
     expect(searchSemanticDetailed.mock.calls).toHaveLength(2);
-    const headerCount = packet.formattedEvidence.match(/#### John 3:16 \(semantic hit\)/g)?.length ?? 0;
-    expect(headerCount).toBe(1);
+    // John 3:16 appears once — from the scoped pass only; the corpus-wide copy is
+    // excluded (not deduped), so no wasted evidence block or duplicate citation.
+    const johnCount = packet.formattedEvidence.match(/#### John 3:16 \(semantic hit\)/g)?.length ?? 0;
+    expect(johnCount).toBe(1);
     expect(packet.citations.filter((c) => c.reference === "John 3:16")).toHaveLength(1);
+    // The corpus-wide pass contributes DISTINCT cross-text evidence (deep mode's point).
+    expect(packet.formattedEvidence).toContain("#### Rom 5:8 (semantic hit)");
+    expect(packet.citations.some((c) => c.reference === "Rom 5:8")).toBe(true);
   });
 
   it("deep + pinned scope runs the corpus-wide pass even for termless prompts (relaxed gate)", async () => {

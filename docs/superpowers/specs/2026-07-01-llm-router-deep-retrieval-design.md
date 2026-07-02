@@ -39,6 +39,8 @@ Today retrieval runs before routing; deep retrieval requires the reverse.
 
 This reorder is a cross-file orchestration change, not a local refactor: it lands together across `lib/ai/assistant.ts`, `lib/ai/modelRouter.ts`, `lib/ai/retrievalPlanner.ts`, `lib/ai/sessions.ts` (persisted-metadata whitelist), `eval/runner.ts`, and the assistant/route/planner/sessions test suites.
 
+> **Deferred decision (report-mode eval determinism) — pending before the before/after `eval:report` run.** `eval/runner.ts` mirrors production in **report** mode, so the live classifier's verdict decides `deep`, which changes the evidence packet and therefore recall/precision/faithfulness. Run-to-run classifier variance can then move the report numbers independently of any code change, confounding a before/after comparison (and each report run spends ~1 classifier call per item). The **gate** is unaffected (it stays key-free — `live = semanticEnabled && isLiveAssistantEnabled()` is false there). Options when this is taken up: (a) compute the eval metrics from the deterministic score and report the LLM verdict alongside, or (b) surface per-item `routerSource`/`deep` deltas so the variance is legible. Consciously deferred: the maintainer will decide (a)/(b) before running the before/after `eval:report`; until then the report is not used for a headline comparison.
+
 ### New module: `lib/ai/complexity.ts`
 
 One unit with one job — judge whether a prompt needs deep, cross-text synthesis — offering two strategies:

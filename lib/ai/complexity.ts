@@ -47,17 +47,20 @@ export function scoreComplexity(prompt: string, signals?: Signals): ComplexitySc
 
 export type ComplexityVerdict = { complex: boolean; reason: string };
 
-const ROUTER_MODEL_DEFAULT = "gpt-5-mini";
+// gpt-5.4-mini (adopted 2026-07-02, was gpt-5-mini): OpenAI's low-latency mini,
+// materially faster than gpt-5-mini. A clean-runner A/B measured it at ~1.4-2.2s
+// (0/4 over the 3000ms budget) vs gpt-5-mini's 1-3/4 over with spikes to 4.6s, at
+// the same verdict accuracy — so the classifier now almost always completes rather
+// than timing out to the score. Env-overridable via OPENAI_ROUTER_MODEL.
+const ROUTER_MODEL_DEFAULT = "gpt-5.4-mini";
 // The shared client is deliberately 120s/1-retry (sized for synthesis); routing
 // must be fast-or-fallback, so BOTH values are overridden per-request below.
 // Exported so the live smoke test probes at the SAME budget (never a stale copy).
-// 3000ms (was 2000ms): two 2026-07-02 clean-runner smoke runs measured gpt-5-mini
-// (reasoning "low", structured output) with a wide, variable latency — a ~2.3-2.6s
-// median but frequent spikes past 3s (one call 4.6s). 2000ms timed out most calls;
-// 3000ms captures the median but NOT the tail, so a minority of complex prompts
-// still fall back to the score. A timeout degrades gracefully, and the durable fix
-// is the queued concurrent-retrieval reorder (run retrieval alongside routing), not
-// an ever-larger serial budget — see the design spec.
+// 3000ms: comfortable headroom for the gpt-5.4-mini default (clean-runner max ~2.2s),
+// so timeouts-to-score are rare. History: raised from 2000ms on 2026-07-02 because
+// the prior gpt-5-mini default spiked past 3s; kept at 3000ms after adopting
+// gpt-5.4-mini, as safety margin for latency variance. A timeout still degrades
+// gracefully to the deterministic score.
 export const ROUTER_TIMEOUT_MS = 3_000;
 // max_output_tokens includes reasoning tokens on reasoning models — 500 leaves
 // headroom so the JSON body is never truncated by reasoning spend.

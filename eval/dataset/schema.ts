@@ -19,10 +19,12 @@ export const goldenItemSchema = z.object({
   mustContainLemma: z.string().min(1).optional(),
   // Asserted against the DETERMINISTIC score's routing in the key-free gate.
   // NOT a live-routing expectation: in report mode the LLM classifier may
-  // legitimately route differently (observed 2026-07-02: the LLM consistently
-  // routes routing-why-alone-default scholarly — the purpose of Romans is
-  // contested scholarship — while the score correctly stays default). A report
-  // showing modelRole !== expectedRouting with routerSource "llm" is not a bug.
+  // legitimately route a borderline item differently from the score, and different
+  // router models disagree (2026-07-02: on routing-why-alone-default — "Why did Paul
+  // write Romans?", contested scholarship — gpt-5-mini routed scholarly while the
+  // current default gpt-5.4-mini agreed with the score's default). A report showing
+  // modelRole !== expectedRouting with routerSource "llm" is a model judgment call,
+  // not a bug.
   expectedRouting: z.enum(["default", "scholarly"]).optional(),
   notes: z.string().optional()
 });

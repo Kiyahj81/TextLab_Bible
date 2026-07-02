@@ -19,7 +19,7 @@ on:
   workflow_dispatch:
     inputs:
       router_model:
-        description: "Override OPENAI_ROUTER_MODEL for a clean-runner A/B (blank = repo default gpt-5-mini)"
+        description: "Override OPENAI_ROUTER_MODEL for a clean-runner A/B (blank = repo default gpt-5.4-mini)"
         required: false
         default: ""
         type: string
@@ -67,7 +67,7 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           # Blank on push/schedule and when the dispatch input is empty → getRouterModel()
-          # falls back to the repo default (gpt-5-mini). Set only for a dispatch A/B.
+          # falls back to the repo default (gpt-5.4-mini). Set only for a dispatch A/B.
           OPENAI_ROUTER_MODEL: ${{ inputs.router_model }}
         # One retry after a 60s pause. The Actions<->OpenAI path intermittently drops
         # EVERY connection for ~a minute ("Premature close" storms), which fails both

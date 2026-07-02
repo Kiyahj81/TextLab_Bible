@@ -132,8 +132,8 @@ describe("scoreComplexity", () => {
 });
 
 describe("getRouterModel", () => {
-  it("defaults to gpt-5-mini and honors the env override", () => {
-    expect(getRouterModel()).toBe("gpt-5-mini");
+  it("defaults to gpt-5.4-mini and honors the env override", () => {
+    expect(getRouterModel()).toBe("gpt-5.4-mini");
     vi.stubEnv("OPENAI_ROUTER_MODEL", "custom-router");
     expect(getRouterModel()).toBe("custom-router");
   });
@@ -147,7 +147,7 @@ describe("classifyComplexityLLM", () => {
     expect(verdict).toEqual({ complex: true, reason: "contested exegesis" });
     // Reasoning-model params + mandatory per-request overrides.
     const [body, opts] = create.mock.calls[0];
-    expect(body.model).toBe("gpt-5-mini");
+    expect(body.model).toBe("gpt-5.4-mini");
     expect(body.reasoning).toEqual({ effort: "low" });
     expect(body.temperature).toBeUndefined();
     expect(opts).toEqual({ timeout: 3_000, maxRetries: 0 });

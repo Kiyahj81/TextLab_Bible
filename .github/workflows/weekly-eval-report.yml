@@ -16,7 +16,7 @@ on:
   workflow_dispatch: # allow on-demand runs from the Actions tab
     inputs:
       router_model:
-        description: "Override OPENAI_ROUTER_MODEL for a router-model A/B (blank = repo default gpt-5-mini)"
+        description: "Override OPENAI_ROUTER_MODEL for a router-model A/B (blank = repo default gpt-5.4-mini)"
         required: false
         default: ""
         type: string
@@ -79,7 +79,7 @@ jobs:
           # Voyage rerank + faithfulness judge (Vercel AI Gateway):
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
           # Blank on schedule and when the dispatch input is empty → getRouterModel()
-          # uses the repo default (gpt-5-mini). Set only for an on-demand router A/B.
+          # uses the repo default (gpt-5.4-mini). Set only for an on-demand router A/B.
           OPENAI_ROUTER_MODEL: ${{ inputs.router_model }}
           # Per-attempt judge budget. Now redundant with the code default (raised
           # to 90s on 2026-07-02 after 30s also aborted local runs), kept as an

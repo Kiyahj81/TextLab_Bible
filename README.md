@@ -65,7 +65,7 @@ Core stack:
 
 The assistant is deliberately retrieval-first, and routing now runs *before* retrieval so a scholarly decision can widen it. A normal request flows through:
 
-1. Route the prompt: in live mode, an LLM complexity classifier (`OPENAI_ROUTER_MODEL`, default `gpt-5-mini`; 3s timeout, no retry) judges whether the question needs scholarly synthesis, falling back to a deterministic weighted-score classifier on any classifier failure or when live synthesis is off. Complex questions auto-escalate to the scholarly model by default; a user preference ("ask before using the scholarly model when a question looks complex") asks for confirmation instead of escalating automatically, and the user can also request scholarly mode manually at any time.
+1. Route the prompt: in live mode, an LLM complexity classifier (`OPENAI_ROUTER_MODEL`, default `gpt-5.4-mini`; 3s timeout, no retry) judges whether the question needs scholarly synthesis, falling back to a deterministic weighted-score classifier on any classifier failure or when live synthesis is off. Complex questions auto-escalate to the scholarly model by default; a user preference ("ask before using the scholarly model when a question looks complex") asks for confirmation instead of escalating automatically, and the user can also request scholarly mode manually at any time.
 2. Extract references, book/chapter scope, Greek words, topics, morphology, domain signals, and phrase terms.
 3. Plan deterministic searches: passage lookup, lemma, morphology, keyword, domain, and scoped chapter searches. Scholarly-routed requests run in **deep mode** — up to 12 deterministic calls instead of the standard 8, plus an additional corpus-wide semantic pass.
 4. Add semantic retrieval for topical prompts when `OPENAI_API_KEY` and embeddings are available.
@@ -171,7 +171,7 @@ Most npm scripts set `NODE_OPTIONS=--use-system-ca` so Node trusts the Windows c
 | `OPENAI_API_KEY` | Optional | Enables live synthesis, query embeddings, and `embed:verses`. Without it, assistant synthesis falls back locally. |
 | `OPENAI_DEFAULT_MODEL` | Optional | Default live synthesis model. |
 | `OPENAI_SCHOLARLY_MODEL` | Optional | Model used for scholarly escalation (auto-routed or user-confirmed). |
-| `OPENAI_ROUTER_MODEL` | Optional | Model used by the live complexity-routing classifier that decides scholarly escalation; defaults to `gpt-5-mini`. |
+| `OPENAI_ROUTER_MODEL` | Optional | Model used by the live complexity-routing classifier that decides scholarly escalation; defaults to `gpt-5.4-mini`. |
 | `OPENAI_REQUEST_TIMEOUT_MS`, `OPENAI_MAX_OUTPUT_TOKENS`, `OPENAI_TEMPERATURE` | Optional | Runtime bounds and sampling settings for synthesis. |
 | `TEXTLAB_ASSISTANT_DISABLE_LIVE` | Optional | Set to `1` to force local fallback even when an OpenAI key is present. |
 | `AI_GATEWAY_API_KEY` | Optional | Enables Voyage rerank and the eval report judge through Vercel AI Gateway. |

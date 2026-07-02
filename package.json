@@ -29,7 +29,8 @@
     "import:louw-nida": "cross-env NODE_OPTIONS=--use-system-ca tsx --env-file=.env scripts/import-louw-nida.ts",
     "embed:verses": "cross-env NODE_OPTIONS=--use-system-ca tsx --env-file=.env scripts/embed-verses.ts",
     "eval:gate": "cross-env NODE_OPTIONS=--use-system-ca tsx --env-file=.env.test scripts/eval-gate.ts",
-    "eval:report": "cross-env NODE_OPTIONS=--use-system-ca tsx --env-file=.env.test scripts/eval-report.ts"
+    "eval:report": "cross-env NODE_OPTIONS=--use-system-ca tsx --env-file=.env.test scripts/eval-report.ts",
+    "smoke:classifier": "cross-env NODE_OPTIONS=--use-system-ca tsx --env-file=.env scripts/smoke-classifier.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",

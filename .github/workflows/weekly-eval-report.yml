@@ -25,12 +25,17 @@ concurrency:
 jobs:
   report:
     runs-on: ubuntu-latest
-    # Must cover the SEQUENTIAL worst case: the report is only written after all
-    # ~20 questions finish, and each judge can take ~4.6min (3 x 90s + backoff)
-    # under sustained provider failure — ~100min total before retrieval/synthesis.
-    # Typical runs finish in a few minutes; a generous ceiling is harmless here
-    # (read-only job, concurrency-grouped, next run is a week away).
-    timeout-minutes: 120
+    # Must cover the SEQUENTIAL worst case: the report is written only after all 26
+    # golden items finish. The judge dominates — 3 attempts x 90s + 6s backoff =
+    # ~4.6min/item x 26 = ~120min under sustained judge timeouts — which alone meets
+    # the old 120min ceiling, leaving nothing for install/retrieval/synthesis, so a
+    # degraded run could be killed before the report is even written/uploaded. 180min
+    # clears the judge worst case plus that headroom. (A provider that is truly down
+    # returns errors fast rather than consuming full per-attempt timeouts, so real
+    # degraded runs finish well under this and healthy runs take a few minutes; a
+    # generous ceiling is harmless — read-only job, concurrency-grouped, next run a
+    # week away.)
+    timeout-minutes: 180
     env:
       # `prisma.config.ts` (and the schema) require these via env() at config
       # LOAD, and Prisma loads that config on every CLI command — including the

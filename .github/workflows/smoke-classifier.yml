@@ -7,14 +7,19 @@ name: Classifier Smoke Test
 # realistic in production. The script itself gates on classifier CORRECTNESS (wrong
 # verdicts / API errors fail; over-budget calls are reported as warnings).
 #
-# Triggers: manual dispatch (Actions tab, once this file is on main) plus a push
-# that touches this file — which gives the branch introducing it one immediate run
-# without re-running on every subsequent push.
+# Triggers: manual dispatch (Actions tab) plus any push that touches the classifier
+# itself, the smoke script, or this workflow — so a change to the classifier code or
+# the mandated timeout (e.g. the 2000->3000ms revision) is re-validated on a clean
+# runner, not just the first time the workflow landed. Not wired to pull_request:
+# same-repo branch pushes already cover every classifier commit before its PR, and a
+# PR trigger would only double the live API spend (fork PRs get no secret anyway).
 
 on:
   workflow_dispatch: {}
   push:
     paths:
+      - "lib/ai/complexity.ts"
+      - "scripts/smoke-classifier.ts"
       - ".github/workflows/smoke-classifier.yml"
 
 permissions:

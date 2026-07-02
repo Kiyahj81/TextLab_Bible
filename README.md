@@ -26,9 +26,10 @@ Deferred beyond the current scope: OT Hebrew/Aramaic, LXX, Strong's numbers, spe
   - Friendly pagination with absolute ranges (`Showing 26–50 of 116`) and a page-size selector; the chapter filter is numeric and stays disabled until a book is chosen.
   - Saved searches scoped to the signed-in user, showing friendly book names and persisting the executed mode; status, rename, and delete feedback announce through accessible live regions.
 - **AI Study Assistant** at `/assistant`
+  - Routes each prompt before retrieval: a live LLM complexity classifier (falling back to a deterministic weighted score) decides whether the question needs the scholarly model; scholarly routing also widens retrieval to a deeper pass.
   - Runs local retrieval before synthesis.
   - Shows structured citations and retrieval trace entries.
-  - Supports live OpenAI synthesis when configured, deterministic local fallback when not configured, and user-confirmed scholarly-model escalation.
+  - Supports live OpenAI synthesis when configured, deterministic local fallback when not configured. Complex questions auto-escalate to the scholarly model by default; an "ask before using the scholarly model" toggle asks for confirmation first instead, and users can also request scholarly mode manually at any time.
   - Applies the Grounding / Silence Protocol before returning or storing an answer.
   - Labelled controls throughout; save/error status and copy confirmations announce through accessible live regions.
 - **Notes** at `/notes`
@@ -47,7 +48,7 @@ The root route redirects to `/read`.
 | --- | --- | --- |
 | App routes | `app/read`, `app/search`, `app/assistant`, `app/notes`, `app/signin`, `app/api/*` | Next.js App Router surfaces and server endpoints. |
 | Reader/search data | `lib/search.ts` (facade over `lib/search/{shared,reader,keyword,tokens,domain}.ts`), `lib/louwNida.ts`, `lib/references.ts`, `lib/searchLabel.ts`, `lib/morphology.ts` | Canonical passage, token, keyword, lemma/morphology, domain, and reference helpers (the search logic lives in the `lib/search/*` modules), plus the `readerHref` link builder, result-label formatting, and the morphology-code decoder/normalizer. |
-| Assistant orchestration | `lib/ai/assistant.ts`, `lib/ai/signals.ts`, `lib/ai/retrievalPlanner.ts`, `lib/ai/synthesis.ts`, `lib/ai/grounding.ts` | Deterministic-first assistant pipeline and grounding checks. |
+| Assistant orchestration | `lib/ai/assistant.ts`, `lib/ai/modelRouter.ts`, `lib/ai/complexity.ts`, `lib/ai/signals.ts`, `lib/ai/retrievalPlanner.ts`, `lib/ai/synthesis.ts`, `lib/ai/grounding.ts` | Route-then-retrieve assistant pipeline: LLM/weighted-score complexity routing, deterministic-first retrieval, synthesis, and grounding checks. |
 | Semantic retrieval | `lib/search/semantic.ts`, `lib/search/semanticIndex.ts`, `lib/search/rrf.ts`, `lib/search/rerank.ts`, `scripts/embed-verses.ts` | pgvector embeddings, hybrid RRF retrieval, and optional Voyage rerank through Vercel AI Gateway. |
 | Persistence | `prisma/schema.prisma`, `prisma/migrations/*` | PostgreSQL schema, handwritten FTS/vector migrations, Auth.js adapter tables, notes, saved searches, assistant history, import runs. |
 | Evaluation | `eval/*`, `scripts/eval-gate.ts`, `scripts/eval-report.ts`, `.github/workflows/*` | Deterministic gate and weekly hybrid faithfulness report. |
@@ -62,16 +63,18 @@ Core stack:
 
 ## Assistant Retrieval Pipeline
 
-The assistant is deliberately retrieval-first. A normal request flows through:
+The assistant is deliberately retrieval-first, and routing now runs *before* retrieval so a scholarly decision can widen it. A normal request flows through:
 
-1. Route the prompt and detect whether the user requested scholarly escalation.
+1. Route the prompt: in live mode, an LLM complexity classifier (`OPENAI_ROUTER_MODEL`, default `gpt-5-mini`; 2s timeout, no retry) judges whether the question needs scholarly synthesis, falling back to a deterministic weighted-score classifier on any classifier failure or when live synthesis is off. Complex questions auto-escalate to the scholarly model by default; a user preference ("ask before using the scholarly model when a question looks complex") asks for confirmation instead of escalating automatically, and the user can also request scholarly mode manually at any time.
 2. Extract references, book/chapter scope, Greek words, topics, morphology, domain signals, and phrase terms.
-3. Plan deterministic searches first: passage lookup, lemma, morphology, keyword, domain, and scoped chapter searches.
+3. Plan deterministic searches: passage lookup, lemma, morphology, keyword, domain, and scoped chapter searches. Scholarly-routed requests run in **deep mode** — up to 12 deterministic calls instead of the standard 8, plus an additional corpus-wide semantic pass.
 4. Add semantic retrieval for topical prompts when `OPENAI_API_KEY` and embeddings are available.
 5. Optionally rerank semantic candidates through Vercel AI Gateway when `AI_GATEWAY_API_KEY` is set.
 6. Synthesize from the retrieved evidence.
 7. Verify citations and Greek quotes against the SBLGNT citation spine.
 8. Store the response only after grounding succeeds; otherwise store and display the withheld answer state.
+
+Routing only runs in live mode (an OpenAI key configured and `TEXTLAB_ASSISTANT_DISABLE_LIVE` unset); a non-live request never routes and always answers with the deterministic fallback at standard retrieval depth.
 
 WEB citations are display aids. SBLGNT is the citation authority used for grounding.
 
@@ -167,7 +170,8 @@ Most npm scripts set `NODE_OPTIONS=--use-system-ca` so Node trusts the Windows c
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | Production auth | Enables GitHub OAuth when both are set. |
 | `OPENAI_API_KEY` | Optional | Enables live synthesis, query embeddings, and `embed:verses`. Without it, assistant synthesis falls back locally. |
 | `OPENAI_DEFAULT_MODEL` | Optional | Default live synthesis model. |
-| `OPENAI_SCHOLARLY_MODEL` | Optional | Model used only for user-confirmed scholarly escalation. |
+| `OPENAI_SCHOLARLY_MODEL` | Optional | Model used for scholarly escalation (auto-routed or user-confirmed). |
+| `OPENAI_ROUTER_MODEL` | Optional | Model used by the live complexity-routing classifier that decides scholarly escalation; defaults to `gpt-5-mini`. |
 | `OPENAI_REQUEST_TIMEOUT_MS`, `OPENAI_MAX_OUTPUT_TOKENS`, `OPENAI_TEMPERATURE` | Optional | Runtime bounds and sampling settings for synthesis. |
 | `TEXTLAB_ASSISTANT_DISABLE_LIVE` | Optional | Set to `1` to force local fallback even when an OpenAI key is present. |
 | `AI_GATEWAY_API_KEY` | Optional | Enables Voyage rerank and the eval report judge through Vercel AI Gateway. |
@@ -205,6 +209,7 @@ npm run security:audit
 # Evaluation
 npm run eval:gate
 npm run eval:report
+npm run smoke:classifier
 ```
 
 `npm run verify` runs lint, TypeScript, build, and coverage. The full release gate also includes integration tests, acceptance tests, security audit, and the eval gate.
@@ -216,6 +221,8 @@ Milestone 3 Phase 6 added a two-tier quality harness over `eval/dataset/golden-s
 `npm run eval:gate` is the blocking deterministic gate. It is DB-only and does not require API keys. It checks type-aware retrieval quality, citation resolvability, and required lemma coverage.
 
 `npm run eval:report` is the non-blocking hybrid quality report. It runs the full retrieval pipeline with semantic retrieval, synthesis, rerank, and LLM-as-judge faithfulness scoring when the relevant keys are present. It writes self-contained HTML and JSON output under `eval/output/`.
+
+`npm run smoke:classifier` is a live, pre-merge smoke test for the LLM complexity classifier (`lib/ai/complexity.ts`): it exercises the exact production call (Responses API, strict JSON schema, reasoning effort "low", 2s timeout, no retry) against the real model over a small fixed prompt set, and exits non-zero on any mismatch or failure. It requires `OPENAI_API_KEY`.
 
 GitHub Actions automation is present and configured:
 
@@ -229,6 +236,7 @@ The gate protects deterministic evidence retrieval and citation safety. The repo
 ## Current Follow-Ups
 
 - **PostCSS advisory:** moderate upstream-blocked advisory tracked in `docs/security-register.md`; re-run `npm run security:audit` after Next.js upgrades.
+- **Deep-mode fallback sizing unvalidated:** scholarly routing raises the deterministic-fallback answer's evidence ceiling to 12 passage calls plus a corpus-wide semantic pass; the resulting worst-case answer/markdown size has not been re-measured against the `generated-study-notes` caps. Tracked as hardening debt in `docs/security-register.md`.
 - **Grounding prose sweep:** the Silence Protocol verifies structured `claims[]`; a future hardening pass should also detect unsupported inline prose citations.
 - **Natural-language range parsing:** `Matthew 5:1-12` style ranges work; "from X to Y" / "X through Y" ranges remain a retrieval-planner follow-up.
 - **Topical exact-verse fan-out:** decide whether explicit verse lookups with topic words should suppress extra topic searches.

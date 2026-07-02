@@ -8,11 +8,18 @@ import { readJsonLimited, validateBody } from "@/lib/http/validation";
 
 const MAX_PROMPT = 2_000;
 // A deterministic-fallback answer embeds the full retrieved evidence. This is
-// hard-bounded by the planner: at most MAX_PLANNED_CALLS (8) passage fetches, each
-// capped at MAX_PASSAGE_LINES, so the worst case is ~4 large chapters across both
-// corpora — measured at ~57 KB answer / ~58 KB markdown / ~167 KB request body on
-// the full corpus. Caps sized to fit that ceiling with margin while still rejecting
-// anything beyond the planner's reach.
+// hard-bounded by the planner: at most MAX_PLANNED_CALLS_STANDARD (8) passage
+// fetches, each capped at MAX_PASSAGE_LINES, so the worst case is ~4 large chapters
+// across both corpora — measured at ~57 KB answer / ~58 KB markdown / ~167 KB
+// request body on the full corpus. Caps sized to fit that ceiling with margin
+// while still rejecting anything beyond the planner's reach.
+// NOTE: live scholarly routing now runs retrieval in "deep" mode, raising the
+// planner's ceiling to MAX_PLANNED_CALLS_DEEP (12) plus a corpus-wide semantic
+// pass. The non-live fallback path above (routing never runs when live is off)
+// stays at the 8-call standard cap this comment was measured against, but the
+// live-scholarly deterministic-fallback path can now exceed it — that worst case
+// has not been re-measured against these caps. See docs/security-register.md
+// ("Generated-study-notes request body limit raised to 256 KB").
 const MAX_ANSWER = 64_000;
 const MAX_MARKDOWN = 72_000;
 const MAX_CITATIONS = 50;
@@ -39,8 +46,11 @@ const generatedStudyNoteSchema = z.object({
 
 // Larger body cap than the default — generated notes embed full passages as both
 // answer text and markdown plus the citation array. A multi-reference prompt at the
-// planner's 8-call ceiling produces a ~167 KB request body, so 256 KB fits the
-// worst case (answer ≤ 64 KB + markdown ≤ 72 KB + citations) with margin.
+// planner's standard (non-deep) 8-call ceiling produces a ~167 KB request body, so
+// 256 KB fits that measured worst case (answer ≤ 64 KB + markdown ≤ 72 KB +
+// citations) with margin. See the MAX_ANSWER comment above: the live-scholarly
+// deep-retrieval ceiling (12 calls + a corpus-wide semantic pass) is not yet
+// re-measured against this cap.
 const NOTE_BODY_LIMIT = 256 * 1024;
 
 export async function GET() {

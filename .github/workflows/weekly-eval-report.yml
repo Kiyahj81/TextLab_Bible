@@ -67,9 +67,9 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           # Voyage rerank + faithfulness judge (Vercel AI Gateway):
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
-          # Per-attempt judge budget (default 30s). The weekly report is not
-          # latency-sensitive, and tight budgets were aborting judge calls
-          # mid-retry ("Delay was aborted" errors in the June 9/10 reports).
+          # Per-attempt judge budget. Now redundant with the code default (raised
+          # to 90s on 2026-07-02 after 30s also aborted local runs), kept as an
+          # explicit record of the value this workflow depends on.
           EVAL_JUDGE_TIMEOUT_MS: "90000"
         run: npm run eval:report
 

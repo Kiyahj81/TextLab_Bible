@@ -150,7 +150,7 @@ describe("classifyComplexityLLM", () => {
     expect(body.model).toBe("gpt-5-mini");
     expect(body.reasoning).toEqual({ effort: "low" });
     expect(body.temperature).toBeUndefined();
-    expect(opts).toEqual({ timeout: 2_000, maxRetries: 0 });
+    expect(opts).toEqual({ timeout: 3_000, maxRetries: 0 });
   });
 
   it("honors a timeoutMs override (used by the smoke test's relaxed probe) but keeps maxRetries 0", async () => {

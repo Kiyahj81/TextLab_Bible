@@ -7,14 +7,15 @@
 //
 // GATE SEMANTICS: this validates the classifier CONTRACT (prompt, schema, correct
 // verdicts, no API errors) — and it ALWAYS validates verdicts, never passing on
-// zero. Each prompt is first tried at the mandated production budget (2000ms). If
-// THAT times out (e.g. behind a TLS-intercepting proxy that inflates round-trips),
-// the verdict is still validated via a relaxed-timeout probe — because dev-box
-// latency is not signal about the classifier's correctness, and in production a
-// timeout simply falls back to the deterministic score. Hard failures: a wrong
-// verdict, a non-timeout API error (400 / bad JSON / no client), or no verdict even
-// under the relaxed probe. Calls that only completed over the 2000ms budget are
-// reported as a latency datapoint to re-check in a production-like network.
+// zero. Each prompt is first tried at the mandated production budget
+// (ROUTER_TIMEOUT_MS, imported below). If THAT times out (e.g. behind a
+// TLS-intercepting proxy that inflates round-trips), the verdict is still validated
+// via a relaxed-timeout probe — because dev-box latency is not signal about the
+// classifier's correctness, and in production a timeout simply falls back to the
+// deterministic score. Hard failures: a wrong verdict, a non-timeout API error
+// (400 / bad JSON / no client), or no verdict even under the relaxed probe. Calls
+// that only completed over the production budget are reported as a latency
+// datapoint to re-check in a production-like network.
 import { classifyComplexityLLM, getRouterModel, ROUTER_TIMEOUT_MS } from "@/lib/ai/complexity";
 import { extractSignals } from "@/lib/ai/signals";
 
@@ -42,7 +43,7 @@ async function main() {
   let mismatches = 0; // wrong verdict → hard fail
   let hardErrors = 0; // non-timeout API error → hard fail
   let unresolved = 0; // no verdict even under the relaxed probe → hard fail
-  let overBudget = 0; // completed, but only after exceeding the 2000ms production budget
+  let overBudget = 0; // completed, but only after exceeding the production budget
   let validated = 0; // verdicts actually obtained (strict or relaxed)
 
   for (const { prompt, expect } of PROMPTS) {

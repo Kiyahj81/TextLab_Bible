@@ -51,7 +51,11 @@ const ROUTER_MODEL_DEFAULT = "gpt-5-mini";
 // The shared client is deliberately 120s/1-retry (sized for synthesis); routing
 // must be fast-or-fallback, so BOTH values are overridden per-request below.
 // Exported so the live smoke test probes at the SAME budget (never a stale copy).
-export const ROUTER_TIMEOUT_MS = 2_000;
+// 3000ms (was 2000ms): the 2026-07-02 clean-network smoke run (GitHub Actions,
+// run 28575290108) measured gpt-5-mini at 1.7-3.2s — 3 of 4 calls timed out at
+// 2000ms, so the router would usually pay the timeout AND fall back to the score.
+// 3000ms covers the observed distribution; a timeout still degrades gracefully.
+export const ROUTER_TIMEOUT_MS = 3_000;
 // max_output_tokens includes reasoning tokens on reasoning models — 500 leaves
 // headroom so the JSON body is never truncated by reasoning spend.
 const ROUTER_MAX_OUTPUT_TOKENS = 500;

@@ -556,7 +556,11 @@ function semanticCall(
   // producing duplicate evidence/citations AND leaving deep mode with no cross-text
   // coverage. We over-fetch, drop in-scope hits, and keep the top `limit` survivors,
   // so the two deep passes are DISJOINT by construction (no shared state / no
-  // completion-order race) and the corpus-wide pass always contributes cross-text hits.
+  // completion-order race) and the corpus-wide pass surfaces distinct cross-text hits
+  // whenever cross-text matches rank among the top candidates. Only set when the scoped
+  // pass actually ran (see buildPlan): with no scoped pass, excluding the scope would
+  // drop in-scope hits with nothing covering them. Even with over-fetch, a genuinely
+  // scope-dominated topic can yield fewer than `limit` cross-text survivors.
   opts: { limit: number; scopeLabel: "scoped" | "corpus-wide"; deep: boolean; excludeScope?: Scope }
 ): PlannedCall {
   // Record `keywords` (the FTS half's query) in the trace so the grounding context
@@ -569,9 +573,10 @@ function semanticCall(
     key: `semantic:${opts.scopeLabel}|${scope.book ?? ""}|${scope.chapter ?? ""}`,
     errorTrace: { tool: "searchSemantic", args: { ...args, scope: opts.scopeLabel, deep: opts.deep } },
     run: async () => {
-      // Over-fetch when excluding a scope so filtering still yields a full `limit` of
-      // cross-text hits (backfill), then drop in-scope hits and take the top survivors.
-      const fetchLimit = opts.excludeScope ? opts.limit + SEMANTIC_HIT_LIMIT : opts.limit;
+      // Over-fetch generously when excluding a scope so filtering still yields cross-text
+      // hits even when many top hits fall in-scope; then drop in-scope hits and take the
+      // top `limit` survivors (a scope-dominated topic may still yield fewer).
+      const fetchLimit = opts.excludeScope ? opts.limit * 3 : opts.limit;
       const semantic = await searchSemanticDetailed({
         query: prompt,
         keywords,
@@ -688,19 +693,23 @@ function buildPlan(signals: Signals, prompt: string, semanticEnabled: boolean, d
     const scopePinned = scope.book !== undefined || scope.chapter !== undefined;
     if (deep) {
       if (scopePinned) {
-        if (shouldRunSemantic(signals)) {
+        // Only exclude the pinned scope from the corpus-wide pass when the SCOPED pass
+        // actually ran to cover it. When shouldRunSemantic is false (all-exact-verse or
+        // termless prompts) no scoped pass runs, so excluding the scope would drop
+        // in-scope hits with nothing covering them — a coverage regression. In that case
+        // the corpus-wide pass covers the whole corpus, pinned scope included.
+        const scopedRan = shouldRunSemantic(signals);
+        if (scopedRan) {
           plan.push(
             semanticCall(prompt, keywords, scope, { limit: SEMANTIC_HIT_LIMIT, scopeLabel: "scoped", deep })
           );
         }
-        // Corpus-wide pass EXCLUDES the pinned scope (which the scoped pass covers), so
-        // it adds distinct cross-text evidence and can never duplicate the scoped pass.
         plan.push(
           semanticCall(prompt, keywords, {}, {
             limit: SEMANTIC_HIT_LIMIT,
             scopeLabel: "corpus-wide",
             deep,
-            excludeScope: scope
+            excludeScope: scopedRan ? scope : undefined
           })
         );
       } else {

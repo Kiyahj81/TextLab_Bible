@@ -1237,9 +1237,26 @@ describe("deep retrieval mode", () => {
     const calls = searchSemanticDetailed.mock.calls;
     expect(calls).toHaveLength(2);
     expect(calls[0][0]).toMatchObject({ book: "John", chapter: 3, limit: 5 });   // scoped
-    // Corpus-wide over-fetches (5 + SEMANTIC_HIT_LIMIT) so it can backfill cross-text
-    // hits after excluding the pinned scope.
-    expect(calls[1][0]).toMatchObject({ book: undefined, chapter: undefined, limit: 10 });
+    // Corpus-wide over-fetches (limit * 3) so it can backfill cross-text hits after
+    // excluding the pinned scope even when many top hits fall in-scope.
+    expect(calls[1][0]).toMatchObject({ book: undefined, chapter: undefined, limit: 15 });
+  });
+
+  it("deep + pinned + termless prompt: corpus-wide pass does NOT exclude the scope (no scoped pass covers it)", async () => {
+    // shouldRunSemantic is false here (proper nouns filtered → no topic words), so no
+    // scoped pass runs. Excluding the pinned scope from the corpus-wide pass would drop
+    // in-scope hits with nothing covering them (a coverage regression), so the corpus-wide
+    // pass must include the pinned scope in this case.
+    const signals = extractSignals("Is Romans 7 about Paul?");
+    expect(signals.topicWords).toHaveLength(0);
+    searchSemanticDetailed.mockResolvedValue(
+      semanticResult([{ reference: "Rom 7:15", corpus: "WEB", text: "what I do not want to do" }])
+    );
+    const packet = await runRetrievalPlan(signals, "Is Romans 7 about Paul?", { semanticEnabled: true, deep: true });
+    expect(searchSemanticDetailed.mock.calls).toHaveLength(1); // corpus-wide only (scoped gated off)
+    // The in-scope hit surfaces — it is NOT excluded, because no scoped pass covers Romans 7.
+    expect(packet.formattedEvidence).toContain("#### Rom 7:15 (semantic hit)");
+    expect(packet.citations.some((c) => c.reference === "Rom 7:15")).toBe(true);
   });
 
   it("deep + pinned scope: corpus-wide pass excludes in-scope hits and adds distinct cross-text evidence", async () => {

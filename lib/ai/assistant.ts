@@ -43,11 +43,7 @@ export type AssistantAnswer = {
 
 export async function answerBibleQuestion(
   prompt: string,
-  // `autoEscalate?` is accepted but ignored here for ONE task only: it keeps the
-  // current route call (`answerBibleQuestion(prompt, { escalate, autoEscalate })`)
-  // and its route-suite assertions compiling+passing until Task 7 migrates the
-  // API to confirmEscalation. Task 7 removes `autoEscalate?` from this signature.
-  options: { escalate?: boolean; confirmEscalation?: boolean; autoEscalate?: boolean } = {}
+  options: { escalate?: boolean; confirmEscalation?: boolean } = {}
 ): Promise<AssistantAnswer> {
   const signals = extractSignals(prompt);
   const live = isLiveAssistantEnabled();

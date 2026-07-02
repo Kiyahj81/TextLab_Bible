@@ -103,21 +103,30 @@ describe("POST /api/assistant", () => {
   it("passes a user-confirmed escalate flag through to the assistant", async () => {
     const res = await POST(jsonRequest({ prompt: "deep synthesis", escalate: true }));
     expect(res.status).toBe(200);
-    expect(assistantMock).toHaveBeenCalledWith("deep synthesis", { escalate: true, autoEscalate: false });
+    expect(assistantMock).toHaveBeenCalledWith("deep synthesis", { escalate: true, confirmEscalation: false });
   });
 
   it("defaults escalate to false when omitted", async () => {
     await POST(jsonRequest({ prompt: "What is logos?" }));
-    expect(assistantMock).toHaveBeenCalledWith("What is logos?", { escalate: false, autoEscalate: false });
+    expect(assistantMock).toHaveBeenCalledWith("What is logos?", { escalate: false, confirmEscalation: false });
   });
 
-  it("accepts autoEscalate: true and forwards it to the assistant", async () => {
-    const res = await POST(jsonRequest({ prompt: "how does faith reconcile with works", autoEscalate: true }));
-    expect(res.status).toBe(200);
-    expect(assistantMock).toHaveBeenCalledWith(
-      "how does faith reconcile with works",
-      { escalate: false, autoEscalate: true }
-    );
+  it("forwards confirmEscalation to answerBibleQuestion", async () => {
+    await POST(jsonRequest({ prompt: "q", confirmEscalation: true }));
+    expect(assistantMock).toHaveBeenCalledWith("q", { escalate: false, confirmEscalation: true });
+  });
+
+  it("maps deprecated explicit autoEscalate:false to confirmEscalation:true", async () => {
+    // A stale opt-out must stay an opt-out under the new auto-default semantics.
+    await POST(jsonRequest({ prompt: "q", autoEscalate: false }));
+    expect(assistantMock).toHaveBeenCalledWith("q", { escalate: false, confirmEscalation: true });
+  });
+
+  it("treats autoEscalate:true and omission as the auto default", async () => {
+    await POST(jsonRequest({ prompt: "q", autoEscalate: true }));
+    expect(assistantMock).toHaveBeenLastCalledWith("q", { escalate: false, confirmEscalation: false });
+    await POST(jsonRequest({ prompt: "q" }));
+    expect(assistantMock).toHaveBeenLastCalledWith("q", { escalate: false, confirmEscalation: false });
   });
 
   it("rejects a non-boolean autoEscalate with 400", async () => {

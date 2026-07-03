@@ -36,7 +36,7 @@ Grounding rules:
   ones is not.
 - Do not overclaim from metadata: a Louw-Nida domain label is a broad orienting category,
   not proof; a gloss is one context-limited English aid — say "the gloss given is …",
-  not "the word means …".
+  not "the word means …" or "literally …".
 - Mention only morphology/gloss/domain fields actually present in the evidence; never
   infer or invent them.
 

@@ -2,11 +2,16 @@
 
 import { Check, Copy, Download, Loader2, Save, Send, Sparkles } from "lucide-react";
 import type { SubmitEvent } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { formatToolTrace, type ToolTraceEntry } from "@/lib/ai/toolTrace";
 import type { AssistantMode, ModelRole, RecommendedUpgrade } from "@/lib/ai/modelRouter";
 import { useAutoDismissString } from "@/lib/useAutoDismissStatus";
-import { ASSISTANT_AUTO_SCHOLARLY_COOKIE, writePrefCookie } from "@/lib/readerPrefs";
+import {
+  ASSISTANT_AUTO_SCHOLARLY_COOKIE,
+  ASSISTANT_CONFIRM_SCHOLARLY_COOKIE,
+  expirePrefCookie,
+  writePrefCookie
+} from "@/lib/readerPrefs";
 
 type AssistantResponse = {
   answer: string;
@@ -46,10 +51,10 @@ type RestoredView = {
 
 export function AiAssistant({
   initialNotes,
-  autoScholarly: initialAutoScholarly = false
+  confirmScholarly: initialConfirmScholarly = false
 }: {
   initialNotes: GeneratedStudyNoteRow[];
-  autoScholarly?: boolean;
+  confirmScholarly?: boolean;
 }) {
   const [prompt, setPrompt] = useState("");
   const [responsePrompt, setResponsePrompt] = useState("");
@@ -62,12 +67,30 @@ export function AiAssistant({
   const [savingNote, setSavingNote] = useState(false);
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
   const [copyCitationsStatus, setCopyCitationsStatus] = useState<string | null>(null);
-  const [autoScholarly, setAutoScholarly] = useState(initialAutoScholarly);
+  const [confirmScholarly, setConfirmScholarly] = useState(initialConfirmScholarly);
 
   // error stays persistent — user retries before it should clear.
   useAutoDismissString(saveStatus, setSaveStatus);
   useAutoDismissString(copyStatus, setCopyStatus);
   useAutoDismissString(copyCitationsStatus, setCopyCitationsStatus);
+
+  useEffect(() => {
+    // One-time durable migration of the legacy auto-scholarly preference.
+    if (!document.cookie.includes(`${ASSISTANT_CONFIRM_SCHOLARLY_COOKIE}=`)) {
+      writePrefCookie(ASSISTANT_CONFIRM_SCHOLARLY_COOKIE, initialConfirmScholarly ? "1" : "0");
+    }
+    // The new confirm cookie now carries the preference (the server already folded
+    // the legacy value into initialConfirmScholarly via resolveConfirmScholarly), so
+    // retire the legacy cookie. This gives the "remove after one release" migration a
+    // completion mechanism — once no legacy cookies remain, the dual-read in
+    // app/assistant/page.tsx and resolveConfirmScholarly's legacy arm can be dropped.
+    // Accepted tradeoff (2026-07-02 review, R2-5): expiring the legacy cookie removes
+    // rollback safety — a rollback after this runs reverts the preference to the old
+    // default until the user re-toggles (which rewrites the legacy cookie). Self-healing
+    // and low-stakes; preferred over keeping the dual-read alive an extra release.
+    expirePrefCookie(ASSISTANT_AUTO_SCHOLARLY_COOKIE);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function runPrompt(promptText: string, escalate: boolean) {
     if (loading || !promptText.trim()) return;
@@ -84,7 +107,7 @@ export function AiAssistant({
           // Server schema rejects null on optional fields — only attach when set.
           ...(response?.sessionId ? { sessionId: response.sessionId } : {}),
           ...(escalate ? { escalate: true } : {}),
-          ...(autoScholarly && !escalate ? { autoEscalate: true } : {})
+          ...(confirmScholarly && !escalate ? { confirmEscalation: true } : {})
         })
       });
 
@@ -240,14 +263,14 @@ export function AiAssistant({
           <label className="mt-3 flex items-center gap-2 text-sm text-slate-700">
             <input
               type="checkbox"
-              checked={autoScholarly}
+              checked={confirmScholarly}
               onChange={(e) => {
-                setAutoScholarly(e.target.checked);
-                writePrefCookie(ASSISTANT_AUTO_SCHOLARLY_COOKIE, e.target.checked ? "1" : "0");
+                setConfirmScholarly(e.target.checked);
+                writePrefCookie(ASSISTANT_CONFIRM_SCHOLARLY_COOKIE, e.target.checked ? "1" : "0");
               }}
             />
-            Automatically use the scholarly model when a question warrants it
-            <span className="text-slate-500">(may be slower / more thorough)</span>
+            Ask before using the scholarly model when a question looks complex
+            <span className="text-slate-500">(off = complex questions escalate automatically)</span>
           </label>
           {error ? <p role="alert" className="mt-2 text-sm text-red-700">{error}</p> : null}
         </form>
@@ -331,10 +354,19 @@ export function AiAssistant({
                 ) : null}
               </details>
             ) : null}
-            {!restoredView && response?.recommendedUpgrade && response.modelRole !== "scholarly" ? (
+            {/* Manual escalation is available when the answer isn't already scholarly
+                AND live synthesis actually ran — decoupled from recommendedUpgrade so a
+                prompt the router judged routine (or a classifier-outage score-fallback
+                that no longer recommends an upgrade) can still be re-run with the
+                scholarly model. Excluded when modelUsed is "none" (non-live fallback):
+                escalation would re-run the same fallback because answerBibleQuestion
+                exits before routing when live synthesis is disabled. */}
+            {!restoredView && response && response.modelRole !== "scholarly" && response.modelUsed !== "none" ? (
               <div className="mb-4 flex flex-wrap items-center gap-3 rounded-md border border-accent-300 bg-accent-50 p-3 text-sm">
                 <span className="text-slate-700">
-                  This question may benefit from the scholarly model ({response.recommendedUpgrade.model}).
+                  {response.recommendedUpgrade
+                    ? `This question may benefit from the scholarly model (${response.recommendedUpgrade.model}).`
+                    : "Want a deeper, cross-text answer? Re-run this question with the scholarly model."}
                 </span>
                 <button
                   type="button"

@@ -1,15 +1,15 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import type { AssistantAnswer } from "@/lib/ai/assistant";
+import type { RoutingDecision } from "@/lib/ai/modelRouter";
 
-export type AssistantMessageMetadata = {
+// Persisted message metadata = the full routing decision (intersected, so a new
+// routing field can't silently vanish from persisted history — finishAssistantExchange
+// would fail to type-check until it's set) PLUS the non-routing fields we keep.
+export type AssistantMessageMetadata = RoutingDecision & {
   mode: AssistantAnswer["mode"];
   grounded: AssistantAnswer["grounded"];
   groundingReport?: AssistantAnswer["groundingReport"];
-  modelRole: AssistantAnswer["modelRole"];
-  modelUsed: AssistantAnswer["modelUsed"];
-  routingDecision: AssistantAnswer["routingDecision"];
-  recommendedUpgrade?: AssistantAnswer["recommendedUpgrade"];
   citations: AssistantAnswer["citations"];
   toolTrace: AssistantAnswer["toolTrace"];
 };
@@ -57,7 +57,10 @@ export async function finishAssistantExchange(input: {
     routingDecision: input.answer.routingDecision,
     recommendedUpgrade: input.answer.recommendedUpgrade,
     citations: input.answer.citations,
-    toolTrace: input.answer.toolTrace
+    toolTrace: input.answer.toolTrace,
+    deep: input.answer.deep,
+    routerSource: input.answer.routerSource,
+    complexityScore: input.answer.complexityScore
   };
 
   const assistantWrite = prisma.aiMessage.create({

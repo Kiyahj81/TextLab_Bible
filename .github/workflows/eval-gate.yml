@@ -38,7 +38,12 @@ jobs:
       DATABASE_URL: ${{ secrets.EVAL_DATABASE_URL || 'postgresql://placeholder:placeholder@localhost:5432/placeholder' }}
       DIRECT_URL: ${{ secrets.EVAL_DIRECT_URL || 'postgresql://placeholder:placeholder@localhost:5432/placeholder' }}
     steps:
+      # Read-only job: don't persist the token to .git/config, where npm ci's
+      # arbitrary postinstall code (prisma generate) could read it (zizmor artipacked).
+      # Safe here — nothing in this workflow pushes or needs the token after checkout.
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@v6
         with:

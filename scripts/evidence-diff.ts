@@ -35,7 +35,7 @@ async function main() {
     // (semanticEnabled defaults to true for the production path; here we force it off
     // so no embedding call can fire and no spurious "(no matches)" semantic section or
     // consumed planner slot pollutes the diff against main.)
-    const packet = await runRetrievalPlan(signals, prompt, false);
+    const packet = await runRetrievalPlan(signals, prompt, { semanticEnabled: false });
     console.log("=".repeat(80));
     console.log("PROMPT:", prompt);
     console.log("-".repeat(80));

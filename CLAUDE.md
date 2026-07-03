@@ -95,5 +95,5 @@ Next.js 15 / React 19 / TypeScript 5.8 · Prisma 6 / PostgreSQL (pgvector) · Au
 ## Repo conventions worth knowing
 
 - `main` is protected by a GitHub ruleset: PR required, `gate` status check must pass (strict/up-to-date), force-push/deletion blocked — you cannot push directly to `main`. Self-merge is allowed (0 approvals required).
-- Commit/PR co-author trailer must be `Claude Opus 4.8 (1M context)`.
+- Commit/PR co-author trailer uses Claude Code's built-in default (`Co-Authored-By: Claude <model> <noreply@anthropic.com>`), which names whichever model authored the work — no fixed model override.
 - Historical planning/spec/plan notes live under `docs/archived/`, `docs/superpowers/specs/`, and `docs/superpowers/plans/`; `docs/README.md` maps the docs layout.

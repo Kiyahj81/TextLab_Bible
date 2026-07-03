@@ -103,27 +103,30 @@ describe("POST /api/assistant", () => {
   it("passes a user-confirmed escalate flag through to the assistant", async () => {
     const res = await POST(jsonRequest({ prompt: "deep synthesis", escalate: true }));
     expect(res.status).toBe(200);
-    expect(assistantMock).toHaveBeenCalledWith("deep synthesis", { escalate: true, autoEscalate: false });
+    expect(assistantMock).toHaveBeenCalledWith("deep synthesis", { escalate: true, confirmEscalation: false });
   });
 
   it("defaults escalate to false when omitted", async () => {
     await POST(jsonRequest({ prompt: "What is logos?" }));
-    expect(assistantMock).toHaveBeenCalledWith("What is logos?", { escalate: false, autoEscalate: false });
+    expect(assistantMock).toHaveBeenCalledWith("What is logos?", { escalate: false, confirmEscalation: false });
   });
 
-  it("accepts autoEscalate: true and forwards it to the assistant", async () => {
-    const res = await POST(jsonRequest({ prompt: "how does faith reconcile with works", autoEscalate: true }));
-    expect(res.status).toBe(200);
-    expect(assistantMock).toHaveBeenCalledWith(
-      "how does faith reconcile with works",
-      { escalate: false, autoEscalate: true }
-    );
+  it("forwards confirmEscalation to answerBibleQuestion", async () => {
+    await POST(jsonRequest({ prompt: "q", confirmEscalation: true }));
+    expect(assistantMock).toHaveBeenCalledWith("q", { escalate: false, confirmEscalation: true });
   });
 
-  it("rejects a non-boolean autoEscalate with 400", async () => {
-    const res = await POST(jsonRequest({ prompt: "x", autoEscalate: "yes" }));
-    expect(res.status).toBe(400);
-    expect(assistantMock).not.toHaveBeenCalled();
+  it("ignores a legacy autoEscalate key and falls through to the auto default", async () => {
+    // autoEscalate is no longer part of the schema. A stale client's key (any value,
+    // valid or not) is stripped by zod rather than mapped or rejected, so the request
+    // degrades gracefully to the auto-escalation default. The durable opt-out for
+    // legacy users lives in the confirm-scholarly cookie migration, not this field.
+    await POST(jsonRequest({ prompt: "q", autoEscalate: false }));
+    expect(assistantMock).toHaveBeenLastCalledWith("q", { escalate: false, confirmEscalation: false });
+    await POST(jsonRequest({ prompt: "q", autoEscalate: "yes" }));
+    expect(assistantMock).toHaveBeenLastCalledWith("q", { escalate: false, confirmEscalation: false });
+    await POST(jsonRequest({ prompt: "q" }));
+    expect(assistantMock).toHaveBeenLastCalledWith("q", { escalate: false, confirmEscalation: false });
   });
 
   it("rejects a non-boolean escalate with 400", async () => {

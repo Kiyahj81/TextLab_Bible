@@ -1,8 +1,6 @@
 import { createMarkdownExport } from "@/lib/export/markdown";
 import {
   type AssistantMode,
-  type ModelRole,
-  type RecommendedUpgrade,
   type RoutingDecision,
   isLiveAssistantEnabled,
   routeAssistantPrompt
@@ -22,7 +20,11 @@ import { type ToolTraceEntry } from "@/lib/ai/toolTrace";
 
 export { detectBookFromPrompt };
 
-export type AssistantAnswer = {
+// The routing fields (modelRole, modelUsed, routingDecision, deep, routerSource,
+// complexityScore, recommendedUpgrade) come straight from RoutingDecision via
+// intersection so a new routing field can never silently drop from one of the
+// parallel answer/metadata declarations without a type error.
+export type AssistantAnswer = RoutingDecision & {
   answer: string;
   citations: AssistantCitation[];
   markdown: string;
@@ -30,44 +32,40 @@ export type AssistantAnswer = {
   mode: AssistantMode;
   grounded: boolean;
   groundingReport?: GroundingReport;
-  modelRole: ModelRole;
-  modelUsed: string;
-  routingDecision: string;
-  recommendedUpgrade?: RecommendedUpgrade;
   sessionId?: string;
 };
 
 export async function answerBibleQuestion(
   prompt: string,
-  options: { escalate?: boolean; autoEscalate?: boolean } = {}
+  options: { escalate?: boolean; confirmEscalation?: boolean } = {}
 ): Promise<AssistantAnswer> {
-  // Compute signals first so they can be forwarded to the router for complexity
-  // detection (auto-escalation) without re-running signal extraction later.
   const signals = extractSignals(prompt);
-  // Resolve live-mode once and pass it into retrieval. Remote semantic retrieval
-  // embeds the prompt via OpenAI, so it must honor the same kill switch as synthesis
-  // (no embedding egress/spend when live is disabled) — and skipping it also frees its
-  // planner slot for deterministic searches in the local-fallback path.
   const live = isLiveAssistantEnabled();
-  const evidence = await runRetrievalPlan(signals, prompt, live);
 
   if (!live) {
-    // No model call happens when live synthesis is disabled, so report honest routing
-    // metadata for the deterministic fallback — never the (possibly escalated) routing a
-    // live pass would have used, which would falsely claim a scholarly/model pass ran.
+    // No model call happens when live synthesis is disabled — no routing runs
+    // either. Report honest metadata (routerSource "none") and retrieve at
+    // standard depth with semantic search off (no embedding egress/spend).
+    const evidence = await runRetrievalPlan(signals, prompt, { semanticEnabled: false });
     return fallbackAnswer(prompt, evidence, {
       modelRole: "default",
       modelUsed: "none",
+      deep: false,
+      routerSource: "none",
       routingDecision:
         "Live synthesis is disabled, so TextLab returned the deterministic local retrieval fallback (no model call was made)."
     });
   }
 
-  const routing = routeAssistantPrompt(prompt, {
+  // Route FIRST so scholarly routing can widen retrieval (deep mode) — the
+  // whole point of the reorder; see the design spec.
+  const routing = await routeAssistantPrompt(prompt, {
     escalate: options.escalate ?? false,
-    autoEscalate: options.autoEscalate ?? false,
-    signals
+    confirmEscalation: options.confirmEscalation ?? false,
+    signals,
+    live: true
   });
+  const evidence = await runRetrievalPlan(signals, prompt, { semanticEnabled: true, deep: routing.deep });
 
   try {
     const result = await synthesizeWithRefinement({ prompt, evidence, routing, intent: signals.intent });
@@ -151,7 +149,7 @@ function fallbackAnswer(prompt: string, evidence: EvidencePacket, routing: Routi
   });
 }
 
-type WithMarkdownInput = {
+type WithMarkdownInput = RoutingDecision & {
   title: string;
   answer: string;
   citations: AssistantCitation[];
@@ -159,10 +157,6 @@ type WithMarkdownInput = {
   mode: AssistantMode;
   grounded: boolean;
   groundingReport?: GroundingReport;
-  modelRole: ModelRole;
-  modelUsed: string;
-  routingDecision: string;
-  recommendedUpgrade?: RecommendedUpgrade;
 };
 
 function withMarkdown(input: WithMarkdownInput): AssistantAnswer {

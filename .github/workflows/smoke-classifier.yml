@@ -1,0 +1,82 @@
+name: Classifier Smoke Test
+
+# Live smoke test for the LLM complexity classifier (scripts/smoke-classifier.ts).
+# Purpose here: a PRODUCTION-LIKE latency datapoint. The local dev box sits behind
+# TLS interception that inflates round-trips past the 3000ms router budget, so only
+# a run from a clean network (this runner) can tell whether the mandated budget is
+# realistic in production. The script itself gates on classifier CORRECTNESS (wrong
+# verdicts / real contract errors fail; over-budget calls and recovered transient
+# connection drops are reported as warnings, not failures).
+#
+# Triggers: manual dispatch (Actions tab) plus any push that touches the classifier
+# itself, the smoke script, or this workflow — so a change to the classifier code or
+# the mandated timeout (e.g. the 2000->3000ms revision) is re-validated on a clean
+# runner, not just the first time the workflow landed. Not wired to pull_request:
+# same-repo branch pushes already cover every classifier commit before its PR, and a
+# PR trigger would only double the live API spend (fork PRs get no secret anyway).
+
+on:
+  workflow_dispatch:
+    inputs:
+      router_model:
+        description: "Override OPENAI_ROUTER_MODEL for a clean-runner A/B (blank = repo default gpt-5.4-mini)"
+        required: false
+        default: ""
+        type: string
+  push:
+    paths:
+      - "lib/ai/complexity.ts"
+      - "scripts/smoke-classifier.ts"
+      - ".github/workflows/smoke-classifier.yml"
+
+permissions:
+  contents: read # read-only job: calls the model API, never writes repo or DB
+
+concurrency:
+  group: smoke-classifier
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10 # 4 prompts, ≤13s worst case each (3s prod probe + 10s relaxed)
+    env:
+      # prisma.config.ts requires these via env() at config LOAD, and npm ci's
+      # postinstall runs `prisma generate` — so placeholders must exist before
+      # install. The smoke test never touches a database.
+      DATABASE_URL: "postgresql://placeholder:placeholder@localhost:5432/placeholder"
+      DIRECT_URL: "postgresql://placeholder:placeholder@localhost:5432/placeholder"
+    steps:
+      # Read-only job: don't persist the token to .git/config, where npm ci's
+      # arbitrary postinstall code (prisma generate) could read it (zizmor artipacked).
+      # Safe here — nothing in this workflow pushes or needs the token after checkout.
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci # postinstall runs `prisma generate` (placeholder URLs above)
+
+      # The npm script loads config via `--env-file=.env`, and Node throws if the
+      # file is absent — an EMPTY file is valid. The real key comes from the step
+      # `env:` (environment takes precedence), keeping secrets off disk.
+      - name: Create empty .env (script requires the file to exist)
+        run: touch .env
+
+      - name: Run classifier smoke test
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          # Blank on push/schedule and when the dispatch input is empty → getRouterModel()
+          # falls back to the repo default (gpt-5.4-mini). Set only for a dispatch A/B.
+          OPENAI_ROUTER_MODEL: ${{ inputs.router_model }}
+        # No outer retry: the script itself re-runs the whole probe once after 60s, but
+        # ONLY when a run's failures are purely connectivity/latency (a "Premature close"
+        # storm) — never when a verdict is wrong or the contract is violated, so a real
+        # classifier failure can't be masked by a nondeterministic re-run. Exit 1 = a
+        # genuine failure (or a storm that didn't clear); the job fails.
+        run: npm run smoke:classifier

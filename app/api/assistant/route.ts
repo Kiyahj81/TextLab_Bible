@@ -27,10 +27,12 @@ const assistantSchema = z.object({
   sessionId: z.string().trim().max(200).optional(),
   // User-confirmed escalation to the scholarly model. Never set automatically.
   escalate: z.boolean().optional(),
-  // Opt-in auto-scholarly: when true, the FIRST pass uses the scholarly model if
-  // the question looks complex (user preference — the client sets this based on
-  // a stored "auto-scholarly" toggle, never the server).
-  autoEscalate: z.boolean().optional()
+  // Ask-first preference: complex questions return recommendedUpgrade instead of
+  // auto-escalating. Auto-escalation is the DEFAULT when this is unset.
+  // (A pre-auto-default client's legacy `autoEscalate` key is not in this schema
+  // and is silently stripped by zod; such a stale request falls through to the
+  // auto-escalation default, and the durable opt-out lives in the confirm cookie.)
+  confirmEscalation: z.boolean().optional()
 });
 
 export async function POST(request: Request) {
@@ -58,14 +60,14 @@ export async function POST(request: Request) {
     }
   }
 
-  const { prompt, sessionId: requestedSessionId = "", escalate = false, autoEscalate = false } = valid.data;
+  const { prompt, sessionId: requestedSessionId = "", escalate = false, confirmEscalation = false } = valid.data;
 
   const { sessionId, userMessagePromise } = await startAssistantExchange({
     userId,
     requestedSessionId,
     prompt
   });
-  const answer = await answerBibleQuestion(prompt, { escalate, autoEscalate });
+  const answer = await answerBibleQuestion(prompt, { escalate, confirmEscalation });
   await finishAssistantExchange({ sessionId, userMessagePromise, answer });
 
   return NextResponse.json({ ...answer, sessionId });

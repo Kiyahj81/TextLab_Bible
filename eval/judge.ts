@@ -16,8 +16,12 @@ import type { EvidencePacket } from "@/lib/ai/retrievalPlanner";
 export const EVAL_JUDGE_MODEL = process.env.EVAL_JUDGE_MODEL ?? "anthropic/claude-sonnet-5";
 // PER-ATTEMPT budget (not total): each of the MAX_ATTEMPTS calls gets a fresh
 // AbortSignal.timeout, so the worst case is MAX_ATTEMPTS × timeout + backoffs.
+// Default 90s (was 30s): the report is non-blocking and never latency-sensitive,
+// and 30s produced 10-11 judge errors per 26-item local run (2026-07-02) — the
+// same aborts that forced CI to override to 90s back in June. A default that only
+// works when overridden is a footgun; 90s is the value both venues actually need.
 export const EVAL_JUDGE_TIMEOUT_MS =
-  Number(process.env.EVAL_JUDGE_TIMEOUT_MS) > 0 ? Number(process.env.EVAL_JUDGE_TIMEOUT_MS) : 30_000;
+  Number(process.env.EVAL_JUDGE_TIMEOUT_MS) > 0 ? Number(process.env.EVAL_JUDGE_TIMEOUT_MS) : 90_000;
 
 // Retries are implemented HERE, with the SDK's own retries disabled
 // (maxRetries: 0). The SDK's backoff shares the caller's abort signal, and when

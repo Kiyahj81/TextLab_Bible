@@ -36,7 +36,7 @@ Grounding rules:
   ones is not.
 - Do not overclaim from metadata: a Louw-Nida domain label is a broad orienting category,
   not proof; a gloss is one context-limited English aid — say "the gloss given is …",
-  not "the word means …".
+  not "the word means …" or "literally …".
 - Mention only morphology/gloss/domain fields actually present in the evidence; never
   infer or invent them.
 
@@ -258,7 +258,7 @@ export async function synthesizeWithRefinement(input: SynthesisInput): Promise<S
   const first = await client.responses.create({
     model: routing.modelUsed,
     instructions: instructions,
-    max_output_tokens: getMaxOutputTokens(),
+    max_output_tokens: getMaxOutputTokens(routing.modelRole),
     temperature: getTemperature(),
     tools: [REFINEMENT_TOOL],
     tool_choice: "auto",
@@ -288,7 +288,7 @@ export async function synthesizeWithRefinement(input: SynthesisInput): Promise<S
   const second = await client.responses.create({
     model: routing.modelUsed,
     instructions: instructions,
-    max_output_tokens: getMaxOutputTokens(),
+    max_output_tokens: getMaxOutputTokens(routing.modelRole),
     temperature: getTemperature(),
     text: { format: SYNTHESIS_OUTPUT_FORMAT },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

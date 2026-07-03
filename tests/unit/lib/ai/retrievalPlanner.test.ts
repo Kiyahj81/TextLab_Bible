@@ -571,7 +571,7 @@ describe("runRetrievalPlan", () => {
     const packet = await runRetrievalPlan(
       { references: [], greekWords: [], topicWords: [], morphCodes: [], intent: "general", domainQuery: { kind: "domain", code: "033" } } as never,
       "show me domain 33",
-      false
+      { semanticEnabled: false }
     );
 
     expect(packet.toolTrace.some((t) => t.tool === "searchDomain")).toBe(true);
@@ -592,7 +592,7 @@ describe("runRetrievalPlan", () => {
     await runRetrievalPlan(
       { references: [], greekWords: [], topicWords: [], morphCodes: [], intent: "general", domainQuery: { kind: "domain", code: "033" } } as never,
       "show me domain 33",
-      false
+      { semanticEnabled: false }
     );
 
     expect(vi.mocked(searchDomain)).toHaveBeenCalledWith(expect.objectContaining({ domain: "033" }));
@@ -611,7 +611,7 @@ describe("runRetrievalPlan", () => {
     const packet = await runRetrievalPlan(
       { references: [], greekWords: [], topicWords: [], morphCodes: [], intent: "general", domainQuery: { kind: "ln", ref: "33.55" } } as never,
       "uses of LN 33.55",
-      false
+      { semanticEnabled: false }
     );
 
     expect(packet.toolTrace.some((t) => t.tool === "searchDomain")).toBe(true);
@@ -632,7 +632,7 @@ describe("runRetrievalPlan", () => {
     await runRetrievalPlan(
       { references: [], greekWords: [], topicWords: [], morphCodes: [], intent: "general", book: "John", domainQuery: { kind: "domain", code: "033" } } as never,
       "domain 33 in John",
-      false
+      { semanticEnabled: false }
     );
 
     expect(vi.mocked(searchDomain)).toHaveBeenCalledWith(expect.objectContaining({ domain: "033", book: "John" }));
@@ -650,7 +650,7 @@ describe("runRetrievalPlan", () => {
     const packet = await runRetrievalPlan(
       { references: [], greekWords: [], topicWords, morphCodes: [], intent: "general", domainQuery: { kind: "domain", code: "033" } } as never,
       `domain 33 ${topicWords.join(" ")}`,
-      false
+      { semanticEnabled: false }
     );
 
     expect(packet.toolTrace.some((t) => t.tool === "searchDomain")).toBe(true);
@@ -665,7 +665,7 @@ describe("runRetrievalPlan", () => {
       { surface: "λόγος", lemma: "λόγος", morphCode: "N-NSM", partOfSpeech: "N-", gloss: "word", domainLabel: "Communication (33)", verse: 1, wordIndex: 4 }
     ]);
     const signals = extractSignals("Show John 1:1");
-    const packet = await runRetrievalPlan(signals, "Show John 1:1", false);
+    const packet = await runRetrievalPlan(signals, "Show John 1:1", { semanticEnabled: false });
     expect(packet.formattedEvidence).toContain('λόγος · λόγος · noun — nominative singular masculine · "word"');
     // A successful token fetch is traced too (mirrors getPassage), not only failures.
     expect(packet.toolTrace.some((t) => t.tool === "getPassageTokens" && !t.error)).toBe(true);
@@ -676,7 +676,7 @@ describe("runRetrievalPlan", () => {
     getPassage.mockResolvedValue({ corpus: "SBLGNT", references: refs });
     getPassageTokens.mockResolvedValue([]);
     const signals = extractSignals("Show John 1");
-    await runRetrievalPlan(signals, "Show John 1", false);
+    await runRetrievalPlan(signals, "Show John 1", { semanticEnabled: false });
     expect(getPassageTokens).not.toHaveBeenCalled();
   });
 
@@ -692,7 +692,7 @@ describe("runRetrievalPlan", () => {
       { surface: "ἀγάπην", lemma: "ἀγάπη", morphCode: "N-ASF", partOfSpeech: "C-", gloss: "love", domainLabel: null, verse: 15, wordIndex: 1 }
     ]);
     const signals = extractSignals("How is love used in John 21?");
-    const packet = await runRetrievalPlan(signals, "How is love used in John 21?", false);
+    const packet = await runRetrievalPlan(signals, "How is love used in John 21?", { semanticEnabled: false });
     expect(packet.formattedEvidence).toContain("ἀγάπην · ἀγάπη");
   });
 
@@ -704,7 +704,7 @@ describe("runRetrievalPlan", () => {
       references: [{ book: "Rom", chapter, verse: 1, reference: `Rom ${chapter}:1`, text: "Greek text" }]
     }));
     const signals = extractSignals("Explain Romans 7:25-8:4");
-    await runRetrievalPlan(signals, "Explain Romans 7:25-8:4", false);
+    await runRetrievalPlan(signals, "Explain Romans 7:25-8:4", { semanticEnabled: false });
     expect(getPassageTokens).not.toHaveBeenCalled();
   });
 
@@ -718,7 +718,7 @@ describe("runRetrievalPlan", () => {
       { surface: "λόγος", lemma: "λόγος", morphCode: "N-NSM", partOfSpeech: "N-", gloss: "word", domainLabel: "Communication (33)", verse: 1, wordIndex: 4 }
     ]);
     const signals = extractSignals("Compare John 1:1 and Mark 1:1");
-    const packet = await runRetrievalPlan(signals, "Compare John 1:1 and Mark 1:1", false);
+    const packet = await runRetrievalPlan(signals, "Compare John 1:1 and Mark 1:1", { semanticEnabled: false });
     expect(packet.formattedEvidence).toContain("John 1:1");   // both passages still present
     expect(packet.formattedEvidence).toContain("Mark 1:1");
     const annotated = packet.formattedEvidence.split("noun — nominative singular masculine").length - 1;
@@ -732,7 +732,7 @@ describe("runRetrievalPlan", () => {
     });
     getPassageTokens.mockRejectedValue(new Error("token db down"));
     const signals = extractSignals("Show John 1:1");
-    const packet = await runRetrievalPlan(signals, "Show John 1:1", false);
+    const packet = await runRetrievalPlan(signals, "Show John 1:1", { semanticEnabled: false });
     expect(packet.formattedEvidence).toContain("John 1:1, SBLGNT: Ἐν ἀρχῇ ἦν ὁ λόγος"); // base passage kept
     expect(packet.formattedEvidence).not.toContain("noun — nominative singular masculine"); // no annotations
     expect(packet.toolTrace.some((t) => t.tool === "getPassageTokens" && t.error)).toBe(true); // failure traced
@@ -757,7 +757,7 @@ describe("runRetrievalPlan", () => {
         : []
     );
     const signals = extractSignals("Compare John 1:1 and Mark 1:1");
-    const packet = await runRetrievalPlan(signals, "Compare John 1:1 and Mark 1:1", false);
+    const packet = await runRetrievalPlan(signals, "Compare John 1:1 and Mark 1:1", { semanticEnabled: false });
     expect(packet.formattedEvidence).toContain("Mark 1:1"); // later base passage NOT evicted by earlier enrichment
     expect(packet.formattedEvidence).not.toContain("noun — nominative singular masculine"); // enrichment suppressed to protect base
   });
@@ -769,7 +769,7 @@ describe("runRetrievalPlan", () => {
       pagination: { page: 1, pageSize: 25, total: 1, pageCount: 1 }
     });
     const signals = extractSignals("How is λόγος used?");
-    const packet = await runRetrievalPlan(signals, "How is λόγος used?", false);
+    const packet = await runRetrievalPlan(signals, "How is λόγος used?", { semanticEnabled: false });
     expect(packet.formattedEvidence).toContain("noun — nominative singular masculine");
     expect(packet.formattedEvidence).toContain('"word"');
   });
@@ -892,7 +892,7 @@ describe("semanticCall via runRetrievalPlan", () => {
   it("fans out a multi-lemma topic word to one lemma search per form", async () => {
     const prompt = "verses about Jerusalem";
 
-    await runRetrievalPlan(extractSignals(prompt), prompt, false);
+    await runRetrievalPlan(extractSignals(prompt), prompt, { semanticEnabled: false });
 
     const [hebraic, hellenized] = ENGLISH_TO_GREEK_LEMMA.jerusalem as readonly string[];
     expect(searchLemma).toHaveBeenCalledWith(expect.objectContaining({ lemma: hebraic }));
@@ -916,7 +916,7 @@ describe("semanticCall via runRetrievalPlan", () => {
   it("preserves local lemma fallback for broad-entity-only prompts when semantic is disabled", async () => {
     const prompt = "verses about Jesus";
 
-    await runRetrievalPlan(extractSignals(prompt), prompt, false);
+    await runRetrievalPlan(extractSignals(prompt), prompt, { semanticEnabled: false });
 
     expect(searchSemanticDetailed).not.toHaveBeenCalled();
     expect(searchLemma).toHaveBeenCalledWith(
@@ -1153,7 +1153,7 @@ describe("semanticCall via runRetrievalPlan", () => {
     const evidence = await runRetrievalPlan(
       { references: [], greekWords: [], topicWords: eightWords, morphCodes: [], intent: "general" },
       "a long conceptual prompt",
-      true // semanticEnabled
+      { semanticEnabled: true }
     );
 
     expect(searchSemanticDetailed).toHaveBeenCalled(); // attempted
@@ -1177,7 +1177,7 @@ describe("semanticCall via runRetrievalPlan", () => {
     const evidence = await runRetrievalPlan(
       { references: [], greekWords: [], topicWords: eightWords, morphCodes: [], intent: "general" },
       "a long conceptual fallback prompt",
-      false // semanticEnabled = false
+      { semanticEnabled: false }
     );
 
     expect(searchSemanticDetailed).not.toHaveBeenCalled();
@@ -1219,5 +1219,133 @@ describe("semanticCall via runRetrievalPlan", () => {
 
     expect(evidence.formattedEvidence).toContain("Luke 1:35, SBLGNT: GREEK 35"); // SBL-only → Greek labeled SBLGNT
     expect(evidence.formattedEvidence).toContain("Luke 1:36, WEB: ENGLISH 36"); // WEB present → WEB
+  });
+});
+
+describe("deep retrieval mode", () => {
+  it("standard mode is unchanged: scoped semantic only, subject to the conceptual gate", async () => {
+    const signals = extractSignals("verses about love in John 3");
+    await runRetrievalPlan(signals, "verses about love in John 3", { semanticEnabled: true });
+    const calls = searchSemanticDetailed.mock.calls;
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0]).toMatchObject({ book: "John", chapter: 3, limit: 5 });
+  });
+
+  it("deep + pinned scope adds a corpus-wide pass alongside the scoped one", async () => {
+    const signals = extractSignals("verses about love in John 3");
+    await runRetrievalPlan(signals, "verses about love in John 3", { semanticEnabled: true, deep: true });
+    const calls = searchSemanticDetailed.mock.calls;
+    expect(calls).toHaveLength(2);
+    expect(calls[0][0]).toMatchObject({ book: "John", chapter: 3, limit: 5 });   // scoped
+    // Corpus-wide over-fetches (limit * 3) so it can backfill cross-text hits after
+    // excluding the pinned scope even when many top hits fall in-scope.
+    expect(calls[1][0]).toMatchObject({ book: undefined, chapter: undefined, limit: 15 });
+  });
+
+  it("deep + pinned + termless prompt: corpus-wide pass does NOT exclude the scope (no scoped pass covers it)", async () => {
+    // shouldRunSemantic is false here (proper nouns filtered → no topic words), so no
+    // scoped pass runs. Excluding the pinned scope from the corpus-wide pass would drop
+    // in-scope hits with nothing covering them (a coverage regression), so the corpus-wide
+    // pass must include the pinned scope in this case.
+    const signals = extractSignals("Is Romans 7 about Paul?");
+    expect(signals.topicWords).toHaveLength(0);
+    searchSemanticDetailed.mockResolvedValue(
+      semanticResult([{ reference: "Rom 7:15", corpus: "WEB", text: "what I do not want to do" }])
+    );
+    const packet = await runRetrievalPlan(signals, "Is Romans 7 about Paul?", { semanticEnabled: true, deep: true });
+    expect(searchSemanticDetailed.mock.calls).toHaveLength(1); // corpus-wide only (scoped gated off)
+    // The in-scope hit surfaces — it is NOT excluded, because no scoped pass covers Romans 7.
+    expect(packet.formattedEvidence).toContain("#### Rom 7:15 (semantic hit)");
+    expect(packet.citations.some((c) => c.reference === "Rom 7:15")).toBe(true);
+  });
+
+  it("deep + pinned scope: corpus-wide pass excludes in-scope hits and adds distinct cross-text evidence", async () => {
+    // The scoped pass covers John 3. The corpus-wide pass must EXCLUDE John 3 (so it
+    // never duplicates the scoped pass) and instead surface cross-text verses. Its top
+    // hit here is in-scope (John 3:16 → dropped); the next is cross-text (Rom 5:8 → kept).
+    searchSemanticDetailed
+      .mockResolvedValueOnce(semanticResult([{ reference: "John 3:16", corpus: "WEB", text: "loved" }])) // scoped
+      .mockResolvedValueOnce(
+        semanticResult([
+          { reference: "John 3:16", corpus: "WEB", text: "loved" }, // in-scope → excluded from corpus-wide
+          { reference: "Rom 5:8", corpus: "WEB", text: "while we were sinners" } // cross-text → kept
+        ])
+      );
+    const signals = extractSignals("verses about love in John 3");
+    const packet = await runRetrievalPlan(signals, "verses about love in John 3", {
+      semanticEnabled: true,
+      deep: true
+    });
+    expect(searchSemanticDetailed.mock.calls).toHaveLength(2);
+    // John 3:16 appears once — from the scoped pass only; the corpus-wide copy is
+    // excluded (not deduped), so no wasted evidence block or duplicate citation.
+    const johnCount = packet.formattedEvidence.match(/#### John 3:16 \(semantic hit\)/g)?.length ?? 0;
+    expect(johnCount).toBe(1);
+    expect(packet.citations.filter((c) => c.reference === "John 3:16")).toHaveLength(1);
+    // The corpus-wide pass contributes DISTINCT cross-text evidence (deep mode's point).
+    expect(packet.formattedEvidence).toContain("#### Rom 5:8 (semantic hit)");
+    expect(packet.citations.some((c) => c.reference === "Rom 5:8")).toBe(true);
+  });
+
+  it("deep + pinned scope runs the corpus-wide pass even for termless prompts (relaxed gate)", async () => {
+    // Proper nouns are filtered → no topic words → standard gate would skip semantic
+    // entirely. NOTE: "…about Paul himself?" is NOT termless ("himself" survives as a
+    // topic word) — this shorter phrasing is; the precondition guards the fixture.
+    const signals = extractSignals("Is Romans 7 about Paul?");
+    expect(signals.topicWords).toHaveLength(0);
+    expect(signals.phraseTerms ?? []).toHaveLength(0);
+    await runRetrievalPlan(signals, "Is Romans 7 about Paul?", { semanticEnabled: true, deep: true });
+    const calls = searchSemanticDetailed.mock.calls;
+    expect(calls).toHaveLength(1); // corpus-wide only (scoped pass gated off)
+    expect(calls[0][0]).toMatchObject({ book: undefined, chapter: undefined });
+  });
+
+  it("deep + unpinned scope raises the single pass to 10 hits", async () => {
+    const signals = extractSignals("What is reconciliation?");
+    await runRetrievalPlan(signals, "What is reconciliation?", { semanticEnabled: true, deep: true });
+    const calls = searchSemanticDetailed.mock.calls;
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0]).toMatchObject({ limit: 10 });
+  });
+
+  it("deep + all-exact-verse prompt still gets the corpus-wide pass", async () => {
+    const signals = extractSignals("Does John 1:1 call the Word God?");
+    await runRetrievalPlan(signals, "Does John 1:1 call the Word God?", { semanticEnabled: true, deep: true });
+    expect(searchSemanticDetailed.mock.calls.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("semanticEnabled:false suppresses every semantic pass, deep included", async () => {
+    const signals = extractSignals("verses about love in John 3");
+    await runRetrievalPlan(signals, "verses about love in John 3", { semanticEnabled: false, deep: true });
+    expect(searchSemanticDetailed).not.toHaveBeenCalled();
+  });
+
+  it("caps deterministic calls at 8 standard / 12 deep", async () => {
+    // 7 verse refs × 2 corpora = 14 candidate passage calls. Each single-verse
+    // passage call makes exactly one getPassage fetch (mocked non-empty), so the
+    // getPassage invocation count IS the executed deterministic-call count.
+    // Semantic is disabled so no other call type contributes.
+    const prompt = "John 1:1, John 2:2, John 3:3, John 4:4, John 5:5, John 6:6, John 7:7";
+    const signals = extractSignals(prompt);
+    expect(signals.references).toHaveLength(7);
+
+    await runRetrievalPlan(signals, prompt, { semanticEnabled: false });
+    expect(getPassage.mock.calls).toHaveLength(8); // standard cap
+
+    getPassage.mockClear();
+    await runRetrievalPlan(signals, prompt, { semanticEnabled: false, deep: true });
+    expect(getPassage.mock.calls).toHaveLength(12); // deep cap
+  });
+
+  it("labels the semantic trace entries with scope and deep", async () => {
+    const signals = extractSignals("verses about love in John 3");
+    const packet = await runRetrievalPlan(signals, "verses about love in John 3", {
+      semanticEnabled: true,
+      deep: true
+    });
+    const semanticTraces = packet.toolTrace.filter((t) => t.tool === "searchSemantic");
+    const scopes = semanticTraces.map((t) => (t.args as { scope?: string }).scope).sort();
+    expect(scopes).toEqual(["corpus-wide", "scoped"]);
+    expect(semanticTraces.every((t) => (t.args as { deep?: boolean }).deep === true)).toBe(true);
   });
 });

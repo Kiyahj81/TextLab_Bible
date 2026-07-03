@@ -19,6 +19,11 @@ const sample: RunResult[] = [
     lemmaFound: false,
     rerankStatus: "ok",
     rerankCandidateCount: 12,
+    modelRole: "default",
+    routerSource: "score",
+    deep: false,
+    complexityScore: 0,
+    semanticPasses: [{ scope: "corpus-wide", deep: false, rerankStatus: "ok", rerankCandidateCount: 12 }],
     synthesisStatus: "ran",
     synthesisModel: "gpt-5-chat-latest",
     judgeStatus: "ran",
@@ -33,6 +38,11 @@ describe("renderJsonReport", () => {
     expect(json.summary.meanRecall).toBe(1);
     expect(json.summary.citationResolvability).toBe(1);
     expect(json.results).toHaveLength(1);
+    // Top-level semanticPasses summary (semanticPassSummary) surfaces which items
+    // went deep and whether both passes ran — lock in that shape.
+    expect(json.semanticPasses).toEqual([
+      { id: "john-3-16-exact", deep: false, passes: sample[0].semanticPasses }
+    ]);
   });
 });
 

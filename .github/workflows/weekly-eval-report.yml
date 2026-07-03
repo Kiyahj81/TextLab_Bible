@@ -13,7 +13,13 @@ on:
     # to taste. Note: scheduled runs on free runners can be delayed under load
     # and only run from the default branch's copy of this file.
     - cron: "0 7 * * 5"
-  workflow_dispatch: {} # allow on-demand runs from the Actions tab
+  workflow_dispatch: # allow on-demand runs from the Actions tab
+    inputs:
+      router_model:
+        description: "Override OPENAI_ROUTER_MODEL for a router-model A/B (blank = repo default gpt-5.4-mini)"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read # least privilege: the report neither commits nor needs write scope
@@ -25,12 +31,17 @@ concurrency:
 jobs:
   report:
     runs-on: ubuntu-latest
-    # Must cover the SEQUENTIAL worst case: the report is only written after all
-    # ~20 questions finish, and each judge can take ~4.6min (3 x 90s + backoff)
-    # under sustained provider failure — ~100min total before retrieval/synthesis.
-    # Typical runs finish in a few minutes; a generous ceiling is harmless here
-    # (read-only job, concurrency-grouped, next run is a week away).
-    timeout-minutes: 120
+    # Must cover the SEQUENTIAL worst case: the report is written only after all 26
+    # golden items finish. The judge dominates — 3 attempts x 90s + 6s backoff =
+    # ~4.6min/item x 26 = ~120min under sustained judge timeouts — which alone meets
+    # the old 120min ceiling, leaving nothing for install/retrieval/synthesis, so a
+    # degraded run could be killed before the report is even written/uploaded. 180min
+    # clears the judge worst case plus that headroom. (A provider that is truly down
+    # returns errors fast rather than consuming full per-attempt timeouts, so real
+    # degraded runs finish well under this and healthy runs take a few minutes; a
+    # generous ceiling is harmless — read-only job, concurrency-grouped, next run a
+    # week away.)
+    timeout-minutes: 180
     env:
       # `prisma.config.ts` (and the schema) require these via env() at config
       # LOAD, and Prisma loads that config on every CLI command — including the
@@ -41,7 +52,12 @@ jobs:
       DATABASE_URL: ${{ secrets.EVAL_DATABASE_URL || 'postgresql://placeholder:placeholder@localhost:5432/placeholder' }}
       DIRECT_URL: ${{ secrets.EVAL_DIRECT_URL || 'postgresql://placeholder:placeholder@localhost:5432/placeholder' }}
     steps:
+      # Read-only job: don't persist the token to .git/config, where npm ci's
+      # arbitrary postinstall code (prisma generate) could read it (zizmor artipacked).
+      # Safe here — nothing in this workflow pushes or needs the token after checkout.
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@v6
         with:
@@ -67,9 +83,12 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           # Voyage rerank + faithfulness judge (Vercel AI Gateway):
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
-          # Per-attempt judge budget (default 30s). The weekly report is not
-          # latency-sensitive, and tight budgets were aborting judge calls
-          # mid-retry ("Delay was aborted" errors in the June 9/10 reports).
+          # Blank on schedule and when the dispatch input is empty → getRouterModel()
+          # uses the repo default (gpt-5.4-mini). Set only for an on-demand router A/B.
+          OPENAI_ROUTER_MODEL: ${{ inputs.router_model }}
+          # Per-attempt judge budget. Now redundant with the code default (raised
+          # to 90s on 2026-07-02 after 30s also aborted local runs), kept as an
+          # explicit record of the value this workflow depends on.
           EVAL_JUDGE_TIMEOUT_MS: "90000"
         run: npm run eval:report
 

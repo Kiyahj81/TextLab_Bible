@@ -1,1 +1,7 @@
 blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability (private)
+    url: https://github.com/Kiyahj81/TextLab_Bible/security/advisories/new
+    about: >-
+      Please report security or privacy vulnerabilities privately via GitHub
+      Security Advisories — do NOT open a public issue. See SECURITY.md.

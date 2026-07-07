@@ -9,7 +9,12 @@ assignees: ""
 <!--
 Add ONE priority label after opening: "priority: P1" (critical — core trust/data/privacy),
 "P2" (high — a functional bug users hit / correctness), "P3" (medium — hardening),
-or "P4" (low — polish). Add the "security" label too if this is security- or privacy-sensitive.
+or "P4" (low — polish).
+
+For an UNDISCLOSED security vulnerability, do NOT use this template — report it privately
+(see SECURITY.md / GitHub private vulnerability reporting). The "security" label is only for
+findings already public in the codebase or docs/security-register.md.
+
 Delete any sections that don't apply.
 -->
 

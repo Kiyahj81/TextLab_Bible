@@ -28,6 +28,7 @@
     "import:macula-glosses": "cross-env NODE_OPTIONS=--use-system-ca tsx --env-file=.env scripts/import-open-bible.ts --macula-greek-url https://raw.githubusercontent.com/Clear-Bible/macula-greek/main/SBLGNT/tsv/macula-greek-SBLGNT.tsv",
     "import:louw-nida": "cross-env NODE_OPTIONS=--use-system-ca tsx --env-file=.env scripts/import-louw-nida.ts",
     "embed:verses": "cross-env NODE_OPTIONS=--use-system-ca tsx --env-file=.env scripts/embed-verses.ts",
+    "db:count-embeddings": "cross-env NODE_OPTIONS=--use-system-ca tsx --env-file=.env scripts/count-verse-embeddings.ts",
     "eval:gate": "cross-env NODE_OPTIONS=--use-system-ca tsx --env-file=.env.test scripts/eval-gate.ts",
     "eval:report": "cross-env NODE_OPTIONS=--use-system-ca tsx --env-file=.env.test scripts/eval-report.ts",
     "smoke:classifier": "cross-env NODE_OPTIONS=--use-system-ca tsx --env-file=.env scripts/smoke-classifier.ts"

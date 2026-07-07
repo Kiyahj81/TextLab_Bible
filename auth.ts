@@ -3,7 +3,7 @@ import Credentials from "next-auth/providers/credentials";
 import GitHub from "next-auth/providers/github";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/lib/db";
-import { jwtCallback, sessionCallback, signOutEvent } from "@/lib/auth-callbacks";
+import { jwtCallback, sessionCallback, signInCallback, signOutEvent } from "@/lib/auth-callbacks";
 
 function buildProviders(): NextAuthConfig["providers"] {
   const providers: NextAuthConfig["providers"] = [];
@@ -88,6 +88,7 @@ export const authConfig: NextAuthConfig = {
   },
   providers: buildProviders(),
   callbacks: {
+    signIn: signInCallback,
     jwt: jwtCallback,
     session: sessionCallback
   },

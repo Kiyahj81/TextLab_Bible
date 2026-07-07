@@ -6,6 +6,47 @@ import { prisma } from "@/lib/db";
 // triggering NextAuth's runtime initialization (which depends on Next's
 // bundler resolving `next/server`).
 
+let warnedEmptyAllowlist = false;
+
+// Parse GITHUB_ALLOWLIST at call time (not module load) so runtime env and
+// tests both see the current value. Comma-separated GitHub numeric account
+// ids; surrounding whitespace and empty entries are ignored.
+function parseGithubAllowlist(): Set<string> {
+  return new Set(
+    (process.env.GITHUB_ALLOWLIST ?? "")
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+  );
+}
+
+// Authorization gate for the GitHub OAuth provider. Only accounts whose
+// numeric id is on GITHUB_ALLOWLIST may sign in. Fail-closed: an unset or
+// empty allowlist denies every GitHub sign-in, so a missing env var can
+// never silently open the app. Other providers (the dev-only credentials
+// provider) are not gated. Returning false makes Auth.js redirect to
+// /signin?error=AccessDenied.
+export async function signInCallback({
+  account
+}: {
+  account?: { provider?: string | null; providerAccountId?: string | null } | null;
+}): Promise<boolean> {
+  if (!account || account.provider !== "github") return true;
+
+  const allowlist = parseGithubAllowlist();
+  if (allowlist.size === 0) {
+    if (!warnedEmptyAllowlist) {
+      console.warn(
+        "[auth] GITHUB_ALLOWLIST is unset or empty — denying all GitHub sign-ins (fail-closed)."
+      );
+      warnedEmptyAllowlist = true;
+    }
+    return false;
+  }
+
+  return account.providerAccountId != null && allowlist.has(account.providerAccountId);
+}
+
 export async function jwtCallback({
   token,
   user

@@ -52,6 +52,11 @@ describe("signInCallback — GitHub allowlist", () => {
     ).resolves.toBe(true);
   });
 
+  it("allows sign-in when account is missing (non-OAuth / fail-safe branch)", async () => {
+    process.env.GITHUB_ALLOWLIST = "255756444"; // even with a list set, a null account is not gated
+    await expect(signInCallback({ account: null })).resolves.toBe(true);
+  });
+
   it("denies a GitHub account with a missing providerAccountId", async () => {
     process.env.GITHUB_ALLOWLIST = "255756444";
     await expect(

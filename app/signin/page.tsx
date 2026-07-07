@@ -12,6 +12,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   CredentialsSignin: "Invalid credentials.",
   OAuthAccountNotLinked:
     "That account is registered with a different provider. Sign in the original way.",
+  AccessDenied: "This app is invite-only — your account isn't on the allowlist.",
   Configuration: "Sign-in is misconfigured. Check server logs.",
   default: "Something went wrong signing you in."
 };

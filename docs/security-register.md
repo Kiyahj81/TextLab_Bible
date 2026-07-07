@@ -171,6 +171,34 @@ sprint and at every Next.js minor upgrade. Cross-check each open row.
 | Opened | 2026-06-19 (DB-resilience PR) |
 | Next review | Re-check if `withDbRetry` is applied to mutation paths or other routes, or if the transient-error allow-list is widened. |
 
+### Prisma 7 major upgrade deferred (6.19.3 → 7.x)
+
+| Field | Value |
+| --- | --- |
+| Severity | Low (dependency-currency / maintenance debt — not a known vulnerability) |
+| Change | The Prisma CLI now prints an update nag `6.19.3 → 7.8.0` (major). The upgrade is **deferred** — the repo stays on `prisma`/`@prisma/client` `^6.7.0` (resolved 6.19.3). No CVE is currently attributed to the pinned 6.x line; this is currency debt, not a security exception. |
+| Reason (breaking surface in this repo) | Prisma 7 is not a drop-in for this codebase: (1) the `prisma-client-js` generator provider is deprecated in favor of `prisma-client` with a **mandatory `output`** path (`prisma/schema.prisma:1-3` uses `prisma-client-js`); (2) generated-client imports move from `@prisma/client` to the generated output dir — affecting `lib/db.ts` plus **every `Prisma.sql` (19) / `$queryRaw` (4)** call site in `lib/`; (3) a **driver adapter is now required for PostgreSQL** (`@prisma/adapter-pg` / a Neon adapter), changing the plain `new PrismaClient({...})` in `lib/db.ts:9`; (4) the Rust query engine is replaced by the client-side query compiler + driver adapter, which can shift raw-query result typing (BigInt/numeric coercion) across this repo's FTS `tsvector` / pgvector-KNN / RRF raw SQL; (5) stricter SSL cert validation by default may require Neon connection-string/cert adjustments (this repo already has documented TLS friction — see the `--use-system-ca` tooling notes). Node floor (≥ 20.19 for Prisma 7) is already satisfied (repo requires ≥ 22.15). |
+| Status | Deferred — accepted currency debt |
+| Mitigation | Staying on 6.19.3 keeps a working, fully-migrated schema and green `tsc`/verify. The CLI nag is advisory only; no `npm audit` advisory targets the pinned 6.x. `db:push` remains disabled and all schema changes go through handwritten SQL migrations, so no accidental Prisma-7-only schema feature can slip in. |
+| Path to resolve | Do the upgrade as its **own dedicated PR** following the official Prisma 6→7 upgrade guide: switch the generator to `prisma-client` + `output`, repoint all `@prisma/client` imports, add and wire the PostgreSQL driver adapter in `lib/db.ts`, then gate on the full `npm run verify` **plus** `npm run test:integration` and `npm run eval:gate` to catch raw-query/result-typing regressions in the search/retrieval pipeline. Do **not** bundle into unrelated work. |
+| Owner | Maintainer (kiyahj81) |
+| Opened | 2026-07-07 (fresh-clone setup — Prisma 7 update nag) |
+| Next review | Re-check on the next Prisma minor, or if a CVE is filed against the pinned 6.x line (then re-prioritize from "deferred" to a scheduled upgrade). |
+
+### GitHub sign-in allowlist (fail-closed authorization gate)
+
+| Field | Value |
+| --- | --- |
+| Severity | Hardening measure (access control) — not a vulnerability |
+| Change | New `signInCallback` in `lib/auth-callbacks.ts`, wired into `authConfig.callbacks.signIn` (`auth.ts`), gates the GitHub OAuth provider against `GITHUB_ALLOWLIST` (comma-separated GitHub **numeric account ids**, matched on `account.providerAccountId`). Off-list accounts are rejected → Auth.js redirects to `/signin?error=AccessDenied` ("invite-only" message added to `app/signin/page.tsx`). |
+| Posture | **Fail-closed:** an unset or empty `GITHUB_ALLOWLIST` denies **all** GitHub sign-ins (logs a one-time warning). A missing/misconfigured env var can therefore never silently open the app to the world. The dev-only credentials provider is **not** gated (local `AUTH_DEV_ENABLED` login still works). |
+| Deliberate non-choice | `allowDangerousEmailAccountLinking` is **not** enabled. Auto-linking an OAuth login to a pre-existing email-only user is an account-takeover vector; the orphan-email collision that motivated this work was resolved by deleting the stale row and letting GitHub create a properly-linked account, not by dangerous linking. |
+| Deploy ordering | Because the gate is fail-closed, `GITHUB_ALLOWLIST` **must be set in the production env before (or with) the deploy** that ships this callback — otherwise the sole maintainer is locked out until the var is added and the app redeployed. Numeric id chosen over username/email because ids are immutable (usernames can be renamed/reassigned; GitHub emails can be null/private). |
+| Status | Active |
+| Tests | `tests/unit/lib/auth-allowlist.test.ts` — on-list allow, off-list deny, unset/empty deny, whitespace/multi-entry parsing, non-GitHub passthrough, missing-id deny. |
+| Owner | Maintainer (kiyahj81) |
+| Opened | 2026-07-07 (GitHub allowlist) |
+
 ## Tooling notes
 
 - `npm audit` requires network access to the npm registry. If the

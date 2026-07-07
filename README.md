@@ -168,6 +168,7 @@ Most npm scripts set `NODE_OPTIONS=--use-system-ca` so Node trusts the Windows c
 | `AUTH_URL` | Yes | Public app URL, for example `http://localhost:3000` locally. |
 | `AUTH_DEV_ENABLED` | Local only | Set to `1` for local dev sign-in. Never enable in production. |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | Production auth | Enables GitHub OAuth when both are set. |
+| `GITHUB_ALLOWLIST` | Production auth | Comma-separated GitHub numeric account ids permitted to sign in via GitHub. Fail-closed: unset/empty denies all GitHub sign-ins. |
 | `OPENAI_API_KEY` | Optional | Enables live synthesis, query embeddings, and `embed:verses`. Without it, assistant synthesis falls back locally. |
 | `OPENAI_DEFAULT_MODEL` | Optional | Default live synthesis model. |
 | `OPENAI_SCHOLARLY_MODEL` | Optional | Model used for scholarly escalation (auto-routed or user-confirmed). |
